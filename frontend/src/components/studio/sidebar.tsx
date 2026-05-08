@@ -312,16 +312,16 @@ export function Sidebar() {
         </a>
         <div className="flex items-center gap-2">
           <a
-            href="https://mcpr.app"
+            href="https://pragmalabs.tech"
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-foreground transition-colors"
           >
-            mcpr.app
+            pragmalabs.tech
           </a>
           <span>·</span>
           <a
-            href="https://github.com/pragmalabs-tech/mcpr"
+            href="https://github.com/pragmalabs-tech"
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-foreground transition-colors"
