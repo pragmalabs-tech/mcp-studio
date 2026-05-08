@@ -6,9 +6,18 @@
  */
 
 import type { CspDomains } from "./csp-profiles";
+import { RESTRICTED_APIS } from "./csp-restricted-apis";
+
+export type Severity = "error" | "warning";
+/**
+ * Platform names shown to the user in violation messages. Distinct from the
+ * internal platform identifier used elsewhere in studio (`"openai" |
+ * "claude"`); these are the display labels.
+ */
+export type ViolationPlatform = "ChatGPT" | "Claude";
 
 export interface CspIssue {
-  severity: "error" | "warning";
+  severity: Severity;
   /** Which directive would block this */
   directive: string;
   /** What was detected */
@@ -18,7 +27,7 @@ export interface CspIssue {
   /** How to fix it */
   fix: string;
   /** Affects which platforms */
-  platforms: ("ChatGPT" | "Claude")[];
+  platforms: ViolationPlatform[];
   /** Source line number (approximate, 1-based) */
   line?: number;
 }
@@ -33,19 +42,117 @@ function extractOrigin(url: string): string | null {
   }
 }
 
-/** Check if a URL origin is in the allowed domains list. */
-function isAllowed(url: string, domains: string[]): boolean {
-  const origin = extractOrigin(url);
-  if (!origin) return false;
+/**
+ * Parse a CSP source-expression entry into a comparable form.
+ *
+ * Accepts both schemed and bare hosts:
+ *   - "https://api.example.com"  -> { scheme: "https", host: "api.example.com" }
+ *   - "api.example.com"          -> { host: "api.example.com" }
+ *   - "*.example.com"            -> { host: "*.example.com", isWildcard: true }
+ */
+function normalizeDomain(d: string): {
+  host: string;
+  scheme?: string;
+  isWildcard: boolean;
+} | null {
+  const trimmed = d.trim();
+  if (!trimmed) return null;
+  const schemeMatch = trimmed.match(/^(https?):\/\/(.+?)\/?$/i);
+  if (schemeMatch) {
+    const host = schemeMatch[2];
+    return {
+      scheme: schemeMatch[1].toLowerCase(),
+      host,
+      isWildcard: host.startsWith("*."),
+    };
+  }
+  return { host: trimmed, isWildcard: trimmed.startsWith("*.") };
+}
+
+function hostMatches(
+  declaredHost: string,
+  urlHost: string,
+  isWildcard: boolean,
+): boolean {
+  if (isWildcard) {
+    // "*.example.com" -> requires at least one label before ".example.com"
+    const suffix = declaredHost.slice(1).toLowerCase();
+    const lower = urlHost.toLowerCase();
+    return lower.endsWith(suffix) && lower.length > suffix.length;
+  }
+  return declaredHost.toLowerCase() === urlHost.toLowerCase();
+}
+
+/**
+ * Check whether `url` matches any entry in the declared CSP source list.
+ *
+ * Matches by host (case-insensitive). Schemed entries also enforce scheme;
+ * bare-host entries match any scheme (mirrors the CSP source-expression
+ * grammar where the scheme is optional). `*.host` wildcards are supported.
+ */
+export function isAllowed(url: string, domains: string[]): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  const urlHost = parsed.hostname;
+  const urlScheme = parsed.protocol.replace(":", "").toLowerCase();
   return domains.some((d) => {
-    const dOrigin = extractOrigin(d);
-    return dOrigin === origin || d === origin || url.startsWith(d);
+    const n = normalizeDomain(d);
+    if (!n) return false;
+    if (n.scheme && n.scheme !== urlScheme) return false;
+    return hostMatches(n.host, urlHost, n.isWildcard);
   });
 }
 
 /** Find approximate line number for a match index in source text. */
 function lineOf(html: string, index: number): number {
   return html.slice(0, index).split("\n").length;
+}
+
+/**
+ * Build the recommended fix for a domain-style violation.
+ *
+ * The server-side path (declaring CSP on the resource `_meta` directly)
+ * works without any extra tooling, so it leads. mcpr is mentioned as an
+ * optional centralized rewrite path - useful when you can't or don't want
+ * to edit the upstream code, but it requires running mcpr in front of the
+ * MCP server. baseUri is MCP-only and redirect is OpenAI-only, so the
+ * upstream pointer reflects which shape carries it.
+ */
+function fixForDomain(
+  directive: "connect" | "resource" | "baseUri" | "redirect",
+  url: string,
+): string {
+  const origin = extractOrigin(url) || url;
+  const directiveCamel = `${directive}Domains`;
+  let upstreamLines: string[];
+  switch (directive) {
+    case "baseUri":
+      upstreamLines = ["    _meta.ui.csp.baseUriDomains  (MCP Apps spec)"];
+      break;
+    case "redirect":
+      upstreamLines = [
+        "    _meta.openai/widgetCSP.redirect_domains  (ChatGPT)",
+      ];
+      break;
+    default:
+      upstreamLines = [
+        `    _meta.ui.csp.${directiveCamel}  (Claude / MCP Apps)`,
+        `    _meta.openai/widgetCSP.${directive}_domains  (ChatGPT)`,
+      ];
+  }
+  return [
+    `Add "${origin}" to your CSP. Options:`,
+    `  A. In your MCP server code (works everywhere):`,
+    ...upstreamLines,
+    `  B. Or via mcpr proxy (centralized config, no code change):`,
+    `    mcpr.toml -> [csp.${directiveCamel}].domains    (operator-wide)`,
+    `    mcpr.toml -> [[csp.widget]] ${directiveCamel}   (per-widget)`,
+    `    See: https://github.com/pragmalabs-tech/mcpr`,
+  ].join("\n");
 }
 
 export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
@@ -63,7 +170,7 @@ export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
         directive: "script-src",
         description: "External script not in resource_domains",
         blocked: url,
-        fix: `Add "${extractOrigin(url)}" to resource_domains / resourceDomains in your widget CSP metadata`,
+        fix: fixForDomain("resource", url),
         platforms: both,
         line: lineOf(html, m.index),
       });
@@ -87,34 +194,13 @@ export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
     });
   }
 
-  // 1c. Inline <script>...</script> blocks (no src attribute).
-  // Claude blocks these — script-src only allows scripts from claude.ai.
-  // ChatGPT currently allows 'unsafe-inline' but is expected to tighten.
-  const inlineScriptRe =
-    /<script(?![^>]*\bsrc\s*=)([^>]*)>([\s\S]*?)<\/script>/gi;
-  while ((m = inlineScriptRe.exec(html)) !== null) {
-    const attrs = m[1];
-    const body = m[2].trim();
-    if (!body) continue;
-    // Skip non-executable script types (data/templates).
-    if (
-      /\btype\s*=\s*["']?(?:application\/(?:json|ld\+json)|text\/(?:template|html|x-template))\b/i.test(
-        attrs,
-      )
-    ) {
-      continue;
-    }
-    issues.push({
-      severity: "error",
-      directive: "script-src",
-      description:
-        "Inline <script> blocks are blocked by Claude — script-src only allows scripts from claude.ai",
-      blocked: "<script>…inline code…</script>",
-      fix: "Move code into an external file. Bundle with vite-plugin-singlefile and serve via mcpr proxy, or load via <script src> from an allowed origin (claude.ai for Claude)",
-      platforms: ["Claude"],
-      line: lineOf(html, m.index),
-    });
-  }
+  // 1c. Inline <script>...</script> blocks intentionally NOT flagged.
+  // Both ChatGPT and Claude render widgets in `srcdoc` iframes with
+  // `allow-scripts`; inline scripts are how the standard postMessage bridge
+  // ships in MCP Apps templates. Earlier versions of this scanner reported
+  // them as Claude-blocked based on a stale model of Claude's effective CSP
+  // (see issue #40 in claude-ai-mcp). Real Claude restricts `frame-src` and
+  // `connect-src`, not `script-src`. Removed to avoid false positives.
 
   // 2a. External stylesheets: <link href="https://..." rel="stylesheet">
   const linkRe = /<link[^>]+href\s*=\s*["']?(https?:\/\/[^"'\s>]+)[^>]*>/gi;
@@ -130,7 +216,7 @@ export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
         directive: "style-src",
         description: "External stylesheet not in resource_domains",
         blocked: url,
-        fix: `Add "${extractOrigin(url)}" to resource_domains / resourceDomains in your widget CSP metadata`,
+        fix: fixForDomain("resource", url),
         platforms: both,
         line: lineOf(html, m.index),
       });
@@ -166,7 +252,7 @@ export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
         directive: "img-src",
         description: "External image not in resource_domains",
         blocked: url,
-        fix: `Add "${extractOrigin(url)}" to resource_domains / resourceDomains in your widget CSP metadata`,
+        fix: fixForDomain("resource", url),
         platforms: both,
         line: lineOf(html, m.index),
       });
@@ -211,7 +297,7 @@ export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
         directive: "connect-src",
         description: "Network request to unlisted domain",
         blocked: url,
-        fix: `Add "${extractOrigin(url)}" to connect_domains / connectDomains in your widget CSP metadata`,
+        fix: fixForDomain("connect", url),
         platforms: both,
         line: lineOf(html, m.index),
       });
@@ -228,7 +314,7 @@ export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
         directive: "font-src / style-src",
         description: "External resource URL not in resource_domains",
         blocked: url,
-        fix: `Add "${extractOrigin(url)}" to resource_domains / resourceDomains in your widget CSP metadata`,
+        fix: fixForDomain("resource", url),
         platforms: both,
         line: lineOf(html, m.index),
       });
@@ -263,275 +349,57 @@ export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
     });
   }
 
-  // 9. Restricted API usage — storage, permissions, device access, navigation
-  //    These are blocked or unwanted in sandboxed widget iframes on both platforms.
-  const restrictedApis: {
-    pattern: RegExp;
-    name: string;
-    category: string;
-    description: string;
-    fix: string;
-    platforms: ("ChatGPT" | "Claude")[];
-    severity: "error" | "warning";
-  }[] = [
-    // Storage APIs (SecurityError without allow-same-origin on ChatGPT; unwanted on both)
-    {
-      pattern: /\blocalStorage\b/g,
-      name: "localStorage",
-      category: "sandbox (storage)",
-      severity: "warning",
-      description: "localStorage is not available in sandboxed widget iframes",
-      fix: "Use window.openai.widgetState / setWidgetState() to persist state instead",
-      platforms: both,
-    },
-    {
-      pattern: /\bsessionStorage\b/g,
-      name: "sessionStorage",
-      category: "sandbox (storage)",
-      severity: "warning",
-      description:
-        "sessionStorage is not available in sandboxed widget iframes",
-      fix: "Use component state or widget state API instead",
-      platforms: both,
-    },
-    {
-      pattern: /\bindexedDB\b/g,
-      name: "indexedDB",
-      category: "sandbox (storage)",
-      severity: "warning",
-      description: "indexedDB is not available in sandboxed widget iframes",
-      fix: "Use widget state API or pass data through tool calls instead",
-      platforms: both,
-    },
-    {
-      pattern: /\bdocument\.cookie\b/g,
-      name: "document.cookie",
-      category: "sandbox (storage)",
-      severity: "warning",
-      description:
-        "document.cookie is not available in sandboxed widget iframes",
-      fix: "Cookies are not available — use widget state API instead",
-      platforms: both,
-    },
+  // 9a. <base href="..."> targets must be in baseUriDomains (MCP spec).
+  // Relative hrefs change resolution but don't violate base-uri; only
+  // absolute URLs need allow-listing.
+  const baseHrefRe = /<base[^>]+href\s*=\s*["']?([^"'\s>]+)/gi;
+  while ((m = baseHrefRe.exec(html)) !== null) {
+    const target = m[1];
+    if (
+      /^https?:\/\//i.test(target) &&
+      !isAllowed(target, domains.baseUriDomains)
+    ) {
+      issues.push({
+        severity: "warning",
+        directive: "base-uri",
+        description: "<base href> target not in baseUriDomains",
+        blocked: target,
+        fix: fixForDomain("baseUri", target),
+        platforms: both,
+        line: lineOf(html, m.index),
+      });
+    }
+  }
 
-    // Geolocation — getter = warning, method call = error
-    {
-      pattern: /\bnavigator\.geolocation\b(?!\s*[.=])/g,
-      name: "navigator.geolocation",
-      category: "sandbox (permission)",
-      severity: "warning",
-      description:
-        "Geolocation API is not available in sandboxed widget iframes",
-      fix: "Accessing navigator.geolocation will not work — pass location via tool input if needed",
-      platforms: both,
-    },
-    {
-      pattern: /\bgetCurrentPosition\s*\(/g,
-      name: "getCurrentPosition()",
-      category: "sandbox (permission)",
-      severity: "error",
-      description: "Geolocation is not available in sandboxed widget iframes",
-      fix: "Remove geolocation usage — pass location data through tool input if needed",
-      platforms: both,
-    },
-    {
-      pattern: /\bwatchPosition\s*\(/g,
-      name: "watchPosition()",
-      category: "sandbox (permission)",
-      severity: "error",
-      description: "Geolocation is not available in sandboxed widget iframes",
-      fix: "Remove geolocation usage",
-      platforms: both,
-    },
+  // 9b. window.openai.openExternal(...) targets must be in redirectDomains
+  // (OpenAI Apps SDK). Without an entry, ChatGPT shows a safe-link warning.
+  const openExternalRe = /\bopenai\.openExternal\s*\(\s*["'`]([^"'`]+)/gi;
+  while ((m = openExternalRe.exec(html)) !== null) {
+    const target = m[1];
+    if (
+      /^https?:\/\//i.test(target) &&
+      !isAllowed(target, domains.redirectDomains)
+    ) {
+      issues.push({
+        severity: "warning",
+        directive: "redirect",
+        description:
+          "openExternal target not in redirect_domains - host shows safe-link warning",
+        blocked: target,
+        fix: fixForDomain("redirect", target),
+        platforms: ["ChatGPT"],
+        line: lineOf(html, m.index),
+      });
+    }
+  }
 
-    // Camera / Microphone — getter = warning, method call = error
-    {
-      pattern: /\bnavigator\.mediaDevices\b(?!\s*\.)/g,
-      name: "navigator.mediaDevices",
-      category: "sandbox (permission)",
-      severity: "warning",
-      description:
-        "MediaDevices API is not available in sandboxed widget iframes",
-      fix: "Accessing navigator.mediaDevices will not work — widgets cannot access camera or microphone",
-      platforms: both,
-    },
-    {
-      pattern: /\bgetUserMedia\s*\(/g,
-      name: "getUserMedia()",
-      category: "sandbox (permission)",
-      severity: "error",
-      description:
-        "Camera/microphone access is not available in sandboxed widget iframes",
-      fix: "Remove getUserMedia — widgets cannot access camera or microphone",
-      platforms: both,
-    },
-    {
-      pattern: /\bgetDisplayMedia\s*\(/g,
-      name: "getDisplayMedia()",
-      category: "sandbox (permission)",
-      severity: "error",
-      description:
-        "Screen capture is not available in sandboxed widget iframes",
-      fix: "Remove getDisplayMedia — widgets cannot capture screen",
-      platforms: both,
-    },
-
-    // Notifications — flag constructor calls and requestPermission
-    {
-      pattern: /\bnew\s+Notification\s*\(/g,
-      name: "new Notification()",
-      category: "sandbox (permission)",
-      severity: "error",
-      description:
-        "Web Notifications are not available in sandboxed widget iframes",
-      fix: "Remove Notification usage — use the widget UI to display messages instead",
-      platforms: both,
-    },
-    {
-      pattern: /\bNotification\.requestPermission\s*\(/g,
-      name: "Notification.requestPermission()",
-      category: "sandbox (permission)",
-      severity: "error",
-      description:
-        "Notification permission requests are blocked in sandboxed iframes",
-      fix: "Remove notification permission requests",
-      platforms: both,
-    },
-
-    // Service Worker — flag register() call, not property read
-    {
-      pattern: /\.serviceWorker\.register\s*\(/g,
-      name: "serviceWorker.register()",
-      category: "sandbox (worker)",
-      severity: "error",
-      description:
-        "Service Worker registration is blocked in sandboxed widget iframes",
-      fix: "Remove service worker registration — widgets run in a single page context",
-      platforms: both,
-    },
-
-    // Clipboard — flag actual read/write calls
-    {
-      pattern: /\.clipboard\.readText\s*\(/g,
-      name: "clipboard.readText()",
-      category: "sandbox (permission)",
-      severity: "warning",
-      description:
-        "Clipboard read may not be available in sandboxed widget iframes",
-      fix: "Wrap clipboard access in try/catch for graceful fallback",
-      platforms: both,
-    },
-    {
-      pattern: /\.clipboard\.writeText\s*\(/g,
-      name: "clipboard.writeText()",
-      category: "sandbox (permission)",
-      severity: "warning",
-      description:
-        "Clipboard write may not be available in sandboxed widget iframes",
-      fix: "Use document.execCommand('copy') as fallback, or wrap in try/catch",
-      platforms: both,
-    },
-
-    // Credentials / WebAuthn — flag method calls
-    {
-      pattern: /\.credentials\.get\s*\(/g,
-      name: "credentials.get()",
-      category: "sandbox (permission)",
-      severity: "error",
-      description:
-        "Credential Management API is not available in sandboxed widget iframes",
-      fix: "Remove credentials API — authentication should be handled by the host",
-      platforms: both,
-    },
-    {
-      pattern: /\.credentials\.create\s*\(/g,
-      name: "credentials.create()",
-      category: "sandbox (permission)",
-      severity: "error",
-      description:
-        "Credential Management API is not available in sandboxed widget iframes",
-      fix: "Remove credentials API — authentication should be handled by the host",
-      platforms: both,
-    },
-
-    // Device APIs — flag requestDevice/requestPort calls
-    {
-      pattern: /\.bluetooth\.requestDevice\s*\(/g,
-      name: "bluetooth.requestDevice()",
-      category: "sandbox (device)",
-      severity: "error",
-      description: "Web Bluetooth is not available in sandboxed widget iframes",
-      fix: "Remove Bluetooth usage — widgets cannot access hardware devices",
-      platforms: both,
-    },
-    {
-      pattern: /\.usb\.requestDevice\s*\(/g,
-      name: "usb.requestDevice()",
-      category: "sandbox (device)",
-      severity: "error",
-      description: "WebUSB is not available in sandboxed widget iframes",
-      fix: "Remove USB usage — widgets cannot access hardware devices",
-      platforms: both,
-    },
-    {
-      pattern: /\.serial\.requestPort\s*\(/g,
-      name: "serial.requestPort()",
-      category: "sandbox (device)",
-      severity: "error",
-      description: "Web Serial is not available in sandboxed widget iframes",
-      fix: "Remove serial port usage — widgets cannot access hardware devices",
-      platforms: both,
-    },
-    {
-      pattern: /\.hid\.requestDevice\s*\(/g,
-      name: "hid.requestDevice()",
-      category: "sandbox (device)",
-      severity: "error",
-      description: "WebHID is not available in sandboxed widget iframes",
-      fix: "Remove HID usage — widgets cannot access hardware devices",
-      platforms: both,
-    },
-
-    // Payment — flag constructor
-    {
-      pattern: /\bnew\s+PaymentRequest\s*\(/g,
-      name: "new PaymentRequest()",
-      category: "sandbox (permission)",
-      severity: "error",
-      description:
-        "Payment Request API is not available in sandboxed widget iframes",
-      fix: "Remove PaymentRequest — handle payments server-side through tool calls",
-      platforms: both,
-    },
-
-    // Web Share — flag method call
-    {
-      pattern: /\bnavigator\.share\s*\(/g,
-      name: "navigator.share()",
-      category: "sandbox (permission)",
-      severity: "warning",
-      description:
-        "Web Share API may not be available in sandboxed widget iframes",
-      fix: "Remove navigator.share — use openExternal() or widget UI for sharing",
-      platforms: both,
-    },
-
-    // Navigation — flag setter, not reads
-    {
-      pattern: /\bdocument\.domain\s*=/g,
-      name: "document.domain (set)",
-      category: "sandbox (navigation)",
-      severity: "error",
-      description: "Setting document.domain is blocked in sandboxed iframes",
-      fix: "Remove document.domain manipulation — use postMessage for cross-origin communication",
-      platforms: both,
-    },
-  ];
-
-  for (const api of restrictedApis) {
+  // 10. Restricted API usage — storage, permissions, device access, navigation
+  //    These are blocked or unwanted in sandboxed widget iframes on both
+  //    platforms. Pattern data lives in `csp-restricted-apis.ts`.
+  for (const api of RESTRICTED_APIS) {
     api.pattern.lastIndex = 0;
     while ((m = api.pattern.exec(html)) !== null) {
-      // Skip if inside a comment
+      // Skip if inside a comment.
       const ctx = html.slice(Math.max(0, m.index - 30), m.index);
       if (/\/\/\s*$/.test(ctx) || /\*\s*$/.test(ctx)) continue;
 

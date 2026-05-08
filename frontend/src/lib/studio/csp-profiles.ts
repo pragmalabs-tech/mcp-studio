@@ -17,6 +17,10 @@ export interface CspProfile {
 export interface CspDomains {
   connectDomains: string[];
   resourceDomains: string[];
+  /** MCP Apps spec only — emitted under `_meta.ui.csp.baseUriDomains`. */
+  baseUriDomains: string[];
+  /** OpenAI Apps SDK only — emitted under `_meta.openai/widgetCSP.redirect_domains`. */
+  redirectDomains: string[];
 }
 
 /** Shared helper — dedup and join domains for a directive. */
@@ -61,11 +65,11 @@ export const chatgptProfile: CspProfile = {
 /**
  * Claude CSP profile.
  *
- * Claude hosts MCP Apps in a sandboxed iframe with CSP.
- * - Inline <script> blocks are NOT allowed — only scripts served from
- *   the claude.ai endpoint (no 'unsafe-inline' in script-src).
- * - Inline styles are still allowed (srcdoc requires it for now).
- * - allow-same-origin is granted for JSON-RPC postMessage.
+ * Claude hosts MCP Apps via `srcdoc` iframe with `allow-scripts`. Inline
+ * scripts run (the standard MCP Apps postMessage bridge ships inline);
+ * `script-src` is not restricted to a claude.ai-only allow-list. The
+ * directives Claude actually enforces tightly are `frame-src` and
+ * `connect-src` (per issue #40 in claude-ai-mcp).
  */
 export const claudeProfile: CspProfile = {
   name: "Claude",
@@ -75,7 +79,7 @@ export const claudeProfile: CspProfile = {
     const resource = dirs(resourceDomains, []);
     return [
       "default-src 'none'",
-      `script-src https://claude.ai https://*.claude.ai`,
+      `script-src 'unsafe-inline'${resource}`,
       `style-src 'unsafe-inline'${resource}`,
       `img-src data: blob:${resource}`,
       `font-src data:${resource}`,
@@ -99,50 +103,42 @@ export function getProfile(platform: "openai" | "claude"): CspProfile {
  * Extract CSP domains from widget metadata (supports both OpenAI and Claude formats).
  */
 export function extractCspDomains(meta: Record<string, unknown>): CspDomains {
-  const result: CspDomains = { connectDomains: [], resourceDomains: [] };
+  const result: CspDomains = {
+    connectDomains: [],
+    resourceDomains: [],
+    baseUriDomains: [],
+    redirectDomains: [],
+  };
 
-  // OpenAI format: meta["openai/widgetCSP"].connect_domains / resource_domains
+  const pushStrings = (target: string[], arr: unknown) => {
+    if (!Array.isArray(arr)) return;
+    target.push(...arr.filter((d): d is string => typeof d === "string"));
+  };
+
+  // OpenAI format: meta["openai/widgetCSP"].{connect,resource,redirect}_domains
   const widgetCSP = meta["openai/widgetCSP"] as
     | Record<string, unknown>
     | undefined;
   if (widgetCSP) {
-    if (Array.isArray(widgetCSP.connect_domains)) {
-      result.connectDomains.push(
-        ...widgetCSP.connect_domains.filter(
-          (d): d is string => typeof d === "string",
-        ),
-      );
-    }
-    if (Array.isArray(widgetCSP.resource_domains)) {
-      result.resourceDomains.push(
-        ...widgetCSP.resource_domains.filter(
-          (d): d is string => typeof d === "string",
-        ),
-      );
-    }
+    pushStrings(result.connectDomains, widgetCSP.connect_domains);
+    pushStrings(result.resourceDomains, widgetCSP.resource_domains);
+    pushStrings(result.redirectDomains, widgetCSP.redirect_domains);
   }
 
-  // Claude format: meta.ui.csp.connectDomains / resourceDomains
+  // MCP Apps / Claude format: meta.ui.csp.{connect,resource,baseUri}Domains
   const ui = meta.ui as Record<string, unknown> | undefined;
   const csp = ui?.csp as Record<string, unknown> | undefined;
   if (csp) {
-    if (Array.isArray(csp.connectDomains)) {
-      result.connectDomains.push(
-        ...csp.connectDomains.filter((d): d is string => typeof d === "string"),
-      );
-    }
-    if (Array.isArray(csp.resourceDomains)) {
-      result.resourceDomains.push(
-        ...csp.resourceDomains.filter(
-          (d): d is string => typeof d === "string",
-        ),
-      );
-    }
+    pushStrings(result.connectDomains, csp.connectDomains);
+    pushStrings(result.resourceDomains, csp.resourceDomains);
+    pushStrings(result.baseUriDomains, csp.baseUriDomains);
   }
 
   // Deduplicate
   result.connectDomains = [...new Set(result.connectDomains)];
   result.resourceDomains = [...new Set(result.resourceDomains)];
+  result.baseUriDomains = [...new Set(result.baseUriDomains)];
+  result.redirectDomains = [...new Set(result.redirectDomains)];
 
   return result;
 }

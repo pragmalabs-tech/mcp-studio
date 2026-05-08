@@ -16,16 +16,19 @@ const DOCS: Record<string, { label: string; url: string }> = {
 function ViolationEntry({ v }: { v: CspViolation }) {
   const [expanded, setExpanded] = useState(false);
 
-  const icon = v.severity === "error" ? "\u2715" : "!";
+  const icon = v.severity === "error" ? "✕" : "!";
   const iconColor = v.severity === "error" ? "text-red-400" : "text-yellow-400";
   const sourceLabel = v.source === "static" ? "static" : "runtime";
 
+  // Toggle is bound to the header only; the expanded body is a sibling div
+  // with no click handler, so users can drag-select / right-click / copy
+  // text inside without collapsing the entry.
   return (
-    <div
-      className="px-3 py-1.5 text-xs font-mono border-b border-border/30 cursor-pointer hover:bg-secondary/50"
-      onClick={() => setExpanded(!expanded)}
-    >
-      <div className="flex items-start gap-2">
+    <div className="border-b border-border/30">
+      <div
+        className="px-3 py-1.5 text-xs font-mono cursor-pointer hover:bg-secondary/50 flex items-start gap-2"
+        onClick={() => setExpanded(!expanded)}
+      >
         <span className={`${iconColor} font-bold shrink-0 w-4 text-center`}>
           {icon}
         </span>
@@ -42,28 +45,54 @@ function ViolationEntry({ v }: { v: CspViolation }) {
               {v.platforms.join(", ")}
             </span>
           )}
-          {expanded && (
-            <div className="mt-1.5 space-y-1">
-              {v.fix && <div className="text-green-400/80">Fix: {v.fix}</div>}
-              {v.sourceFile && (
-                <div className="text-muted-foreground">
-                  Source: {v.sourceFile}
-                  {v.lineNumber > 0 && `:${v.lineNumber}`}
-                  {v.columnNumber > 0 && `:${v.columnNumber}`}
-                </div>
-              )}
-              {v.lineNumber > 0 && !v.sourceFile && (
-                <div className="text-muted-foreground">
-                  Line: {v.lineNumber}
-                </div>
-              )}
-            </div>
-          )}
         </div>
         <span className="text-muted-foreground/50 text-[10px] shrink-0">
-          {expanded ? "\u25BC" : "\u25B6"}
+          {expanded ? "▼" : "▶"}
         </span>
       </div>
+      {expanded && (
+        <div className="px-3 pb-2 pl-9 text-xs font-mono space-y-1 select-text cursor-text">
+          {v.fix && (
+            <div className="text-green-400/80 whitespace-pre-line">
+              Fix: {v.fix}
+            </div>
+          )}
+          {v.sourceFile && (
+            <div className="text-muted-foreground">
+              Source: {v.sourceFile}
+              {v.lineNumber > 0 && `:${v.lineNumber}`}
+              {v.columnNumber > 0 && `:${v.columnNumber}`}
+            </div>
+          )}
+          {v.lineNumber > 0 && !v.sourceFile && (
+            <div className="text-muted-foreground">Line: {v.lineNumber}</div>
+          )}
+          {v.snippet && (
+            <pre className="mt-1.5 p-2 rounded bg-secondary/50 text-[10px] leading-relaxed overflow-x-auto">
+              {v.snippet.lines.map((line, i) => {
+                const lineNo = v.lineNumber - v.snippet!.highlightOffset + i;
+                const isHit = i === v.snippet!.highlightOffset;
+                return (
+                  <div
+                    key={i}
+                    className={
+                      isHit
+                        ? "bg-red-500/10 text-foreground"
+                        : "text-muted-foreground"
+                    }
+                  >
+                    <span className="select-none text-muted-foreground/50 pr-2 inline-block w-10 text-right">
+                      {isHit ? "→ " : "  "}
+                      {lineNo}
+                    </span>
+                    {line || " "}
+                  </div>
+                );
+              })}
+            </pre>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -117,7 +146,7 @@ export function CspPanel() {
             rel="noopener noreferrer"
             className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
           >
-            {doc.label} {"\u2197"}
+            {doc.label} {"↗"}
           </a>
           <Button
             variant="ghost"

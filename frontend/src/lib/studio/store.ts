@@ -37,7 +37,12 @@ import {
   getProfile,
   buildSandboxTrapScript,
 } from "./csp-profiles";
-import { analyzeHtml } from "./csp-checker";
+import {
+  analyzeHtml,
+  type CspIssue,
+  type Severity,
+  type ViolationPlatform,
+} from "./csp-checker";
 import type {
   OAuthDebugEvent,
   OAuthServerMetadata,
@@ -155,12 +160,63 @@ export interface CspViolation {
   /** Human-readable fix suggestion (for static issues) */
   fix?: string;
   /** Severity */
-  severity: "error" | "warning";
+  severity: Severity;
   /** Which platforms are affected */
-  platforms?: string[];
+  platforms?: ViolationPlatform[];
+  /**
+   * Source context for the failing line. 5 lines: N-2..N+2 (clamped at file
+   * boundaries). `highlightOffset` is the index of the failing line within
+   * `lines`. Set only for static issues with a known `lineNumber`.
+   */
+  snippet?: { lines: string[]; highlightOffset: number };
 }
 
 // ── Helpers ──
+
+/**
+ * Extract the 5-line window centered on `line` (1-based). Clamps gracefully
+ * at file boundaries so a hit on line 1 or the last line still renders. Returns
+ * `undefined` when no line is known so the panel skips the snippet block.
+ */
+function buildSnippet(
+  html: string,
+  line: number,
+): { lines: string[]; highlightOffset: number } | undefined {
+  if (line <= 0) return undefined;
+  const all = html.split("\n");
+  const start = Math.max(0, line - 3);
+  const end = Math.min(all.length, line + 2);
+  return {
+    lines: all.slice(start, end),
+    highlightOffset: line - 1 - start,
+  };
+}
+
+/**
+ * Convert a static-analysis `CspIssue` into the panel-shaped `CspViolation`,
+ * stamping in the bookkeeping fields the issue doesn't carry. Runtime sandbox
+ * violations build their own `CspViolation` directly (different input shape,
+ * no `CspIssue` to convert from), so this helper is static-path only.
+ */
+function toStaticViolation(
+  issue: CspIssue,
+  opts: { sourceFile: string; snippet?: CspViolation["snippet"] },
+): CspViolation {
+  return {
+    id: `static_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    time: new Date().toTimeString().split(" ")[0],
+    directive: issue.directive,
+    blockedUri: issue.blocked,
+    sourceFile: opts.sourceFile,
+    lineNumber: issue.line || 0,
+    columnNumber: 0,
+    source: "static",
+    fix: issue.fix,
+    severity: issue.severity,
+    platforms: issue.platforms,
+    snippet: opts.snippet,
+  };
+}
 
 function defaultEditorValue() {
   return JSON.stringify(
@@ -1218,19 +1274,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     // relative paths) so violations show what the developer actually wrote.
     const staticIssues = analyzeHtml(originalHtml, cspDomains);
     for (const issue of staticIssues) {
-      addCspViolation({
-        id: `static_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        time: new Date().toTimeString().split(" ")[0],
-        directive: issue.directive,
-        blockedUri: issue.blocked,
-        sourceFile: resUri,
-        lineNumber: issue.line || 0,
-        columnNumber: 0,
-        source: "static",
-        fix: issue.fix,
-        severity: issue.severity,
-        platforms: issue.platforms,
-      });
+      addCspViolation(
+        toStaticViolation(issue, {
+          sourceFile: resUri,
+          snippet: buildSnippet(originalHtml, issue.line || 0),
+        }),
+      );
     }
 
     // Strict mode: inject CSP meta tag and tighten sandbox
