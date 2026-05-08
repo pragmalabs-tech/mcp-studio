@@ -6,6 +6,16 @@ A single binary that serves a browser UI on `localhost:7777`, proxies MCP
 JSON-RPC server-side (so cross-origin servers work without CORS gymnastics),
 and runs on your machine (so localhost MCP servers work).
 
+## Install
+
+```
+curl -fsSL https://dl.pragmalabs.tech/mcp-studio/install.sh | sh
+```
+
+Installs `mcp-studio` to `~/.local/bin`. Override with `MCP_STUDIO_INSTALL_DIR=/usr/local/bin`. Pin a version with `MCP_STUDIO_VERSION=0.1.3`.
+
+Supported platforms: macOS (Apple Silicon, Intel), Linux (x86_64, aarch64).
+
 ## Quickstart
 
 ```

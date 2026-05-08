@@ -132,8 +132,12 @@ export function Sidebar() {
       <div className="px-4 py-3 border-b shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src="/mcpr.jpg" alt="mcpr" className="w-6 h-6 rounded" />
-            <span className="font-semibold text-sm">mcpr studio</span>
+            <img
+              src="/pragmalabs.png"
+              alt="Pragma Labs"
+              className="w-6 h-6 rounded"
+            />
+            <span className="font-semibold text-sm">mcp studio</span>
           </div>
           <button
             onClick={() => {

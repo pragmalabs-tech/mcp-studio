@@ -28,3 +28,9 @@ anyhow = "1"
 bytes = "1"
 http = "1"
 urlencoding = "2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
