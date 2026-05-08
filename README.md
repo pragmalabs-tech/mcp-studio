@@ -1,6 +1,6 @@
 # mcp-studio
 
-Local-first IDE and debugger for Model Context Protocol (MCP) servers.
+A local studio to debug MCP Servers and MCP Applications.
 
 A single binary that serves a browser UI on `localhost:7777`, proxies MCP
 JSON-RPC server-side (so cross-origin servers work without CORS gymnastics),

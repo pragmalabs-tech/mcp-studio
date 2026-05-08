@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "Unlicense"
 repository = "https://github.com/pragmalabs-tech/mcp-studio"
-description = "Local-first IDE and debugger for MCP servers"
+description = "A local studio to debug MCP Servers and MCP Applications"
 
 [[bin]]
 name = "mcp-studio"

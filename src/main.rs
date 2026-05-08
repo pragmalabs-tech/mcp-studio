@@ -12,7 +12,7 @@ const PUBLIC_URL: &str = "http://localhost:7777";
 #[command(
     name = "mcp-studio",
     version,
-    about = "Local-first IDE and debugger for MCP servers"
+    about = "A local studio to debug MCP Servers and MCP Applications"
 )]
 struct Cli {
     #[command(subcommand)]

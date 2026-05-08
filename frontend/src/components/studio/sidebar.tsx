@@ -310,25 +310,14 @@ export function Sidebar() {
           <LayoutDashboard className="size-3" />
           Dashboard
         </a>
-        <div className="flex items-center gap-2">
-          <a
-            href="https://pragmalabs.tech"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-foreground transition-colors"
-          >
-            pragmalabs.tech
-          </a>
-          <span>·</span>
-          <a
-            href="https://github.com/pragmalabs-tech"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-foreground transition-colors"
-          >
-            GitHub
-          </a>
-        </div>
+        <a
+          href="https://pragmalabs.tech/studio"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-foreground transition-colors"
+        >
+          pragmalabs.tech/studio
+        </a>
       </div>
     </div>
   );
