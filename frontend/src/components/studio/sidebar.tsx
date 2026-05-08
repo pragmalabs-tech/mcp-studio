@@ -1,18 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { isRemoteProxy, getBaseUrl } from "@/lib/studio/api";
 import { useStudioStore } from "@/lib/studio/store";
 import type { SelectedItem } from "@/lib/studio/store";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import { AuthPanel } from "./auth-panel";
-import { LayoutDashboard, Settings } from "lucide-react";
+import { LayoutDashboard } from "lucide-react";
 
 function displayName(name: string) {
   return name.replace(/_/g, " ");
@@ -29,19 +20,6 @@ export function Sidebar() {
     loadAll,
     select,
   } = useStudioStore();
-  const proxyUrl = useStudioStore((s) => s.proxyUrl);
-  const setProxyUrl = useStudioStore((s) => s.setProxyUrl);
-
-  const [settingsOpen, setSettingsOpen] = useState(!proxyUrl);
-  const [urlDraft, setUrlDraft] = useState(proxyUrl);
-
-  const handleSaveUrl = () => {
-    const trimmed = urlDraft.trim();
-    if (trimmed && trimmed !== proxyUrl) {
-      setProxyUrl(trimmed);
-    }
-    setSettingsOpen(false);
-  };
 
   const [filter, setFilter] = useState("");
   const [sections, setSections] = useState({
@@ -128,89 +106,6 @@ export function Sidebar() {
 
   return (
     <div className="w-72 shrink-0 border-r flex flex-col h-full">
-      {/* Logo + Settings */}
-      <div className="px-4 py-3 border-b shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img
-              src="/pragmalabs.png"
-              alt="Pragma Labs"
-              className="w-6 h-6 rounded"
-            />
-            <span className="font-semibold text-sm">mcp studio</span>
-          </div>
-          <button
-            onClick={() => {
-              setUrlDraft(proxyUrl);
-              setSettingsOpen(true);
-            }}
-            className="p-1 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
-            title="Settings"
-          >
-            <Settings className="size-3.5" />
-          </button>
-        </div>
-        {isRemoteProxy() && (
-          <button
-            onClick={() => {
-              setUrlDraft(proxyUrl);
-              setSettingsOpen(true);
-            }}
-            className="text-[10px] text-muted-foreground hover:text-foreground font-mono mt-1 truncate block w-full text-left transition-colors"
-            title="Click to change MCP server URL"
-          >
-            {getBaseUrl()}
-          </button>
-        )}
-      </div>
-
-      {/* Settings Dialog */}
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Studio Settings</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
-                MCP Server URL
-              </label>
-              <Input
-                type="url"
-                placeholder="http://localhost:9000"
-                value={urlDraft}
-                onChange={(e) => setUrlDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSaveUrl();
-                }}
-                autoFocus
-                className="h-9 font-mono text-sm"
-              />
-              <p className="text-[10px] text-muted-foreground">
-                The URL of your MCP server. Changing this will reconnect and
-                reload all tools and resources.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setSettingsOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleSaveUrl}
-              disabled={!urlDraft.trim()}
-            >
-              Connect
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Auth */}
       <AuthPanel />
 

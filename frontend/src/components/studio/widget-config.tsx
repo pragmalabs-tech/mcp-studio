@@ -75,7 +75,7 @@ export function WidgetConfig() {
   return (
     <div className="border-b shrink-0 text-xs">
       {/* Row 1: Platform + Widget settings + Viewport */}
-      <div className="flex items-center gap-2 px-3 py-1.5">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-1.5">
         <Tabs
           value={platform}
           onValueChange={(v) => setPlatform(v as Platform)}
@@ -92,96 +92,112 @@ export function WidgetConfig() {
 
         <Separator orientation="vertical" className="h-4" />
 
-        <Label className="text-muted-foreground text-xs">Theme</Label>
-        <Select value={theme} onValueChange={(v) => v && setTheme(v)}>
-          <SelectTrigger size="sm" className="text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="light">Light</SelectItem>
-            <SelectItem value="dark">Dark</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-1.5">
+          <Label className="text-muted-foreground text-xs whitespace-nowrap">
+            Theme
+          </Label>
+          <Select value={theme} onValueChange={(v) => v && setTheme(v)}>
+            <SelectTrigger size="sm" className="text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="light">Light</SelectItem>
+              <SelectItem value="dark">Dark</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
-        <Label className="text-muted-foreground text-xs">Display</Label>
-        <Select
-          value={displayMode}
-          onValueChange={(v) => v && setDisplayMode(v)}
-        >
-          <SelectTrigger size="sm" className="text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="compact">Compact</SelectItem>
-            <SelectItem value="inline">Inline</SelectItem>
-            <SelectItem value="fullscreen">Fullscreen</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-1.5">
+          <Label className="text-muted-foreground text-xs whitespace-nowrap">
+            Display
+          </Label>
+          <Select
+            value={displayMode}
+            onValueChange={(v) => v && setDisplayMode(v)}
+          >
+            <SelectTrigger size="sm" className="text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="compact">Compact</SelectItem>
+              <SelectItem value="inline">Inline</SelectItem>
+              <SelectItem value="fullscreen">Fullscreen</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
-        <Label className="text-muted-foreground text-xs">Locale</Label>
-        <Input
-          value={locale}
-          onChange={(e) => setLocale(e.target.value)}
-          className="h-7 text-xs w-20"
-        />
+        <div className="flex items-center gap-1.5">
+          <Label className="text-muted-foreground text-xs whitespace-nowrap">
+            Locale
+          </Label>
+          <Input
+            value={locale}
+            onChange={(e) => setLocale(e.target.value)}
+            className="h-7 text-xs w-20"
+          />
+        </div>
 
         <Separator orientation="vertical" className="h-4" />
 
-        <Label className="text-muted-foreground text-xs">Viewport</Label>
-        <Select
-          value={viewportPreset}
-          onValueChange={(v) => v && setViewportPreset(v as ViewportPreset)}
-        >
-          <SelectTrigger size="sm" className="text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.entries(VIEWPORT_PRESETS).map(([key, size]) => (
-              <SelectItem key={key} value={key}>
-                {key.charAt(0).toUpperCase() + key.slice(1)} ({size.width}x
-                {size.height})
-              </SelectItem>
-            ))}
-            <SelectItem value="custom">Custom</SelectItem>
-          </SelectContent>
-        </Select>
-        {viewportPreset === "custom" && (
-          <>
-            <Input
-              type="number"
-              min={100}
-              max={2560}
-              value={viewportCustom.width}
-              onChange={(e) =>
-                setViewportCustom({
-                  width: Math.min(
-                    2560,
-                    Math.max(100, Number(e.target.value) || 100),
-                  ),
-                })
-              }
-              className="h-7 text-xs w-16"
-              title="Width (px)"
-            />
-            <span className="text-muted-foreground">×</span>
-            <Input
-              type="number"
-              min={100}
-              max={2560}
-              value={viewportCustom.height}
-              onChange={(e) =>
-                setViewportCustom({
-                  height: Math.min(
-                    2560,
-                    Math.max(100, Number(e.target.value) || 100),
-                  ),
-                })
-              }
-              className="h-7 text-xs w-16"
-              title="Height (px)"
-            />
-          </>
-        )}
+        <div className="flex items-center gap-1.5">
+          <Label className="text-muted-foreground text-xs whitespace-nowrap">
+            Viewport
+          </Label>
+          <Select
+            value={viewportPreset}
+            onValueChange={(v) => v && setViewportPreset(v as ViewportPreset)}
+          >
+            <SelectTrigger size="sm" className="text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(VIEWPORT_PRESETS).map(([key, size]) => (
+                <SelectItem key={key} value={key}>
+                  {key.charAt(0).toUpperCase() + key.slice(1)} ({size.width}x
+                  {size.height})
+                </SelectItem>
+              ))}
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
+          {viewportPreset === "custom" && (
+            <>
+              <Input
+                type="number"
+                min={100}
+                max={2560}
+                value={viewportCustom.width}
+                onChange={(e) =>
+                  setViewportCustom({
+                    width: Math.min(
+                      2560,
+                      Math.max(100, Number(e.target.value) || 100),
+                    ),
+                  })
+                }
+                className="h-7 text-xs w-16"
+                title="Width (px)"
+              />
+              <span className="text-muted-foreground">×</span>
+              <Input
+                type="number"
+                min={100}
+                max={2560}
+                value={viewportCustom.height}
+                onChange={(e) =>
+                  setViewportCustom({
+                    height: Math.min(
+                      2560,
+                      Math.max(100, Number(e.target.value) || 100),
+                    ),
+                  })
+                }
+                className="h-7 text-xs w-16"
+                title="Height (px)"
+              />
+            </>
+          )}
+        </div>
       </div>
 
       {/* Row 2: Sandbox + Dark toggle */}

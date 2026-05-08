@@ -216,7 +216,7 @@ function sampleValue(key: string, prop: JsonSchemaProperty): unknown {
       return "Hello world";
     if (k.includes("description")) return "A sample description";
     if (k.includes("title")) return "Sample Title";
-    if (prop.description) return `<${prop.description.slice(0, 30)}>`;
+    if (prop.description) return `<${prop.description}>`;
     return "example";
   }
   if (prop.type === "number" || prop.type === "integer") {
