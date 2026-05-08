@@ -7,7 +7,6 @@ import {
   AlertCircle,
   ChevronDown,
   Settings2,
-  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +19,9 @@ import {
 } from "@/components/ui/dialog";
 import { useStudioStore } from "@/lib/studio/store";
 import { isRemoteProxy, getBaseUrl } from "@/lib/studio/api";
+import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 export function TopHeader() {
   const cloudAuth = useStudioStore((s) => s.cloudAuth);
@@ -30,6 +32,9 @@ export function TopHeader() {
   const startTunnel = useStudioStore((s) => s.startTunnel);
   const proxyUrl = useStudioStore((s) => s.proxyUrl);
   const setProxyUrl = useStudioStore((s) => s.setProxyUrl);
+  const mcpError = useStudioStore((s) => s.mcpError);
+  const studioTheme = useStudioStore((s) => s.studioTheme);
+  const setStudioTheme = useStudioStore((s) => s.setStudioTheme);
 
   const [copied, setCopied] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -78,26 +83,58 @@ export function TopHeader() {
 
       <div className="flex-1" />
 
-      {/* Right cluster: URL + settings + publish + account */}
-      {isRemoteProxy() && (
+      {/* Connection cluster: status dot + URL */}
+      {isRemoteProxy() ? (
         <button
           type="button"
           onClick={openSettings}
-          className="inline-flex items-center h-8 px-2.5 rounded-md border bg-muted/30 text-xs font-mono text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border bg-muted/30 text-xs font-mono text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           title="Click to change MCP server URL"
         >
-          {getBaseUrl()}
+          <span
+            className={`inline-block w-1.5 h-1.5 rounded-full ${
+              mcpError ? "bg-red-500" : "bg-green-500"
+            }`}
+            aria-label={mcpError ? "Connection error" : "Connected"}
+          />
+          {getBaseUrl().replace(/^https?:\/\//, "")}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={openSettings}
+          className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border bg-muted/30 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          title="Configure MCP server"
+        >
+          <span
+            className={`inline-block w-1.5 h-1.5 rounded-full ${
+              mcpError ? "bg-red-500" : "bg-green-500"
+            }`}
+            aria-label={mcpError ? "Connection error" : "Connected"}
+          />
+          Connected
         </button>
       )}
 
-      <button
-        type="button"
-        onClick={openSettings}
-        className="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-        title="Studio settings"
-      >
-        <Settings className="h-3.5 w-3.5" />
-      </button>
+      <div className="flex items-center gap-1.5 pl-1">
+        <Switch
+          size="sm"
+          checked={studioTheme === "dark"}
+          onCheckedChange={(checked) =>
+            setStudioTheme(checked ? "dark" : "light")
+          }
+        />
+        <Label
+          className="text-xs text-muted-foreground cursor-pointer"
+          onClick={() =>
+            setStudioTheme(studioTheme === "dark" ? "light" : "dark")
+          }
+        >
+          Dark
+        </Label>
+      </div>
+
+      <Separator orientation="vertical" className="h-5 mx-0.5" />
 
       {tunnel.status === "idle" && (
         <Button

@@ -425,6 +425,9 @@ function ViewportFrame({
     viewportCustom,
     platform,
     theme,
+    displayMode,
+    locale,
+    strictMode,
     selected,
     resolveWidgetName: resolve,
   } = useStudioStore();
@@ -496,10 +499,28 @@ function ViewportFrame({
           </ChatChrome>
         </div>
       </div>
-      <span className="text-[10px] text-muted-foreground mt-2">
-        {viewport.width} x {viewport.height}
-        {scale < 1 && ` (${Math.round(scale * 100)}%)`}
-      </span>
+      <div className="flex items-center gap-1.5 mt-2 text-[10px] text-muted-foreground">
+        <span className="font-medium text-foreground/70">
+          {platform === "openai" ? "OpenAI" : "Claude"}
+        </span>
+        <span>·</span>
+        <span>{theme}</span>
+        <span>·</span>
+        <span>{displayMode}</span>
+        <span>·</span>
+        <span>{locale}</span>
+        <span>·</span>
+        <span>
+          {viewport.width} × {viewport.height}
+          {scale < 1 && ` (${Math.round(scale * 100)}%)`}
+        </span>
+        {strictMode && (
+          <>
+            <span>·</span>
+            <span className="text-emerald-500/80">strict CSP</span>
+          </>
+        )}
+      </div>
     </div>
   );
 }

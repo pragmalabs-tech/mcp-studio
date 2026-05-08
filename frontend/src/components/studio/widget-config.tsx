@@ -52,7 +52,6 @@ function ProtocolBadges() {
 export function WidgetConfig() {
   const {
     platform,
-    studioTheme,
     theme,
     displayMode,
     locale,
@@ -60,7 +59,6 @@ export function WidgetConfig() {
     cspViolations,
     viewportPreset,
     viewportCustom,
-    setStudioTheme,
     setPlatform,
     setTheme,
     setDisplayMode,
@@ -70,7 +68,9 @@ export function WidgetConfig() {
     setViewportCustom,
   } = useStudioStore();
 
-  const errorCount = cspViolations.filter((v) => v.severity === "error").length;
+  const cspErrorCount = cspViolations.filter(
+    (v) => v.severity === "error",
+  ).length;
 
   return (
     <div className="border-b shrink-0 text-xs">
@@ -198,10 +198,9 @@ export function WidgetConfig() {
             </>
           )}
         </div>
-      </div>
 
-      {/* Row 2: Sandbox + Dark toggle */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border/50">
+        <Separator orientation="vertical" className="h-4" />
+
         <div className="flex items-center gap-1.5">
           <Switch
             size="sm"
@@ -209,40 +208,20 @@ export function WidgetConfig() {
             onCheckedChange={setStrictMode}
           />
           <Label
-            className="text-xs text-muted-foreground cursor-pointer"
+            className="text-muted-foreground text-xs whitespace-nowrap cursor-pointer"
             onClick={() => setStrictMode(!strictMode)}
           >
-            Sandbox Enforcement
+            Strict CSP
           </Label>
-          {errorCount > 0 && (
+          {cspErrorCount > 0 && (
             <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-              {errorCount}
+              {cspErrorCount}
             </Badge>
           )}
         </div>
-
-        <div className="flex-1" />
-
-        <div className="flex items-center gap-1.5">
-          <Switch
-            size="sm"
-            checked={studioTheme === "dark"}
-            onCheckedChange={(checked) =>
-              setStudioTheme(checked ? "dark" : "light")
-            }
-          />
-          <Label
-            className="text-xs text-muted-foreground cursor-pointer"
-            onClick={() =>
-              setStudioTheme(studioTheme === "dark" ? "light" : "dark")
-            }
-          >
-            Dark
-          </Label>
-        </div>
       </div>
 
-      {/* Row 3: Protocol compatibility badges (after execution) */}
+      {/* Row 2: Protocol compatibility badges (after execution) */}
       <ProtocolBadges />
     </div>
   );
