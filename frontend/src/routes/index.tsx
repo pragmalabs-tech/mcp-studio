@@ -15,12 +15,20 @@ export const Route = createFileRoute("/")({
 function StudioPage() {
   const loadAll = useStudioStore((s) => s.loadAll);
   const proxyConnected = useStudioStore((s) => s.proxyConnected);
+  const hydrateCloudAuth = useStudioStore((s) => s.hydrateCloudAuth);
+  const hydrateTunnel = useStudioStore((s) => s.hydrateTunnel);
 
   useEffect(() => {
     if (proxyConnected) {
       loadAll();
     }
   }, [loadAll, proxyConnected]);
+
+  // Cloud auth + tunnel hydration on mount.
+  useEffect(() => {
+    hydrateCloudAuth();
+    hydrateTunnel();
+  }, [hydrateCloudAuth, hydrateTunnel]);
 
   // Hydrate the store when the callback tab saves tokens to localStorage.
   // storage event = optimistic fast path. visibilitychange = reliable catch-up

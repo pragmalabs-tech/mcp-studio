@@ -11,6 +11,25 @@
 /** Mutable proxy URL set at runtime via setProxyUrl(). */
 let _overrideProxyUrl: string | null = null;
 
+/**
+ * Auto-prepend protocol when not provided:
+ * - localhost / 127.0.0.1 / 0.0.0.0 / ::1 → http://
+ * - everything else → https://
+ * Also strips trailing slashes.
+ */
+function normalizeProxyUrl(url: string): string {
+  const cleaned = url.replace(/\/+$/, "");
+  if (!cleaned) return cleaned;
+  if (/^https?:\/\//i.test(cleaned)) return cleaned;
+  const host = cleaned.split("/")[0].split(":")[0].toLowerCase();
+  const isLocal =
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "0.0.0.0" ||
+    host === "::1";
+  return `${isLocal ? "http" : "https"}://${cleaned}`;
+}
+
 export function getBaseUrl(): string {
   if (_overrideProxyUrl) {
     return _overrideProxyUrl;
@@ -18,7 +37,7 @@ export function getBaseUrl(): string {
   const params = new URLSearchParams(window.location.search);
   const proxy = params.get("proxy");
   if (proxy) {
-    return proxy.replace(/\/+$/, "");
+    return normalizeProxyUrl(proxy);
   }
   if (import.meta.env.DEV) {
     return "http://localhost:3000";
@@ -28,19 +47,7 @@ export function getBaseUrl(): string {
 
 /** Set a new proxy URL at runtime (updates query param too). */
 export function setProxyUrl(url: string): void {
-  let cleaned = url.replace(/\/+$/, "");
-  // Auto-prepend protocol when not provided:
-  // - localhost/127.0.0.1/0.0.0.0/::1 → http://
-  // - everything else (domains) → https://
-  if (cleaned && !/^https?:\/\//i.test(cleaned)) {
-    const host = cleaned.split("/")[0].split(":")[0].toLowerCase();
-    const isLocal =
-      host === "localhost" ||
-      host === "127.0.0.1" ||
-      host === "0.0.0.0" ||
-      host === "::1";
-    cleaned = `${isLocal ? "http" : "https"}://${cleaned}`;
-  }
+  const cleaned = normalizeProxyUrl(url);
   _overrideProxyUrl = cleaned;
   // Sync to URL query param without page reload
   const params = new URLSearchParams(window.location.search);
@@ -65,7 +72,15 @@ export function isRemoteProxy(): boolean {
 
 /** Scoped localStorage key: "mcpr_studio:{proxyOrigin}:{suffix}" */
 function studioKey(suffix: string): string {
-  const origin = new URL(getBaseUrl()).origin;
+  const raw = getBaseUrl();
+  let origin: string;
+  try {
+    origin = new URL(raw).origin;
+  } catch {
+    // Invalid URL (bad port, malformed, etc.) — keep keys namespaced by the
+    // raw string so we don't leak across servers, but avoid crashing render.
+    origin = `invalid:${raw}`;
+  }
   return `mcpr_studio:${origin}:${suffix}`;
 }
 

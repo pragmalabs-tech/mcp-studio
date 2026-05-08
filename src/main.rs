@@ -1,8 +1,16 @@
+mod action_log;
 mod assets;
+mod cloud;
+mod config;
+mod forwarding;
 mod proxy;
 mod server;
+mod tunnel;
+
+use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
+use tokio::sync::RwLock;
 use tracing_subscriber::EnvFilter;
 
 const BIND_ADDR: &str = "127.0.0.1:7777";
@@ -56,13 +64,19 @@ async fn run_open(preselect: Option<String>) {
         _ => format!("{PUBLIC_URL}/"),
     };
 
+    let state = server::AppState {
+        config: Arc::new(RwLock::new(config::load())),
+        tunnel: Arc::new(tunnel::TunnelState::new()),
+        action_log: action_log::channel(),
+    };
+
     println!("Studio listening on {PUBLIC_URL}");
     println!("Opening {target}");
     if let Err(e) = open::that(&target) {
         eprintln!("warning: could not open browser: {e}");
     }
 
-    if let Err(e) = axum::serve(listener, server::router())
+    if let Err(e) = axum::serve(listener, server::router(state))
         .with_graceful_shutdown(shutdown_signal())
         .await
     {

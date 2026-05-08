@@ -8,70 +8,70 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from "./routes/__root";
-import { Route as IndexRouteImport } from "./routes/index";
-import { Route as OauthCallbackRouteImport } from "./routes/oauth.callback";
+import { Route as rootRouteImport } from "./routes/__root"
+import { Route as IndexRouteImport } from "./routes/index"
+import { Route as OauthCallbackRouteImport } from "./routes/oauth.callback"
 
 const IndexRoute = IndexRouteImport.update({
   id: "/",
   path: "/",
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const OauthCallbackRoute = OauthCallbackRouteImport.update({
   id: "/oauth/callback",
   path: "/oauth/callback",
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 
 export interface FileRoutesByFullPath {
-  "/": typeof IndexRoute;
-  "/oauth/callback": typeof OauthCallbackRoute;
+  "/": typeof IndexRoute
+  "/oauth/callback": typeof OauthCallbackRoute
 }
 export interface FileRoutesByTo {
-  "/": typeof IndexRoute;
-  "/oauth/callback": typeof OauthCallbackRoute;
+  "/": typeof IndexRoute
+  "/oauth/callback": typeof OauthCallbackRoute
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport;
-  "/": typeof IndexRoute;
-  "/oauth/callback": typeof OauthCallbackRoute;
+  __root__: typeof rootRouteImport
+  "/": typeof IndexRoute
+  "/oauth/callback": typeof OauthCallbackRoute
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath;
-  fullPaths: "/" | "/oauth/callback";
-  fileRoutesByTo: FileRoutesByTo;
-  to: "/" | "/oauth/callback";
-  id: "__root__" | "/" | "/oauth/callback";
-  fileRoutesById: FileRoutesById;
+  fileRoutesByFullPath: FileRoutesByFullPath
+  fullPaths: "/" | "/oauth/callback"
+  fileRoutesByTo: FileRoutesByTo
+  to: "/" | "/oauth/callback"
+  id: "__root__" | "/" | "/oauth/callback"
+  fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute;
-  OauthCallbackRoute: typeof OauthCallbackRoute;
+  IndexRoute: typeof IndexRoute
+  OauthCallbackRoute: typeof OauthCallbackRoute
 }
 
 declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
     "/": {
-      id: "/";
-      path: "/";
-      fullPath: "/";
-      preLoaderRoute: typeof IndexRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+      id: "/"
+      path: "/"
+      fullPath: "/"
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/oauth/callback": {
-      id: "/oauth/callback";
-      path: "/oauth/callback";
-      fullPath: "/oauth/callback";
-      preLoaderRoute: typeof OauthCallbackRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+      id: "/oauth/callback"
+      path: "/oauth/callback"
+      fullPath: "/oauth/callback"
+      preLoaderRoute: typeof OauthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OauthCallbackRoute: OauthCallbackRoute,
-};
+}
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>();
+  ._addFileTypes<FileRouteTypes>()

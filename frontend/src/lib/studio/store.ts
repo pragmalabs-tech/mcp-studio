@@ -56,6 +56,12 @@ import {
   getAuthBaseUrl,
   testEndpoint,
 } from "./oauth";
+import {
+  fetchAuthStatus,
+  fetchTunnelStatus,
+  authLogout,
+  startTunnel as apiStartTunnel,
+} from "./cloud-api";
 
 function generateRandomString(length: number): string {
   const array = new Uint8Array(length);
@@ -323,6 +329,17 @@ interface StudioState {
   oauthDebugEvents: OAuthDebugEvent[];
   oauthDebugOpen: boolean;
 
+  // Cloud account (for tunnel publishing)
+  cloudAuth: { email: string } | null;
+  signInOpen: boolean;
+  publishOpen: boolean;
+  tunnel: {
+    status: "idle" | "connecting" | "active" | "error";
+    url: string | null;
+    subdomain: string | null;
+    error: string | null;
+  };
+
   // Selection
   selected: SelectedItem | null;
 
@@ -401,6 +418,15 @@ interface StudioState {
   clearCspViolations: () => void;
   setProtocolDetected: (protocol: "legacy_openai" | "ext_apps") => void;
 
+  // Cloud auth + tunnel actions
+  hydrateCloudAuth: () => Promise<void>;
+  hydrateTunnel: () => Promise<void>;
+  setSignInOpen: (open: boolean) => void;
+  setPublishOpen: (open: boolean) => void;
+  cloudSignOut: () => Promise<void>;
+  cloudAuthCompleted: (email: string) => void;
+  startTunnel: (subdomain?: string) => Promise<void>;
+
   // Widget rendering
   resolveWidgetName: (responseMeta?: Record<string, unknown>) => string | null;
   renderWidget: (mock: MockData, overrideWidgetName?: string) => Promise<void>;
@@ -417,7 +443,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   setProxyUrl: (url: string) => {
     apiSetProxyUrl(url);
-    set({ proxyUrl: url, proxyConnected: true });
+    // apiSetProxyUrl normalizes (auto-prepends http:// or https://). Read the
+    // normalized value back so the store reflects what we actually use.
+    set({ proxyUrl: getBaseUrl(), proxyConnected: true });
     resetSession();
     get().loadAll();
   },
@@ -456,6 +484,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   })(),
   oauthDebugEvents: [],
   oauthDebugOpen: false,
+
+  // Cloud account
+  cloudAuth: null,
+  signInOpen: false,
+  publishOpen: false,
+  tunnel: { status: "idle", url: null, subdomain: null, error: null },
 
   // Selection
   selected: null,
@@ -996,6 +1030,79 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             : { ...prev, extApps: true },
       };
     }),
+
+  // ── Cloud auth + tunnel ──
+
+  hydrateCloudAuth: async () => {
+    try {
+      const status = await fetchAuthStatus();
+      set({ cloudAuth: status.email ? { email: status.email } : null });
+    } catch {
+      set({ cloudAuth: null });
+    }
+  },
+
+  hydrateTunnel: async () => {
+    try {
+      const s = await fetchTunnelStatus();
+      if (s.active && s.info) {
+        set({
+          tunnel: {
+            status: "active",
+            url: s.info.url,
+            subdomain: s.info.subdomain,
+            error: null,
+          },
+        });
+      }
+    } catch {
+      // ignore
+    }
+  },
+
+  setSignInOpen: (open: boolean) => set({ signInOpen: open }),
+  setPublishOpen: (open: boolean) => set({ publishOpen: open }),
+
+  cloudAuthCompleted: (email: string) =>
+    set({ cloudAuth: { email }, signInOpen: false, publishOpen: true }),
+
+  cloudSignOut: async () => {
+    await authLogout();
+    set({ cloudAuth: null });
+  },
+
+  startTunnel: async (subdomain?: string) => {
+    const mcpUrl = get().proxyUrl;
+    if (!mcpUrl) {
+      set((s) => ({
+        tunnel: {
+          ...s.tunnel,
+          status: "error",
+          error: "Set an MCP server URL first",
+        },
+      }));
+      return;
+    }
+    set({
+      tunnel: { status: "connecting", url: null, subdomain: null, error: null },
+      publishOpen: false,
+    });
+    try {
+      const info = await apiStartTunnel(mcpUrl, subdomain);
+      set({
+        tunnel: {
+          status: "active",
+          url: info.url,
+          subdomain: info.subdomain,
+          error: null,
+        },
+      });
+    } catch (e) {
+      set((s) => ({
+        tunnel: { ...s.tunnel, status: "error", error: (e as Error).message },
+      }));
+    }
+  },
 
   // ── Widget name resolution ──
 

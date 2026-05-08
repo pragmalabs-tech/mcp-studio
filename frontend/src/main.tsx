@@ -17,3 +17,11 @@ createRoot(document.getElementById("root")!).render(
     <RouterProvider router={router} />
   </StrictMode>,
 );
+// rebuild trigger
+// trigger 2
+// trigger 3
+// trigger 4
+// trigger
+// trigger 5
+// trigger 6
+// trigger 7
