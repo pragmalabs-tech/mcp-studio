@@ -373,10 +373,7 @@ export function clearPKCEState(baseUrl: string) {
 // ── Redirect URI ──
 
 export function getRedirectUri(): string {
-  // Redirect to the cloud Studio's own callback page. This handles the full
-  // token exchange server-side (in the browser) and redirects back to Studio.
-  // Works with any redirect_uri the user sets — no popup or postMessage needed.
-  return `${window.location.origin}/studio/oauth/callback`;
+  return `${window.location.origin}/oauth/callback`;
 }
 
 // ── Endpoint Health Check ──
