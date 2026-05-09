@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useStudioStore } from "@/lib/studio/store";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useStudioStore, type CspViolation } from "@/lib/studio/store";
 import { VIEWPORT_PRESETS } from "@/lib/studio/store";
 import { callTool } from "@/lib/studio/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -525,7 +525,156 @@ function ViewportFrame({
   );
 }
 
-type Tab = "widget" | "json";
+type Tab = "widget" | "html" | "json";
+
+/**
+ * Renders the widget HTML source with CSP violation lines highlighted.
+ * Static analysis already attaches a 1-based `lineNumber` to each violation,
+ * so we group by line and tint each flagged line by severity. Clicking a
+ * flagged line expands the directive + fix below it inline.
+ */
+function HtmlSourceView({
+  source,
+  violations,
+}: {
+  source: string;
+  violations: CspViolation[];
+}) {
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  // Static violations carry a meaningful line number; runtime ones often don't.
+  // We only highlight lines we can actually point at.
+  const byLine = useMemo(() => {
+    const map = new Map<number, CspViolation[]>();
+    for (const v of violations) {
+      if (v.source !== "static" || !v.lineNumber || v.lineNumber <= 0) continue;
+      const arr = map.get(v.lineNumber) || [];
+      arr.push(v);
+      map.set(v.lineNumber, arr);
+    }
+    return map;
+  }, [violations]);
+
+  const lines = useMemo(() => source.split("\n"), [source]);
+  const gutterWidth = String(lines.length).length;
+
+  const flaggedCount = byLine.size;
+  const errorLines = useMemo(
+    () =>
+      Array.from(byLine.values()).filter((vs) =>
+        vs.some((v) => v.severity === "error"),
+      ).length,
+    [byLine],
+  );
+  const warnLines = flaggedCount - errorLines;
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      {flaggedCount > 0 && (
+        <div className="px-3 py-1.5 bg-secondary/50 shrink-0 flex items-center gap-2 text-[10px]">
+          <span className="font-semibold uppercase tracking-wider text-muted-foreground">
+            HTML Source
+          </span>
+          {errorLines > 0 && (
+            <span className="px-1.5 py-0 rounded-full bg-red-500/20 text-red-400 font-semibold">
+              {errorLines} {errorLines === 1 ? "error" : "errors"}
+            </span>
+          )}
+          {warnLines > 0 && (
+            <span className="px-1.5 py-0 rounded-full bg-yellow-500/20 text-yellow-400 font-semibold">
+              {warnLines} {warnLines === 1 ? "warning" : "warnings"}
+            </span>
+          )}
+          <span className="text-muted-foreground/60 ml-1">
+            click a highlighted line for fix
+          </span>
+        </div>
+      )}
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="text-[11px] font-mono leading-relaxed select-text">
+          {lines.map((line, i) => {
+            const lineNo = i + 1;
+            const vs = byLine.get(lineNo);
+            const hasError = vs?.some((v) => v.severity === "error");
+            const isOpen = expanded === lineNo;
+
+            const rowClass = vs
+              ? hasError
+                ? "bg-red-500/10 border-l-2 border-red-500/70 cursor-pointer hover:bg-red-500/15"
+                : "bg-yellow-500/10 border-l-2 border-yellow-500/70 cursor-pointer hover:bg-yellow-500/15"
+              : "border-l-2 border-transparent";
+
+            return (
+              <div key={i}>
+                <div
+                  className={`flex items-start ${rowClass}`}
+                  onClick={
+                    vs ? () => setExpanded(isOpen ? null : lineNo) : undefined
+                  }
+                >
+                  <span
+                    className="select-none text-muted-foreground/50 pr-3 pl-2 text-right shrink-0"
+                    style={{ width: `${gutterWidth + 3}ch` }}
+                  >
+                    {lineNo}
+                  </span>
+                  <pre className="flex-1 whitespace-pre-wrap break-all text-foreground m-0">
+                    {line || " "}
+                  </pre>
+                  {vs && (
+                    <span
+                      className={`shrink-0 px-2 text-[10px] ${
+                        hasError ? "text-red-400" : "text-yellow-400"
+                      }`}
+                    >
+                      {hasError ? "✕" : "!"}{" "}
+                      {vs.length > 1 ? `×${vs.length}` : ""}
+                    </span>
+                  )}
+                </div>
+                {isOpen && vs && (
+                  <div
+                    className="text-[10px] font-mono space-y-2 px-3 py-2 ml-2 mr-3 my-1 rounded bg-secondary/60 border border-border/50 cursor-text"
+                    style={{ marginLeft: `${gutterWidth + 5}ch` }}
+                  >
+                    {vs.map((v) => (
+                      <div key={v.id} className="space-y-0.5">
+                        <div>
+                          <span
+                            className={
+                              v.severity === "error"
+                                ? "text-red-400 font-bold"
+                                : "text-yellow-400 font-bold"
+                            }
+                          >
+                            {v.severity === "error" ? "✕" : "!"}
+                          </span>{" "}
+                          <span className="text-purple-400 font-semibold">
+                            {v.directive}
+                          </span>
+                          {v.blockedUri && (
+                            <span className="text-muted-foreground ml-2 break-all">
+                              {v.blockedUri}
+                            </span>
+                          )}
+                        </div>
+                        {v.fix && (
+                          <div className="text-green-400/80 whitespace-pre-line pl-4">
+                            {v.fix}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
 
 export function WidgetPreview() {
   const {
@@ -535,6 +684,8 @@ export function WidgetPreview() {
     setIframeRef,
     logAction,
     addPendingMessage,
+    widgetSourceHtml,
+    cspViolations,
   } = useStudioStore();
   const widgetName = resolveWidgetName();
   const [activeTab, setActiveTab] = useState<Tab>("widget");
@@ -544,6 +695,22 @@ export function WidgetPreview() {
     if (widgetName && lastResult) setActiveTab("widget");
     else if (!widgetName && jsonOutput) setActiveTab("json");
   }, [widgetName, lastResult, jsonOutput]);
+
+  // Counts for the HTML tab badge — only static violations have line numbers
+  // we can render, so the tab badge mirrors the in-view highlights.
+  const htmlIssueCount = useMemo(() => {
+    let errors = 0;
+    let warnings = 0;
+    const seen = new Set<number>();
+    for (const v of cspViolations) {
+      if (v.source !== "static" || !v.lineNumber || v.lineNumber <= 0) continue;
+      if (seen.has(v.lineNumber)) continue;
+      seen.add(v.lineNumber);
+      if (v.severity === "error") errors += 1;
+      else warnings += 1;
+    }
+    return { errors, warnings };
+  }, [cspViolations]);
 
   const refCallback = useCallback(
     (el: HTMLIFrameElement | null) => {
@@ -715,10 +882,13 @@ export function WidgetPreview() {
   }, []);
 
   const hasWidget = !!widgetName;
+  const hasHtml = hasWidget && !!widgetSourceHtml;
   const hasJson = !!jsonOutput || !!lastResult;
   const jsonText =
     jsonOutput || (lastResult ? JSON.stringify(lastResult, null, 2) : null);
-  const showTabs = hasWidget && hasJson;
+  // Show the tab bar whenever there is more than one view to switch between.
+  const tabCount = (hasWidget ? 1 : 0) + (hasHtml ? 1 : 0) + (hasJson ? 1 : 0);
+  const showTabs = tabCount > 1;
 
   // No widget and no JSON — empty state
   if (!hasWidget && !hasJson) {
@@ -747,7 +917,15 @@ export function WidgetPreview() {
     );
   }
 
-  // Has widget (possibly also JSON result) — show tabs if both
+  // Has widget (possibly also HTML source / JSON) — show tabs when more than
+  // one view is available.
+  const tabClass = (active: boolean) =>
+    `px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${
+      active
+        ? "text-foreground border-b-2 border-primary"
+        : "text-muted-foreground hover:text-foreground"
+    }`;
+
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="flex border-b shrink-0">
@@ -755,24 +933,36 @@ export function WidgetPreview() {
           <>
             <button
               onClick={() => setActiveTab("widget")}
-              className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
-                activeTab === "widget"
-                  ? "text-foreground border-b-2 border-primary"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              className={tabClass(activeTab === "widget")}
             >
               Widget
             </button>
-            <button
-              onClick={() => setActiveTab("json")}
-              className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
-                activeTab === "json"
-                  ? "text-foreground border-b-2 border-primary"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              JSON
-            </button>
+            {hasHtml && (
+              <button
+                onClick={() => setActiveTab("html")}
+                className={tabClass(activeTab === "html")}
+              >
+                HTML
+                {htmlIssueCount.errors > 0 && (
+                  <span className="px-1.5 py-0 rounded-full bg-red-500/20 text-red-400 font-semibold normal-case tracking-normal">
+                    {htmlIssueCount.errors}
+                  </span>
+                )}
+                {htmlIssueCount.warnings > 0 && (
+                  <span className="px-1.5 py-0 rounded-full bg-yellow-500/20 text-yellow-400 font-semibold normal-case tracking-normal">
+                    {htmlIssueCount.warnings}
+                  </span>
+                )}
+              </button>
+            )}
+            {hasJson && (
+              <button
+                onClick={() => setActiveTab("json")}
+                className={tabClass(activeTab === "json")}
+              >
+                JSON
+              </button>
+            )}
           </>
         )}
         <div className="ml-auto flex items-center">
@@ -786,11 +976,18 @@ export function WidgetPreview() {
         </div>
       </div>
 
-      {/* Widget iframe — always mounted but hidden when JSON tab active */}
+      {/* Widget iframe — always mounted but hidden when another tab is active.
+          Keeping it mounted preserves iframe state (scroll position, runtime
+          message handlers) across tab switches. */}
       <ViewportFrame
-        hidden={showTabs && activeTab === "json"}
+        hidden={showTabs && activeTab !== "widget"}
         refCallback={refCallback}
       />
+
+      {/* HTML source view */}
+      {showTabs && activeTab === "html" && hasHtml && (
+        <HtmlSourceView source={widgetSourceHtml!} violations={cspViolations} />
+      )}
 
       {/* JSON view */}
       {showTabs && activeTab === "json" && (

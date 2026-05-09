@@ -424,6 +424,10 @@ interface StudioState {
   strictMode: boolean;
   cspViolations: CspViolation[];
 
+  // Raw widget HTML source (with tunnel URLs stripped to relative paths) —
+  // matches what the static analyzer scanned, used by the HTML preview tab.
+  widgetSourceHtml: string | null;
+
   // Protocol detection
   detectedProtocols: { legacyOpenAI: boolean; extApps: boolean } | null;
 
@@ -577,6 +581,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   // CSP / Strict mode
   strictMode: false,
   cspViolations: [],
+  widgetSourceHtml: null,
 
   // Protocol detection
   detectedProtocols: null,
@@ -1234,7 +1239,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
     // Cleanup previous claude mock
     get()._extAppsMock?.destroy();
-    set({ _extAppsMock: null, cspViolations: [], detectedProtocols: null });
+    set({
+      _extAppsMock: null,
+      cspViolations: [],
+      detectedProtocols: null,
+      widgetSourceHtml: null,
+    });
 
     // Both platforms embed HTML via srcdoc (not iframe.src), matching how
     // ChatGPT and Claude actually host widgets in production.
@@ -1269,6 +1279,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     // Extract CSP domains from mock metadata
     const meta = (mock._meta || {}) as Record<string, unknown>;
     const cspDomains = extractCspDomains(meta);
+
+    // Expose the source the analyzer scanned so the HTML preview tab can
+    // render the exact same content with violation lines highlighted.
+    set({ widgetSourceHtml: originalHtml });
 
     // Run static analysis on the original HTML (with tunnel URLs stripped to
     // relative paths) so violations show what the developer actually wrote.
