@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Square, SkipForward, FastForward, Pause } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useStudioStore } from "@/lib/studio/store";
-import { runtime, type ProgressSnapshot } from "@/lib/replay/runtime";
+import { runtime, type ProgressSnapshot } from "@/lib/engine/runtime";
 
 export function TestModeOverlay() {
   const studioMode = useStudioStore((s) => s.studioMode);

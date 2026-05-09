@@ -5,7 +5,7 @@ import type {
 } from "@/lib/recorder/schema";
 import { KIND, WIDGET_DOM_KINDS } from "@/lib/recorder/kinds";
 import type { Driver, DriveOutcome } from "./types";
-import { timeoutFor } from "@/lib/replay/timing";
+import { timeoutFor } from "@/lib/engine/timing";
 
 const KINDS: ActionKind[] = [KIND.WIDGET_RENDER, ...WIDGET_DOM_KINDS];
 const WIDGET_DOM_KIND_SET = new Set<ActionKind>(WIDGET_DOM_KINDS);

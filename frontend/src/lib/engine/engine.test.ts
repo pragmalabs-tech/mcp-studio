@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createPlayer } from "./player";
+import { createEngine } from "./engine";
 import { recorder } from "@/lib/recorder/bus";
 import type { Driver } from "./drivers/types";
 import type { Action, Test } from "@/lib/recorder/schema";
@@ -103,8 +103,8 @@ beforeEach(() => {
 describe("Player loop", () => {
   it("runs all steps in order and reports passes", async () => {
     const store = fakeStore();
-    const player = createPlayer({
-      store: store as unknown as Parameters<typeof createPlayer>[0]["store"],
+    const engine = createEngine({
+      store: store as unknown as Parameters<typeof createEngine>[0]["store"],
       iframe: () => null,
       bridge: fakeBridge(),
       drivers: [passingDriver],
@@ -114,7 +114,7 @@ describe("Player loop", () => {
       { kind: "sidebar.select", selection: { type: "tool", name: "x" } },
       { kind: "editor.set_args", value: { a: 1 } },
     ]);
-    const result = await player.run(test);
+    const result = await engine.run(test);
     expect(result.summary.total).toBe(3);
     expect(result.summary.passed).toBe(3);
     expect(result.summary.failed).toBe(0);
@@ -124,8 +124,8 @@ describe("Player loop", () => {
 
   it("marks all unknown-kind steps as skip when no driver matches", async () => {
     const store = fakeStore();
-    const player = createPlayer({
-      store: store as unknown as Parameters<typeof createPlayer>[0]["store"],
+    const engine = createEngine({
+      store: store as unknown as Parameters<typeof createEngine>[0]["store"],
       iframe: () => null,
       bridge: fakeBridge(),
       drivers: [], // no drivers — every step skips
@@ -134,7 +134,7 @@ describe("Player loop", () => {
       { kind: "config.update", patch: { theme: "dark" } },
       { kind: "mcp.request", id: 1, source: "user", method: "x", params: {} },
     ]);
-    const result = await player.run(test);
+    const result = await engine.run(test);
     expect(result.summary.skipped).toBe(2);
     expect(result.summary.passed).toBe(0);
     expect(result.summary.failed).toBe(0);
@@ -142,8 +142,8 @@ describe("Player loop", () => {
 
   it("records driver failures as fail steps", async () => {
     const store = fakeStore();
-    const player = createPlayer({
-      store: store as unknown as Parameters<typeof createPlayer>[0]["store"],
+    const engine = createEngine({
+      store: store as unknown as Parameters<typeof createEngine>[0]["store"],
       iframe: () => null,
       bridge: fakeBridge(),
       drivers: [failingDriver],
@@ -151,7 +151,7 @@ describe("Player loop", () => {
     const test = buildTest([
       { kind: "mcp.request", id: 1, source: "user", method: "x", params: {} },
     ]);
-    const result = await player.run(test);
+    const result = await engine.run(test);
     expect(result.summary.failed).toBe(1);
     expect(result.steps[0].reason).toBe("boom");
   });
@@ -162,8 +162,8 @@ describe("Player loop", () => {
       kinds: ["mcp.request"],
       drive: () => new Promise(() => undefined), // never resolves
     };
-    const player = createPlayer({
-      store: store as unknown as Parameters<typeof createPlayer>[0]["store"],
+    const engine = createEngine({
+      store: store as unknown as Parameters<typeof createEngine>[0]["store"],
       iframe: () => null,
       bridge: fakeBridge(),
       drivers: [slowDriver],
@@ -172,7 +172,7 @@ describe("Player loop", () => {
     const test = buildTest([
       { kind: "mcp.request", id: 1, source: "user", method: "x", params: {} },
     ]);
-    const promise = player.run(test);
+    const promise = engine.run(test);
     await vi.advanceTimersByTimeAsync(11_000);
     const result = await promise;
     vi.useRealTimers();
@@ -190,8 +190,8 @@ describe("Player loop", () => {
         return new Promise(() => undefined);
       },
     };
-    const player = createPlayer({
-      store: store as unknown as Parameters<typeof createPlayer>[0]["store"],
+    const engine = createEngine({
+      store: store as unknown as Parameters<typeof createEngine>[0]["store"],
       iframe: () => null,
       bridge: fakeBridge(),
       drivers: [slowDriver],
@@ -200,8 +200,8 @@ describe("Player loop", () => {
       { kind: "mcp.request", id: 1, source: "user", method: "x", params: {} },
       { kind: "mcp.request", id: 2, source: "user", method: "y", params: {} },
     ]);
-    const promise = player.run(test);
-    setTimeout(() => player.abort(), 5);
+    const promise = engine.run(test);
+    setTimeout(() => engine.abort(), 5);
     const result = await promise;
     expect(started).toBeLessThanOrEqual(2);
     expect(result.summary.skipped + result.summary.failed).toBeGreaterThan(0);

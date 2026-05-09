@@ -2,7 +2,7 @@ import type { Action, ActionKind } from "@/lib/recorder/schema";
 import { KIND } from "@/lib/recorder/kinds";
 import type { Driver, DriveOutcome } from "./types";
 import { mcpCall } from "@/lib/studio/api";
-import { timeoutFor } from "@/lib/replay/timing";
+import { timeoutFor } from "@/lib/engine/timing";
 
 const KINDS: ActionKind[] = [KIND.MCP_REQUEST];
 

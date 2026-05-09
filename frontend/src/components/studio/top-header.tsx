@@ -9,11 +9,13 @@ import {
   Settings2,
   Clock,
   FlaskConical,
+  History,
   Circle,
   Square,
 } from "lucide-react";
 import { RecordingHistoryDialog } from "@/components/studio/recording-history-dialog";
 import { TestsPage } from "@/components/studio/tests-page";
+import { ReportsPage } from "@/components/studio/reports-page";
 import { SaveTestModal } from "@/components/studio/save-test-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +50,7 @@ export function TopHeader() {
   const [urlDraft, setUrlDraft] = useState(proxyUrl);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [testsOpen, setTestsOpen] = useState(false);
+  const [reportsOpen, setReportsOpen] = useState(false);
   const [recordExplainerOpen, setRecordExplainerOpen] = useState(false);
   const [saveTestOpen, setSaveTestOpen] = useState(false);
   const [saveRange, setSaveRange] = useState<{
@@ -308,6 +311,16 @@ export function TopHeader() {
 
       <button
         type="button"
+        onClick={() => setReportsOpen(true)}
+        title="Past test runs and reports"
+        className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md hover:bg-muted text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <History className="h-4 w-4" />
+        Reports
+      </button>
+
+      <button
+        type="button"
         onClick={() => setHistoryOpen(true)}
         title="View recorded actions"
         className="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
@@ -321,6 +334,7 @@ export function TopHeader() {
       />
 
       <TestsPage open={testsOpen} onOpenChange={setTestsOpen} />
+      <ReportsPage open={reportsOpen} onOpenChange={setReportsOpen} />
 
       <Dialog open={recordExplainerOpen} onOpenChange={setRecordExplainerOpen}>
         <DialogContent className="sm:max-w-md">

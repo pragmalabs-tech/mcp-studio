@@ -14,7 +14,7 @@ replays those tests against a running MCP server.
   The slice between the two markers is named and written to disk as a JSON
   file at `~/.mcp-studio/tests/<slug>.json`.
 - The user opens **Tests**, picks a saved test, clicks **Run**. Studio
-  enters Test mode, the **Player** drives the same store and iframe a
+  enters Test mode, the **Engine** drives the same store and iframe a
   real user would, and a **Report** opens showing per-step pass/fail with
   a sandboxed widget preview for visual proof.
 
@@ -29,7 +29,7 @@ Adding a new kind of action means one entry in three places.
 1. **Capture is invisible.** A user shouldn't have to think about what's
    "test-worthy" while doing it. The bus is always on; recording is just
    "I want this slice to be named and saved."
-2. **Replay drives the real Studio.** No parallel codepath. The Player
+2. **Replay drives the real Studio.** No parallel codepath. The Engine
    calls the same store setters and `mcpCall` as a human does. If the
    real path breaks, replay breaks the same way.
 3. **Files on disk, no DB.** Tests and reports are JSON files in
@@ -42,7 +42,7 @@ Adding a new kind of action means one entry in three places.
 ## Non-goals (v1)
 
 - **Visual / pixel diffing.** We capture DOM HTML snapshots, not PNGs.
-- **Headless / CI replay.** The Player runs inside Studio. There's no
+- **Headless / CI replay.** The Engine runs inside Studio. There's no
   CLI-driven Playwright harness. Add later when there's demand.
 - **Editable assertions per step.** Assertions are built into the
   per-kind table — no UI to override them.
@@ -66,7 +66,7 @@ Adding a new kind of action means one entry in three places.
                                                           │  Run
                                                           ▼
                                                       ┌────────┐
-                                                      │ Player │
+                                                      │ Engine │
                                                       └────────┘
                                                           │
                                                           ▼
@@ -125,7 +125,7 @@ emit; the bus orders and persists.
 ### Three-driver replay
 
 ```
-                 ┌────────── Player ──────────┐
+                 ┌────────── Engine ──────────┐
                  │ state machine over timeline │
                  └─┬─────────┬──────────┬─────┘
                    │         │          │
@@ -145,10 +145,10 @@ emit; the bus orders and persists.
 | **MCP** | `mcp.request` | For `source: "user"`, calls `store.execute()` (which re-uses live editor + selection state and naturally chains the widget render). For `source: "widget"`, treated as observation — the widget will or won't fire it as a side effect. |
 | **Widget** | `widget.render`, `widget.dom.*`, `widget.intent` | For renders: `bridge.awaitRenderComplete()` (cached for 3s so a late await catches an already-fired event). For DOM events: `bridge.dispatch(action)` and awaits an ack. |
 
-The **Player** (`src/lib/replay/player.ts`) doesn't know about MCP, the
+The **Engine** (`src/lib/engine/engine.ts`) doesn't know about MCP, the
 store, or the iframe. It walks the timeline, picks a driver per action by
 its `kinds` field, awaits with timeout, asserts via the per-kind table.
-Everything is injected via `PlayerDeps`.
+Everything is injected via `EngineDeps`.
 
 ---
 
@@ -156,7 +156,7 @@ Everything is injected via `PlayerDeps`.
 
 Defined in `src/lib/recorder/schema.ts`. Categorized by what they do:
 
-### Pure inputs (driven by the Player; replay re-issues them)
+### Pure inputs (driven by the Engine; replay re-issues them)
 
 | Kind | Fields | Driver |
 |---|---|---|
@@ -209,7 +209,7 @@ interface SelectorChain {
 ```
 
 The bridge's `resolveSelectorChain` tries each tier in order; first hit
-wins. The recorder captures **all** tiers at record time; the player
+wins. The recorder captures **all** tiers at record time; the engine
 picks the most resilient at replay time.
 
 ---
@@ -232,7 +232,7 @@ envelope `{ __recorder: true, ... }` posted via `window.postMessage`.
 
 | Op | When | Payload |
 |---|---|---|
-| `dispatch` | Player wants to replay a DOM event | `{ id, action }` |
+| `dispatch` | Engine wants to replay a DOM event | `{ id, action }` |
 | `ping` | Health check | `{ id }` |
 | `snapshot` | Capture current DOM | `{ id }` |
 
@@ -240,7 +240,7 @@ The bridge is a single self-contained JS file
 (`src/widget-bridge/recorder-bridge.js`) imported via Vite's `?raw` so it
 inlines into the iframe srcdoc with no separate build step. The
 host-side counterpart is `BridgeClient`
-(`src/lib/replay/bridge-client.ts`) which:
+(`src/lib/engine/bridge-client.ts`) which:
 
 - holds a monotonic id counter and a `Map<id, pending>` for dispatch acks
   and snapshot replies
@@ -261,7 +261,7 @@ host-side counterpart is `BridgeClient`
      `config.update` / `auth.update` / `sidebar.select` /
      `editor.set_args`. Editor edits are debounced 300ms idle and
      force-flushed before any `mcp.request`. Skips emission while
-     `studioMode === "test"` (so the Player's setters don't get
+     `studioMode === "test"` (so the Engine's setters don't get
      re-captured).
    - **MCP interceptor** (`mcp-interceptor.ts`): wraps every
      `mcpCall` with id-paired emit/await/emit. `callTool` and
@@ -303,19 +303,19 @@ tokens; the user is responsible for sanitizing them before sharing.
    test has any `widget.dom.*` steps, opens
    `<TestPreconditionDialog />` — user clicks "Disable strict CSP & Run"
    or "Cancel".
-3. `tests-page.tsx` constructs a Player:
+3. `tests-page.tsx` constructs a Engine:
    ```ts
-   createPlayer({
-     store: makePlayerStore(),                // adapter over useStudioStore
+   createEngine({
+     store: makeEngineStore(),                // adapter over useStudioStore
      iframe: () => useStudioStore.getState()._iframeRef,
      bridge: createBridgeClient(...),
      drivers: [chromeDriver, mcpDriver, widgetDriver],
      artifacts: createArtifactCollector(),
    });
    ```
-4. `player.run(test)`:
+4. `engine.run(test)`:
    1. `recorder.suspend()` — bus stops persisting to the buffer but
-      **listeners still fire** (so the Player can observe
+      **listeners still fire** (so the Engine can observe
       `mcp.response` / `widget.render.complete` from the bus).
    2. `setStudioMode("test")` — `<TestModeOverlay />` mounts a
       full-screen blocking layer with the step counter and a Stop
@@ -327,7 +327,7 @@ tokens; the user is responsible for sanitizing them before sharing.
       2. If no driver, mark `skip` with a reason from
          `skipReasonForKind`.
       3. Run driver under `withTimeout(promise, timeoutFor(kind))`.
-         Per-kind timeouts in `src/lib/replay/timing.ts`.
+         Per-kind timeouts in `src/lib/engine/timing.ts`.
       4. Look up `ASSERTERS[action.kind]` and produce a
          pass/fail/skip status with a reason.
       5. On `fail`/`timeout`, call `bridge.snapshot(1000)` and pass to
@@ -344,11 +344,11 @@ tokens; the user is responsible for sanitizing them before sharing.
 
 ### Sync strategy — event-driven, not wall-clock
 
-`relMs` in the recorded timeline is **diagnostic only**. The Player
+`relMs` in the recorded timeline is **diagnostic only**. The Engine
 never sleeps for a recorded duration. Instead, each input awaits the
 **natural follow-up observation**:
 
-| After… | Player awaits… |
+| After… | Engine awaits… |
 |---|---|
 | `mcp.request` (user) → execute() | the next `mcp.response` on the bus |
 | `widget.render` step | the next `render.complete` from the bridge (or the cached one if recent) |
@@ -373,7 +373,7 @@ observation = await responsePromise;
 
 ## Assertions
 
-`src/lib/replay/asserter.ts` is a **table** keyed by action kind. Pure
+`src/lib/engine/asserter.ts` is a **table** keyed by action kind. Pure
 functions. No state. No inheritance. Add an asserter = add a table
 entry.
 
@@ -451,7 +451,7 @@ clobber). For a single-user dev tool, fine.
 
 ## Reports & artifacts
 
-`ReplayReport` (`src/lib/replay/report.ts`):
+`ReplayReport` (`src/lib/engine/report.ts`):
 
 ```ts
 interface ReplayReport {
@@ -521,7 +521,7 @@ If we add PNGs later, the natural slot is the bridge's
 `studioMode: "normal" | "test"` lives in the studio store
 (`src/lib/studio/store.ts`).
 
-| Mode | UI | Recorder | Player |
+| Mode | UI | Recorder | Engine |
 |---|---|---|---|
 | `normal` | Interactive | Capturing | Idle |
 | `test` | Blocked by `<TestModeOverlay />` | `recorder.suspend()` (listeners fire, buffer push skipped) | Driving |
@@ -531,8 +531,8 @@ capture-phase event handlers that swallow every click and keydown. The
 underlying Studio is dimmed but visible — essential for debugging a
 failing test.
 
-The Player calls store setters directly via the `PlayerStore` adapter
-(`makePlayerStore`) which closes over `useStudioStore.getState()` for
+The Engine calls store setters directly via the `EngineStore` adapter
+(`makeEngineStore`) which closes over `useStudioStore.getState()` for
 every call. The setters work because they don't go through DOM events
 — the overlay only blocks the user, not programmatic state changes.
 
@@ -573,15 +573,15 @@ mcp-studio/
     │   ├── selector.ts         buildSelectorChain + resolveSelectorChain
     │   ├── summarize.ts        summarize() / verbalize() / skipReasonForKind
     │   └── export.ts           downloadSession Blob helper
-    ├── lib/replay/
-    │   ├── player.ts           state machine over the timeline
+    ├── lib/engine/
+    │   ├── engine.ts           state machine over the timeline
     │   ├── bridge-client.ts    host-side dispatcher with render.complete cache
     │   ├── asserter.ts         per-kind ASSERTERS table
     │   ├── timing.ts           per-kind TIMEOUTS
     │   ├── artifacts.ts        ArtifactCollector (failures + previews)
     │   ├── report.ts           buildReport + reportFilename
     │   ├── runtime.ts          live progress singleton (overlay subscribes)
-    │   ├── make-store.ts       PlayerStore adapter over useStudioStore
+    │   ├── make-store.ts       EngineStore adapter over useStudioStore
     │   └── drivers/
     │       ├── types.ts        Driver interface, DriverContext
     │       ├── chrome.ts       chromeDriver — config/auth/sidebar/editor
@@ -619,9 +619,9 @@ Widgets that use generated CSS class names with no
 breaks if the DOM tree shape changes. Document this in the Tests UI:
 "If a widget's DOM changes, re-record the test."
 
-### Player skips widget-source `mcp.request`
+### Engine skips widget-source `mcp.request`
 Recorded `mcp.request` with `source: "widget"` happen as a side effect
-of widget code. The Player can't deterministically force them. They're
+of widget code. The Engine can't deterministically force them. They're
 treated as observations (always pass). If a widget *stops* making a
 recorded call during replay, the test won't catch it — but the next
 *user-driven* step that depended on the result will surface the
@@ -633,8 +633,8 @@ single-user local tool, fine. If we ever add cloud sync or
 multi-window editing, switch to write-rename atomicity.
 
 ### Inter-step delay is fixed at 150ms
-Hard-coded default in the player; configurable via `stepDelayMs` in
-`PlayerDeps` but not exposed in the UI. When we add a "headless mode"
+Hard-coded default in the engine; configurable via `stepDelayMs` in
+`EngineDeps` but not exposed in the UI. When we add a "headless mode"
 toggle (e.g. for fast-iteration retries during dev), wire that toggle
 to `stepDelayMs: 0`.
 
@@ -704,7 +704,7 @@ If a step fails:
 3. **Driver** (if it's an input):
    - Pick chrome / mcp / widget driver and add the kind to its
      `kinds` array; handle the case in `drive()`.
-4. **Asserter** (`src/lib/replay/asserter.ts`):
+4. **Asserter** (`src/lib/engine/asserter.ts`):
    - Add an entry to `ASSERTERS` if the kind has a meaningful
      pass/fail. Otherwise it'll fall through to `passThrough` (pass
      when driver returned ok).

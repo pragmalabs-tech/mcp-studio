@@ -28,24 +28,25 @@ import { Button } from "@/components/ui/button";
 import { listTests, getTest, deleteTest } from "@/lib/tests/api";
 import type { Recorded, Test, TestSummary } from "@/lib/recorder/schema";
 import { KIND, OBSERVATION_KINDS } from "@/lib/recorder/kinds";
+import { KIND_COLOR } from "@/lib/engine/kind-colors";
 import { summarize } from "@/lib/recorder/summarize";
 import { useStudioStore } from "@/lib/studio/store";
-import { createPlayer } from "@/lib/replay/player";
-import { createBridgeClient } from "@/lib/replay/bridge-client";
-import { chromeDriver } from "@/lib/replay/drivers/chrome";
-import { mcpDriver } from "@/lib/replay/drivers/mcp";
-import { widgetDriver } from "@/lib/replay/drivers/widget";
-import { runtime } from "@/lib/replay/runtime";
+import { createEngine } from "@/lib/engine/engine";
+import { createBridgeClient } from "@/lib/engine/bridge-client";
+import { chromeDriver } from "@/lib/engine/drivers/chrome";
+import { mcpDriver } from "@/lib/engine/drivers/mcp";
+import { widgetDriver } from "@/lib/engine/drivers/widget";
+import { runtime } from "@/lib/engine/runtime";
 import { TestPreconditionDialog } from "@/components/studio/test-precondition-dialog";
 import { TestResultModal } from "@/components/studio/test-result-modal";
-import { createArtifactCollector } from "@/lib/replay/artifacts";
+import { createArtifactCollector } from "@/lib/engine/artifacts";
 import {
   buildReport,
   reportFilename,
   type ReplayReport,
-} from "@/lib/replay/report";
+} from "@/lib/engine/report";
 import { saveReport } from "@/lib/tests/reports-api";
-import { makePlayerStore } from "@/lib/replay/make-store";
+import { makeEngineStore } from "@/lib/engine/make-store";
 
 interface Props {
   open: boolean;
@@ -83,26 +84,6 @@ function ActionCountLabel({
     </div>
   );
 }
-
-const KIND_COLOR: Record<string, string> = {
-  [KIND.SIDEBAR_SELECT]: "text-sky-400",
-  [KIND.EDITOR_SET_ARGS]: "text-amber-400",
-  [KIND.CONFIG_UPDATE]: "text-violet-400",
-  [KIND.AUTH_UPDATE]: "text-violet-400",
-  [KIND.MCP_REQUEST]: "text-emerald-400",
-  [KIND.MCP_RESPONSE]: "text-emerald-300/70",
-  [KIND.MCP_NOTIFICATION]: "text-emerald-200/70",
-  [KIND.WIDGET_RENDER]: "text-fuchsia-400",
-  [KIND.WIDGET_RENDER_COMPLETE]: "text-fuchsia-300/70",
-  [KIND.WIDGET_MOCK_SET]: "text-fuchsia-300",
-  [KIND.WIDGET_INTENT]: "text-pink-400",
-  [KIND.WIDGET_DOM_CLICK]: "text-orange-400",
-  [KIND.WIDGET_DOM_INPUT]: "text-orange-300",
-  [KIND.WIDGET_DOM_CHANGE]: "text-orange-300",
-  [KIND.WIDGET_DOM_SUBMIT]: "text-orange-400",
-  [KIND.WIDGET_DOM_KEYDOWN]: "text-yellow-400",
-  [KIND.CSP_VIOLATION]: "text-red-400",
-};
 
 function relMsLabel(ms: number): string {
   if (ms < 1000) return `${ms.toFixed(0).padStart(4, " ")}ms`;
@@ -261,8 +242,8 @@ export function TestsPage({ open, onOpenChange }: Props) {
     onOpenChange(false);
     const studio = useStudioStore.getState();
     const artifacts = createArtifactCollector();
-    const player = createPlayer({
-      store: makePlayerStore(),
+    const engine = createEngine({
+      store: makeEngineStore(),
       iframe: () => useStudioStore.getState()._iframeRef,
       bridge: createBridgeClient(() => useStudioStore.getState()._iframeRef),
       drivers: [chromeDriver, mcpDriver, widgetDriver],
@@ -275,13 +256,13 @@ export function TestsPage({ open, onOpenChange }: Props) {
       test.session.timeline.length,
       mode,
       {
-        abort: () => player.abort(),
-        next: () => player.next(),
-        setMode: (m) => player.setMode(m),
+        abort: () => engine.abort(),
+        next: () => engine.next(),
+        setMode: (m) => engine.setMode(m),
       },
     );
     try {
-      const result = await player.run(test, (p) =>
+      const result = await engine.run(test, (p) =>
         runtime.step(p.index, p.current, p.step),
       );
       runtime.finish(result);

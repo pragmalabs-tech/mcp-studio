@@ -1,13 +1,13 @@
 import { useStudioStore } from "@/lib/studio/store";
 import type { ViewportPreset, SelectedItem } from "@/lib/studio/store";
-import type { PlayerStore } from "./drivers/types";
+import type { EngineStore } from "./drivers/types";
 
 /**
- * Adapter that exposes the StudioStore as the slimmer PlayerStore interface
+ * Adapter that exposes the StudioStore as the slimmer EngineStore interface
  * the drivers expect. Each setter and `getState()` reads the live store via
  * `useStudioStore.getState()` so changes always hit the current state.
  */
-export function makePlayerStore(): PlayerStore {
+export function makeEngineStore(): EngineStore {
   const get = () => useStudioStore.getState();
   return {
     setStudioMode: (m) => get().setStudioMode(m),

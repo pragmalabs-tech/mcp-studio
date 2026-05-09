@@ -1,5 +1,5 @@
 import type { Recorded } from "@/lib/recorder/schema";
-import type { RunMode, RunResult, StepResult } from "./player";
+import type { RunMode, RunResult, StepResult } from "./engine";
 
 export interface ProgressSnapshot {
   testName: string;

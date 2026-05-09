@@ -1,4 +1,4 @@
-import type { ReplayReport } from "@/lib/replay/report";
+import type { ReplayReport } from "@/lib/engine/report";
 
 interface BackendReportSummary {
   name: string;

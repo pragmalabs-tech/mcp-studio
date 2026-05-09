@@ -1,8 +1,8 @@
 import type { Action, ActionKind, Recorded } from "@/lib/recorder/schema";
-import type { BridgeClient } from "@/lib/replay/bridge-client";
+import type { BridgeClient } from "@/lib/engine/bridge-client";
 
 /** Minimal store API the Player needs. Concrete provider lives in store.ts. */
-export interface PlayerStore {
+export interface EngineStore {
   setStudioMode(mode: "normal" | "test"): void;
   setStrictMode(on: boolean): void;
   setProxyUrl(url: string): void;
@@ -32,7 +32,7 @@ export interface PlayerStore {
 }
 
 export interface DriverContext {
-  store: PlayerStore;
+  store: EngineStore;
   iframe: () => HTMLIFrameElement | null;
   bridge: BridgeClient;
   signal: AbortSignal;

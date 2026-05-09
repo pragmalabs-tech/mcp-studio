@@ -1,7 +1,7 @@
 import type { Action, ActionKind, Recorded, Test } from "@/lib/recorder/schema";
 import type { AssertionResult } from "./asserter";
 import { assertFor } from "./asserter";
-import type { Driver, DriverContext, PlayerStore } from "./drivers/types";
+import type { Driver, DriverContext, EngineStore } from "./drivers/types";
 import type { BridgeClient } from "./bridge-client";
 import type { ArtifactCollector } from "./artifacts";
 import { recorder } from "@/lib/recorder/bus";
@@ -43,7 +43,7 @@ export type ProgressListener = (progress: {
 
 export type RunMode = "auto" | "step";
 
-export interface Player {
+export interface Engine {
   run(test: Test, onProgress?: ProgressListener): Promise<RunResult>;
   abort(): void;
   /** Advance one step in step mode. No-op in auto mode. */
@@ -54,8 +54,8 @@ export interface Player {
   getMode(): RunMode;
 }
 
-export interface PlayerDeps {
-  store: PlayerStore;
+export interface EngineDeps {
+  store: EngineStore;
   iframe: () => HTMLIFrameElement | null;
   bridge: BridgeClient;
   drivers: Driver<Action>[];
@@ -64,7 +64,7 @@ export interface PlayerDeps {
    *  follow what's happening. Default 150ms in UI mode. Set 0 for headless. */
   stepDelayMs?: number;
   /** "auto" runs the whole timeline back-to-back with stepDelayMs between
-   *  steps. "step" blocks after each step until `player.next()` is called
+   *  steps. "step" blocks after each step until `engine.next()` is called
    *  (interactive debugger UX). Default "auto". */
   mode?: RunMode;
 }
@@ -149,7 +149,7 @@ function toStep(
   };
 }
 
-export function createPlayer(deps: PlayerDeps): Player {
+export function createEngine(deps: EngineDeps): Engine {
   const controller = new AbortController();
   let currentMode: RunMode = deps.mode ?? "auto";
   let nextResolver: (() => void) | null = null;
@@ -374,7 +374,7 @@ export function createPlayer(deps: PlayerDeps): Player {
   };
 }
 
-async function applySetup(test: Test, store: PlayerStore): Promise<void> {
+async function applySetup(test: Test, store: EngineStore): Promise<void> {
   const { connect, config } = test.session.setup;
   if (connect.url) store.setProxyUrl(connect.url);
   store.setAuthMethod(connect.auth.method);

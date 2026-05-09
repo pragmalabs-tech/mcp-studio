@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import {
   XIcon,
@@ -12,18 +12,21 @@ import {
 } from "lucide-react";
 import { Dialog, DialogOverlay, DialogPortal } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import type { ReplayReport } from "@/lib/replay/report";
-import { reportFilename } from "@/lib/replay/report";
-import type { StepResult } from "@/lib/replay/player";
+import type { ReplayReport } from "@/lib/engine/report";
+import { reportFilename } from "@/lib/engine/report";
+import type { StepResult } from "@/lib/engine/engine";
 import { verbalize } from "@/lib/recorder/summarize";
-import type { PreviewArtifact } from "@/lib/replay/artifacts";
+import type { PreviewArtifact } from "@/lib/engine/artifacts";
 import { isObservation } from "@/components/studio/tests-page";
+import { TestResultPlayer } from "@/components/studio/test-result-player";
 
 interface Props {
   report: ReplayReport | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSaveToDisk: (report: ReplayReport) => Promise<void>;
+  /** Provided for fresh runs that haven't been persisted yet. Omitted when
+   *  the report was loaded from disk (no need to save back). */
+  onSaveToDisk?: (report: ReplayReport) => Promise<void>;
 }
 
 function StatusIcon({ status }: { status: StepResult["status"] }) {
@@ -94,12 +97,20 @@ function StepRow({
   step,
   failure,
   preview,
+  forceOpen,
 }: {
   step: StepResult;
   failure?: { domSnapshot: string; errors: string[] };
   preview?: PreviewArtifact;
+  /** Pulse from the parent: when this becomes true, the row syncs to open
+   *  once. After that, the local toggle takes over so the user can collapse
+   *  again. The parent clears it after the next tick. */
+  forceOpen?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (forceOpen) setOpen(true);
+  }, [forceOpen]);
   const expandable = true;
   const verb = verbalize(step.action);
   const live = liveSummary(step);
@@ -107,7 +118,10 @@ function StepRow({
   const isSkip = step.status === "skip";
 
   return (
-    <div className="text-xs font-mono border-b border-border/30 hover:bg-secondary/20">
+    <div
+      id={`step-row-${step.index}`}
+      className="text-xs font-mono border-b border-border/30 hover:bg-secondary/20"
+    >
       <div
         className={`px-3 py-1.5 flex items-center gap-2 ${expandable ? "cursor-pointer" : ""}`}
         onClick={() => expandable && setOpen((v) => !v)}
@@ -216,6 +230,20 @@ export function TestResultModal({
   const [saving, setSaving] = useState(false);
   const [savedAs, setSavedAs] = useState<string | null>(null);
   const [hideObservations, setHideObservations] = useState(true);
+  /** Step index forced open by a click on the timeline. Resets on next click
+   *  on a different step or when the user collapses it manually. */
+  const [forcedOpenStep, setForcedOpenStep] = useState<number | null>(null);
+
+  function handleJumpToStep(idx: number) {
+    // Pulse: set briefly so the StepRow's effect catches the rising edge,
+    // then clear so the user can collapse the row again with a click.
+    setForcedOpenStep(idx);
+    setTimeout(() => {
+      const el = document.getElementById(`step-row-${idx}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setForcedOpenStep(null);
+    }, 0);
+  }
 
   if (!report) return null;
 
@@ -233,7 +261,7 @@ export function TestResultModal({
   }
 
   async function handleSaveToDisk() {
-    if (!report) return;
+    if (!report || !onSaveToDisk) return;
     setSaving(true);
     try {
       await onSaveToDisk(report);
@@ -270,15 +298,17 @@ export function TestResultModal({
                 <Download className="h-3.5 w-3.5 mr-1.5" />
                 Export
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSaveToDisk}
-                disabled={saving}
-              >
-                <Save className="h-3.5 w-3.5 mr-1.5" />
-                {saving ? "Saving…" : savedAs ? "Saved" : "Save to disk"}
-              </Button>
+              {onSaveToDisk && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSaveToDisk}
+                  disabled={saving}
+                >
+                  <Save className="h-3.5 w-3.5 mr-1.5" />
+                  {saving ? "Saving…" : savedAs ? "Saved" : "Save to disk"}
+                </Button>
+              )}
               <DialogPrimitive.Close
                 render={<Button variant="ghost" size="icon-sm" />}
               >
@@ -327,13 +357,22 @@ export function TestResultModal({
               {hideObservations ? "Inputs only" : "All steps"}
             </Button>
           </div>
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div
+            className="flex-1 overflow-y-auto min-h-0"
+            style={{ scrollbarGutter: "stable" }}
+          >
+            <TestResultPlayer
+              report={report}
+              hideObservations={hideObservations}
+              onJumpToStep={handleJumpToStep}
+            />
             {visibleSteps.map((s) => (
               <StepRow
                 key={s.index}
                 step={s}
                 failure={report.artifacts.failures[s.index]}
                 preview={report.artifacts.previews?.[s.index]}
+                forceOpen={forcedOpenStep === s.index}
               />
             ))}
           </div>

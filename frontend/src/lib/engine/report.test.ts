@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildReport, REPORT_VERSION, reportFilename } from "./report";
-import type { RunResult } from "./player";
+import {
+  buildReport,
+  REPORT_VERSION,
+  reportFilename,
+  validateReport,
+} from "./report";
+import type { RunResult } from "./engine";
 
 const baseRun: RunResult = {
   test: { name: "Search flow", description: "tests search", totalActions: 3 },
@@ -116,5 +121,42 @@ describe("reportFilename", () => {
       preconditions: { strictModeOk: true, iframeReady: true },
     });
     expect(reportFilename(r)).toMatch(/^report-[0-9a-f]{8}$/);
+  });
+});
+
+describe("validateReport", () => {
+  function goodReport() {
+    return buildReport({
+      runResult: baseRun,
+      artifacts: { failures: {}, previews: {} },
+      preconditions: { strictModeOk: true, iframeReady: true },
+    });
+  }
+
+  it("accepts a freshly built report", () => {
+    expect(validateReport(goodReport())).toBe(true);
+  });
+
+  it("rejects null / non-object", () => {
+    expect(validateReport(null)).toBe(false);
+    expect(validateReport(42)).toBe(false);
+    expect(validateReport("report")).toBe(false);
+  });
+
+  it("rejects wrong version", () => {
+    const r = { ...goodReport(), version: 2 };
+    expect(validateReport(r)).toBe(false);
+  });
+
+  it("rejects missing required fields", () => {
+    const r = goodReport() as unknown as Record<string, unknown>;
+    delete r.steps;
+    expect(validateReport(r)).toBe(false);
+  });
+
+  it("rejects malformed test object", () => {
+    const r = goodReport() as unknown as Record<string, unknown>;
+    r.test = {};
+    expect(validateReport(r)).toBe(false);
   });
 });

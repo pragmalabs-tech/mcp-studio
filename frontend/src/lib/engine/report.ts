@@ -1,4 +1,4 @@
-import type { RunResult, StepResult } from "./player";
+import type { RunResult, StepResult } from "./engine";
 import type { ReplayArtifacts } from "./artifacts";
 
 export const REPORT_VERSION = 1 as const;
@@ -64,6 +64,23 @@ export function buildReport(input: ReportInput): ReplayReport {
     finishedAt: runResult.finishedAt,
     durationMs: runResult.durationMs,
   };
+}
+
+/** Lightweight runtime check for report shape — used when loading a report
+ *  from disk or an imported file. Catches version mismatches and obviously
+ *  malformed JSON without pulling in zod. */
+export function validateReport(value: unknown): value is ReplayReport {
+  if (!value || typeof value !== "object") return false;
+  const r = value as Partial<ReplayReport>;
+  if (r.version !== REPORT_VERSION) return false;
+  if (typeof r.runId !== "string") return false;
+  if (!r.test || typeof r.test.name !== "string") return false;
+  if (!r.summary || typeof r.summary.total !== "number") return false;
+  if (!Array.isArray(r.steps)) return false;
+  if (!r.artifacts || typeof r.artifacts !== "object") return false;
+  if (typeof r.startedAt !== "string") return false;
+  if (typeof r.finishedAt !== "string") return false;
+  return true;
 }
 
 /** `<test-name>-<runId>.report.json` */

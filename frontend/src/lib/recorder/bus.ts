@@ -149,7 +149,15 @@ class Recorder {
       start,
       Math.min(endIndex ?? this.buffer.length, this.buffer.length),
     );
-    const slice = this.buffer.slice(start, end).map(redactRecorded);
+    const raw = this.buffer.slice(start, end).map(redactRecorded);
+    // Normalize relMs so the first action in the slice is t=0. Without this,
+    // a user who waits 30s before starting a slice gets a timeline that
+    // shows 30s of empty space before any action.
+    const offset = raw.length > 0 ? raw[0].relMs : 0;
+    const slice = raw.map((entry) => ({
+      ...entry,
+      relMs: entry.relMs - offset,
+    }));
     const setup = this.setupSnapshot ?? {
       connect: { url: "", auth: { method: "bearer", token: "" } },
       config: {
