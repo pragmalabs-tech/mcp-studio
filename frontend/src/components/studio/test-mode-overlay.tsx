@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Square } from "lucide-react";
+import { Square, SkipForward, FastForward, Pause } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useStudioStore } from "@/lib/studio/store";
 import { runtime, type ProgressSnapshot } from "@/lib/replay/runtime";
@@ -59,6 +59,41 @@ export function TestModeOverlay() {
           </>
         )}
         <div className="flex-1" />
+        {snapshot?.mode === "step" ? (
+          <>
+            <span className="text-[10px] uppercase tracking-wider text-amber-400 font-semibold">
+              Step
+            </span>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => runtime.next()}
+              title="Run the next action"
+            >
+              <SkipForward className="h-3.5 w-3.5 mr-1.5" />
+              Next
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => runtime.setMode("auto")}
+              title="Switch to autoplay (no pauses)"
+            >
+              <FastForward className="h-3.5 w-3.5 mr-1.5" />
+              Resume auto
+            </Button>
+          </>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => runtime.setMode("step")}
+            title="Pause and step through manually"
+          >
+            <Pause className="h-3.5 w-3.5 mr-1.5" />
+            Pause
+          </Button>
+        )}
         <Button variant="destructive" size="sm" onClick={() => runtime.abort()}>
           <Square className="h-3.5 w-3.5 mr-1.5 fill-current" />
           Stop

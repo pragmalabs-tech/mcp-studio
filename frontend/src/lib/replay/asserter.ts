@@ -1,4 +1,5 @@
 import type { Action, ActionKind } from "@/lib/recorder/schema";
+import { KIND } from "@/lib/recorder/kinds";
 import type { DriveOutcome } from "./drivers/types";
 import type { AckResult, RenderCompleteResult } from "./bridge-client";
 
@@ -39,8 +40,8 @@ function ackPass(
 }
 
 const ASSERTERS: { [K in ActionKind]?: Asserter } = {
-  "mcp.request": (action, outcome, observation) => {
-    if (action.kind !== "mcp.request")
+  [KIND.MCP_REQUEST]: (action, outcome, observation) => {
+    if (action.kind !== KIND.MCP_REQUEST)
       return passThrough(action, outcome, observation);
     if (!outcome.ok) {
       return { status: "fail", reason: outcome.reason };
@@ -63,7 +64,7 @@ const ASSERTERS: { [K in ActionKind]?: Asserter } = {
       info: { method: action.method, durationMs: obs.durationMs },
     };
   },
-  "widget.render": (_a, outcome) => {
+  [KIND.WIDGET_RENDER]: (_a, outcome) => {
     if (!outcome.ok) {
       return { status: "fail", reason: outcome.reason };
     }
@@ -82,11 +83,11 @@ const ASSERTERS: { [K in ActionKind]?: Asserter } = {
       info: { bodyChars: r.bodyChars, renderDurationMs: r.renderDurationMs },
     };
   },
-  "widget.dom.click": (_a, outcome) => ackPass(outcome, true),
-  "widget.dom.input": (_a, outcome) => ackPass(outcome, false),
-  "widget.dom.change": (_a, outcome) => ackPass(outcome, true),
-  "widget.dom.submit": (_a, outcome) => ackPass(outcome, false),
-  "widget.dom.keydown": (_a, outcome) => ackPass(outcome, false),
+  [KIND.WIDGET_DOM_CLICK]: (_a, outcome) => ackPass(outcome, true),
+  [KIND.WIDGET_DOM_INPUT]: (_a, outcome) => ackPass(outcome, false),
+  [KIND.WIDGET_DOM_CHANGE]: (_a, outcome) => ackPass(outcome, true),
+  [KIND.WIDGET_DOM_SUBMIT]: (_a, outcome) => ackPass(outcome, false),
+  [KIND.WIDGET_DOM_KEYDOWN]: (_a, outcome) => ackPass(outcome, false),
 };
 
 export function assertFor(action: Action): Asserter {

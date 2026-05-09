@@ -1,5 +1,5 @@
 import type { Recorded } from "@/lib/recorder/schema";
-import type { RunResult, StepResult } from "./player";
+import type { RunMode, RunResult, StepResult } from "./player";
 
 export interface ProgressSnapshot {
   testName: string;
@@ -10,6 +10,7 @@ export interface ProgressSnapshot {
   lastStep?: StepResult;
   status: "running" | "done";
   result?: RunResult;
+  mode: RunMode;
 }
 
 type Listener = (snapshot: ProgressSnapshot | null) => void;
@@ -18,6 +19,8 @@ class Runtime {
   private snapshot: ProgressSnapshot | null = null;
   private listeners = new Set<Listener>();
   private abortFn: (() => void) | null = null;
+  private nextFn: (() => void) | null = null;
+  private setModeFn: ((mode: RunMode) => void) | null = null;
 
   get current(): ProgressSnapshot | null {
     return this.snapshot;
@@ -32,7 +35,12 @@ class Runtime {
     name: string,
     description: string | undefined,
     total: number,
-    abort: () => void,
+    initialMode: RunMode,
+    handlers: {
+      abort: () => void;
+      next: () => void;
+      setMode: (mode: RunMode) => void;
+    },
   ) {
     this.snapshot = {
       testName: name,
@@ -41,8 +49,11 @@ class Runtime {
       index: 0,
       current: null,
       status: "running",
+      mode: initialMode,
     };
-    this.abortFn = abort;
+    this.abortFn = handlers.abort;
+    this.nextFn = handlers.next;
+    this.setModeFn = handlers.setMode;
     this.notify();
   }
 
@@ -54,6 +65,8 @@ class Runtime {
 
   finish(result: RunResult) {
     this.abortFn = null;
+    this.nextFn = null;
+    this.setModeFn = null;
     this.snapshot = this.snapshot
       ? { ...this.snapshot, status: "done", result }
       : null;
@@ -64,11 +77,25 @@ class Runtime {
   clear() {
     this.snapshot = null;
     this.abortFn = null;
+    this.nextFn = null;
+    this.setModeFn = null;
     this.notify();
   }
 
   abort() {
     this.abortFn?.();
+  }
+
+  next() {
+    this.nextFn?.();
+  }
+
+  setMode(mode: RunMode) {
+    this.setModeFn?.(mode);
+    if (this.snapshot) {
+      this.snapshot = { ...this.snapshot, mode };
+      this.notify();
+    }
   }
 
   private notify() {

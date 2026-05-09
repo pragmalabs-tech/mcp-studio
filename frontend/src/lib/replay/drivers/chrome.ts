@@ -1,11 +1,12 @@
 import type { Action, ActionKind } from "@/lib/recorder/schema";
+import { KIND } from "@/lib/recorder/kinds";
 import type { Driver, DriverContext, DriveOutcome } from "./types";
 
 const KINDS: ActionKind[] = [
-  "config.update",
-  "auth.update",
-  "sidebar.select",
-  "editor.set_args",
+  KIND.CONFIG_UPDATE,
+  KIND.AUTH_UPDATE,
+  KIND.SIDEBAR_SELECT,
+  KIND.EDITOR_SET_ARGS,
 ];
 
 function applyConfig(

@@ -5,14 +5,18 @@ import {
   Download,
   Loader2,
   Play,
+  StepForward,
   Trash2,
   XIcon,
   RefreshCw,
+  EyeOff,
+  Eye,
 } from "lucide-react";
 import { Dialog, DialogOverlay, DialogPortal } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { listTests, getTest, deleteTest } from "@/lib/tests/api";
 import type { Recorded, Test, TestSummary } from "@/lib/recorder/schema";
+import { KIND, OBSERVATION_KINDS } from "@/lib/recorder/kinds";
 import { summarize } from "@/lib/recorder/summarize";
 import { useStudioStore } from "@/lib/studio/store";
 import { createPlayer } from "@/lib/replay/player";
@@ -42,24 +46,51 @@ function formatTime(ms: number): string {
   return new Date(ms).toLocaleString();
 }
 
+/** Render the test's action count, accounting for the visible filter.
+ *  Shows "X of Y actions" when filter is active and hides some, otherwise
+ *  the simple "Y actions". */
+function ActionCountLabel({
+  total,
+  visible,
+  hideObservations,
+  savedAt,
+}: {
+  total: number;
+  visible: number | null;
+  hideObservations: boolean;
+  savedAt: number;
+}) {
+  const showFraction =
+    hideObservations && visible !== null && visible !== total;
+  return (
+    <div className="text-[10px] text-muted-foreground mt-0.5">
+      {showFraction
+        ? `${visible} of ${total} actions visible`
+        : `${total} action${total === 1 ? "" : "s"}`}
+      {" · "}
+      saved {formatTime(savedAt)}
+    </div>
+  );
+}
+
 const KIND_COLOR: Record<string, string> = {
-  "sidebar.select": "text-sky-400",
-  "editor.set_args": "text-amber-400",
-  "config.update": "text-violet-400",
-  "auth.update": "text-violet-400",
-  "mcp.request": "text-emerald-400",
-  "mcp.response": "text-emerald-300/70",
-  "mcp.notification": "text-emerald-200/70",
-  "widget.render": "text-fuchsia-400",
-  "widget.render.complete": "text-fuchsia-300/70",
-  "widget.mock.set": "text-fuchsia-300",
-  "widget.intent": "text-pink-400",
-  "widget.dom.click": "text-orange-400",
-  "widget.dom.input": "text-orange-300",
-  "widget.dom.change": "text-orange-300",
-  "widget.dom.submit": "text-orange-400",
-  "widget.dom.keydown": "text-yellow-400",
-  "csp.violation": "text-red-400",
+  [KIND.SIDEBAR_SELECT]: "text-sky-400",
+  [KIND.EDITOR_SET_ARGS]: "text-amber-400",
+  [KIND.CONFIG_UPDATE]: "text-violet-400",
+  [KIND.AUTH_UPDATE]: "text-violet-400",
+  [KIND.MCP_REQUEST]: "text-emerald-400",
+  [KIND.MCP_RESPONSE]: "text-emerald-300/70",
+  [KIND.MCP_NOTIFICATION]: "text-emerald-200/70",
+  [KIND.WIDGET_RENDER]: "text-fuchsia-400",
+  [KIND.WIDGET_RENDER_COMPLETE]: "text-fuchsia-300/70",
+  [KIND.WIDGET_MOCK_SET]: "text-fuchsia-300",
+  [KIND.WIDGET_INTENT]: "text-pink-400",
+  [KIND.WIDGET_DOM_CLICK]: "text-orange-400",
+  [KIND.WIDGET_DOM_INPUT]: "text-orange-300",
+  [KIND.WIDGET_DOM_CHANGE]: "text-orange-300",
+  [KIND.WIDGET_DOM_SUBMIT]: "text-orange-400",
+  [KIND.WIDGET_DOM_KEYDOWN]: "text-yellow-400",
+  [KIND.CSP_VIOLATION]: "text-red-400",
 };
 
 function relMsLabel(ms: number): string {
@@ -67,17 +98,37 @@ function relMsLabel(ms: number): string {
   return `${(ms / 1000).toFixed(2).padStart(6, " ")}s`;
 }
 
-function ActionList({ timeline }: { timeline: Recorded[] }) {
-  if (timeline.length === 0) {
+/** True if `entry` is something the Player observes rather than drives.
+ *  Drives the "Inputs only" filter. Widget-source mcp.request counts as
+ *  an observation because the widget itself fires it as a side effect. */
+export function isObservation(entry: Recorded): boolean {
+  if (OBSERVATION_KINDS.has(entry.kind)) return true;
+  if (entry.kind === KIND.MCP_REQUEST && entry.source === "widget") return true;
+  return false;
+}
+
+function ActionList({
+  timeline,
+  hideObservations,
+}: {
+  timeline: Recorded[];
+  hideObservations: boolean;
+}) {
+  const visible = hideObservations
+    ? timeline.filter((e) => !isObservation(e))
+    : timeline;
+  if (visible.length === 0) {
     return (
       <p className="px-4 py-3 text-xs text-muted-foreground italic">
-        Empty timeline.
+        {timeline.length === 0
+          ? "Empty timeline."
+          : "All entries are observations — turn the filter off to see them."}
       </p>
     );
   }
   return (
     <div className="py-1">
-      {timeline.map((entry, i) => (
+      {visible.map((entry, i) => (
         <div
           key={i}
           className="px-4 py-1 text-[11px] font-mono flex items-center gap-2"
@@ -107,12 +158,16 @@ export function TestsPage({ open, onOpenChange }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyName, setBusyName] = useState<string | null>(null);
-  const [pendingRun, setPendingRun] = useState<Test | null>(null);
+  const [pendingRun, setPendingRun] = useState<{
+    test: Test;
+    mode: "auto" | "step";
+  } | null>(null);
   const [resultReport, setResultReport] = useState<ReplayReport | null>(null);
   const [resultOpen, setResultOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loadedTests, setLoadedTests] = useState<Record<string, Test>>({});
   const [loadingName, setLoadingName] = useState<string | null>(null);
+  const [hideObservations, setHideObservations] = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -182,7 +237,7 @@ export function TestsPage({ open, onOpenChange }: Props) {
     return test.session.timeline.some((e) => e.kind.startsWith("widget.dom."));
   }
 
-  async function startRun(test: Test) {
+  async function startRun(test: Test, mode: "auto" | "step" = "auto") {
     onOpenChange(false);
     const studio = useStudioStore.getState();
     const artifacts = createArtifactCollector();
@@ -192,12 +247,18 @@ export function TestsPage({ open, onOpenChange }: Props) {
       bridge: createBridgeClient(() => useStudioStore.getState()._iframeRef),
       drivers: [chromeDriver, mcpDriver, widgetDriver],
       artifacts,
+      mode,
     });
     runtime.begin(
       test.name,
       test.description,
       test.session.timeline.length,
-      () => player.abort(),
+      mode,
+      {
+        abort: () => player.abort(),
+        next: () => player.next(),
+        setMode: (m) => player.setMode(m),
+      },
     );
     try {
       const result = await player.run(test, (p) =>
@@ -250,16 +311,16 @@ export function TestsPage({ open, onOpenChange }: Props) {
     }
   }
 
-  async function handleRun(name: string) {
+  async function handleRun(name: string, mode: "auto" | "step" = "auto") {
     setBusyName(name);
     try {
       const test = await getTest(name);
       const studio = useStudioStore.getState();
       if (studio.strictMode && hasWidgetDom(test)) {
-        setPendingRun(test);
+        setPendingRun({ test, mode });
         return;
       }
-      await startRun(test);
+      await startRun(test, mode);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -283,6 +344,23 @@ export function TestsPage({ open, onOpenChange }: Props) {
               </span>
             </DialogPrimitive.Title>
             <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setHideObservations((v) => !v)}
+                title={
+                  hideObservations
+                    ? "Showing inputs only — click to also show observations (responses, render-completes, etc.)"
+                    : "Showing all actions — click to hide observations"
+                }
+              >
+                {hideObservations ? (
+                  <EyeOff className="h-3.5 w-3.5 mr-1.5" />
+                ) : (
+                  <Eye className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                {hideObservations ? "Inputs only" : "All actions"}
+              </Button>
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -344,12 +422,19 @@ export function TestsPage({ open, onOpenChange }: Props) {
                               {t.name}
                             </span>
                           </div>
-                          <div className="text-[10px] text-muted-foreground mt-0.5">
-                            {t.totalActions ?? 0} action
-                            {t.totalActions === 1 ? "" : "s"}
-                            {" · "}
-                            saved {formatTime(t.modifiedMs)}
-                          </div>
+                          <ActionCountLabel
+                            total={t.totalActions ?? 0}
+                            visible={
+                              loaded
+                                ? loaded.session.timeline.filter(
+                                    (e) =>
+                                      !hideObservations || !isObservation(e),
+                                  ).length
+                                : null
+                            }
+                            hideObservations={hideObservations}
+                            savedAt={t.modifiedMs}
+                          />
                           {t.description && (
                             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                               {t.description}
@@ -360,12 +445,22 @@ export function TestsPage({ open, onOpenChange }: Props) {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleRun(t.name)}
+                            onClick={() => handleRun(t.name, "auto")}
                             disabled={busyName === t.name}
-                            title="Replay this test"
+                            title="Replay this test (auto, ~150ms between steps)"
                           >
                             <Play className="h-3.5 w-3.5 mr-1.5" />
                             Run
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRun(t.name, "step")}
+                            disabled={busyName === t.name}
+                            title="Step through manually — pauses after each action"
+                          >
+                            <StepForward className="h-3.5 w-3.5 mr-1.5" />
+                            Step
                           </Button>
                           <Button
                             variant="ghost"
@@ -397,7 +492,10 @@ export function TestsPage({ open, onOpenChange }: Props) {
                           </div>
                         )}
                         {!isLoading && loaded && (
-                          <ActionList timeline={loaded.session.timeline} />
+                          <ActionList
+                            timeline={loaded.session.timeline}
+                            hideObservations={hideObservations}
+                          />
                         )}
                       </div>
                     )}
@@ -411,14 +509,14 @@ export function TestsPage({ open, onOpenChange }: Props) {
       {pendingRun && (
         <TestPreconditionDialog
           open={true}
-          testName={pendingRun.name}
+          testName={pendingRun.test.name}
           onCancel={() => setPendingRun(null)}
           onProceed={async () => {
-            const test = pendingRun;
+            const { test, mode } = pendingRun;
             setPendingRun(null);
             useStudioStore.getState().setStrictMode(false);
             await new Promise((r) => setTimeout(r, 100));
-            await startRun(test);
+            await startRun(test, mode);
           }}
         />
       )}

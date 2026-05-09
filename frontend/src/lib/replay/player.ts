@@ -41,9 +41,17 @@ export type ProgressListener = (progress: {
   step: StepResult;
 }) => void;
 
+export type RunMode = "auto" | "step";
+
 export interface Player {
   run(test: Test, onProgress?: ProgressListener): Promise<RunResult>;
   abort(): void;
+  /** Advance one step in step mode. No-op in auto mode. */
+  next(): void;
+  /** Switch between auto and step mid-run. In auto, any pending next() is
+   *  effectively unblocked since the next-step gate is bypassed. */
+  setMode(mode: RunMode): void;
+  getMode(): RunMode;
 }
 
 export interface PlayerDeps {
@@ -55,6 +63,10 @@ export interface PlayerDeps {
   /** Pause between steps (ms) — gives a human watching the replay time to
    *  follow what's happening. Default 150ms in UI mode. Set 0 for headless. */
   stepDelayMs?: number;
+  /** "auto" runs the whole timeline back-to-back with stepDelayMs between
+   *  steps. "step" blocks after each step until `player.next()` is called
+   *  (interactive debugger UX). Default "auto". */
+  mode?: RunMode;
 }
 
 function pickDriver(
@@ -139,10 +151,48 @@ function toStep(
 
 export function createPlayer(deps: PlayerDeps): Player {
   const controller = new AbortController();
+  let currentMode: RunMode = deps.mode ?? "auto";
+  let nextResolver: (() => void) | null = null;
+
+  function waitForNext(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      nextResolver = resolve;
+      controller.signal.addEventListener(
+        "abort",
+        () => {
+          if (nextResolver) {
+            nextResolver();
+            nextResolver = null;
+          }
+        },
+        { once: true },
+      );
+    });
+  }
+
+  function unblockNext() {
+    if (nextResolver) {
+      const r = nextResolver;
+      nextResolver = null;
+      r();
+    }
+  }
 
   return {
     abort() {
       controller.abort();
+      unblockNext();
+    },
+    next() {
+      unblockNext();
+    },
+    setMode(mode) {
+      currentMode = mode;
+      // Switching to auto unblocks the current pause so the run resumes.
+      if (mode === "auto") unblockNext();
+    },
+    getMode() {
+      return currentMode;
     },
     async run(test, onProgress) {
       const startedAt = new Date().toISOString();
@@ -271,19 +321,25 @@ export function createPlayer(deps: PlayerDeps): Player {
             current: recordedAction,
             step,
           });
-          const delay = deps.stepDelayMs ?? 150;
-          if (delay > 0 && i < test.session.timeline.length - 1) {
-            await new Promise<void>((r) => {
-              const t = setTimeout(r, delay);
-              controller.signal.addEventListener(
-                "abort",
-                () => {
-                  clearTimeout(t);
-                  r();
-                },
-                { once: true },
-              );
-            });
+          if (i < test.session.timeline.length - 1) {
+            if (currentMode === "step") {
+              await waitForNext();
+            } else {
+              const delay = deps.stepDelayMs ?? 150;
+              if (delay > 0) {
+                await new Promise<void>((r) => {
+                  const t = setTimeout(r, delay);
+                  controller.signal.addEventListener(
+                    "abort",
+                    () => {
+                      clearTimeout(t);
+                      r();
+                    },
+                    { once: true },
+                  );
+                });
+              }
+            }
           }
         }
       } finally {

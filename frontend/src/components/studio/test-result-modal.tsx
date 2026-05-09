@@ -7,6 +7,8 @@ import {
   CheckCircle2,
   XCircle,
   MinusCircle,
+  EyeOff,
+  Eye,
 } from "lucide-react";
 import { Dialog, DialogOverlay, DialogPortal } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -15,6 +17,7 @@ import { reportFilename } from "@/lib/replay/report";
 import type { StepResult } from "@/lib/replay/player";
 import { verbalize } from "@/lib/recorder/summarize";
 import type { PreviewArtifact } from "@/lib/replay/artifacts";
+import { isObservation } from "@/components/studio/tests-page";
 
 interface Props {
   report: ReplayReport | null;
@@ -212,6 +215,7 @@ export function TestResultModal({
 }: Props) {
   const [saving, setSaving] = useState(false);
   const [savedAs, setSavedAs] = useState<string | null>(null);
+  const [hideObservations, setHideObservations] = useState(true);
 
   if (!report) return null;
 
@@ -240,6 +244,11 @@ export function TestResultModal({
   }
 
   const { summary } = report;
+  const visibleSteps = report.steps.filter(
+    (s) => !hideObservations || !isObservation(s.action),
+  );
+  const showVisibleCount =
+    hideObservations && visibleSteps.length !== summary.total;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -292,11 +301,34 @@ export function TestResultModal({
               {summary.skipped} skip
             </span>
             <span className="text-muted-foreground font-mono">
-              · {summary.total} total · {report.durationMs.toFixed(0)}ms
+              ·{" "}
+              {showVisibleCount
+                ? `${visibleSteps.length} of ${summary.total} steps`
+                : `${summary.total} total`}
+              {" · "}
+              {report.durationMs.toFixed(0)}ms
             </span>
+            <div className="flex-1" />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setHideObservations((v) => !v)}
+              title={
+                hideObservations
+                  ? "Showing inputs only — click to also show observations"
+                  : "Showing all steps — click to hide observations"
+              }
+            >
+              {hideObservations ? (
+                <EyeOff className="h-3.5 w-3.5 mr-1.5" />
+              ) : (
+                <Eye className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              {hideObservations ? "Inputs only" : "All steps"}
+            </Button>
           </div>
           <div className="flex-1 overflow-y-auto min-h-0">
-            {report.steps.map((s) => (
+            {visibleSteps.map((s) => (
               <StepRow
                 key={s.index}
                 step={s}

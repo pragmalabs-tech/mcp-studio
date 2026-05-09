@@ -1,9 +1,10 @@
 import type { Action, ActionKind } from "@/lib/recorder/schema";
+import { KIND } from "@/lib/recorder/kinds";
 import type { Driver, DriveOutcome } from "./types";
 import { mcpCall } from "@/lib/studio/api";
 import { timeoutFor } from "@/lib/replay/timing";
 
-const KINDS: ActionKind[] = ["mcp.request"];
+const KINDS: ActionKind[] = [KIND.MCP_REQUEST];
 
 /**
  * Drives a recorded `mcp.request`. For `source: "user"` it issues the call
@@ -15,7 +16,7 @@ const KINDS: ActionKind[] = ["mcp.request"];
 export const mcpDriver: Driver<Action> = {
   kinds: KINDS,
   async drive(action, ctx): Promise<DriveOutcome> {
-    if (action.kind !== "mcp.request") {
+    if (action.kind !== KIND.MCP_REQUEST) {
       return { ok: false, reason: "wrong-kind", durationMs: 0 };
     }
 
@@ -50,8 +51,8 @@ export const mcpDriver: Driver<Action> = {
         // chain; if we awaited the listener creation first we'd race past
         // the emission and time out.
         const responsePromise = ctx.onObservation(
-          (e) => e.kind === "mcp.response",
-          timeoutFor("mcp.request"),
+          (e) => e.kind === KIND.MCP_RESPONSE,
+          timeoutFor(KIND.MCP_REQUEST),
         );
         await ctx.store.execute();
         observation = await responsePromise;

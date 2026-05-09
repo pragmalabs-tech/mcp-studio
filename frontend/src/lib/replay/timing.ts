@@ -1,15 +1,16 @@
 import type { ActionKind } from "@/lib/recorder/schema";
+import { KIND } from "@/lib/recorder/kinds";
 
 /** Per-kind timeout (ms) for the natural follow-up observation. */
 export const TIMEOUTS: Partial<Record<ActionKind, number>> = {
-  "mcp.request": 10_000,
-  "widget.render": 5_000,
-  "widget.dom.click": 2_000,
-  "widget.dom.input": 1_500,
-  "widget.dom.change": 1_500,
-  "widget.dom.submit": 3_000,
-  "widget.dom.keydown": 500,
-  "widget.intent": 2_000,
+  [KIND.MCP_REQUEST]: 10_000,
+  [KIND.WIDGET_RENDER]: 5_000,
+  [KIND.WIDGET_DOM_CLICK]: 2_000,
+  [KIND.WIDGET_DOM_INPUT]: 1_500,
+  [KIND.WIDGET_DOM_CHANGE]: 1_500,
+  [KIND.WIDGET_DOM_SUBMIT]: 3_000,
+  [KIND.WIDGET_DOM_KEYDOWN]: 500,
+  [KIND.WIDGET_INTENT]: 2_000,
 };
 
 export const DEFAULT_TIMEOUT = 1_000;

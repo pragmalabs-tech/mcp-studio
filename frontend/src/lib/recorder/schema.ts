@@ -1,3 +1,5 @@
+import { ALL_KINDS } from "./kinds";
+
 export const SCHEMA_VERSION = 1 as const;
 
 export type Source = "user" | "widget";
@@ -158,25 +160,8 @@ export interface TestSummary {
 
 export const REDACTED_TOKEN = "<<from-env>>" as const;
 
-const ALLOWED_KINDS: ReadonlySet<ActionKind> = new Set<ActionKind>([
-  "sidebar.select",
-  "editor.set_args",
-  "config.update",
-  "auth.update",
-  "mcp.request",
-  "mcp.response",
-  "mcp.notification",
-  "widget.render",
-  "widget.mock.set",
-  "widget.intent",
-  "widget.dom.click",
-  "widget.dom.input",
-  "widget.dom.change",
-  "widget.dom.submit",
-  "widget.dom.keydown",
-  "widget.render.complete",
-  "csp.violation",
-]);
+/** Allowed kinds — sourced from ./kinds.ts (single source of truth). */
+const ALLOWED_KINDS: ReadonlySet<ActionKind> = new Set<ActionKind>(ALL_KINDS);
 
 export function isKnownActionKind(kind: string): kind is ActionKind {
   return ALLOWED_KINDS.has(kind as ActionKind);
