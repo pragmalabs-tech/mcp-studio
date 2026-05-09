@@ -233,4 +233,209 @@
       );
     })(TYPES[i]);
   }
+
+  // ── Inbound replay channel + render lifecycle ────────────────────────────
+
+  window.__mcprBridgeErrors = 0;
+  window.addEventListener("error", function () {
+    window.__mcprBridgeErrors++;
+  });
+
+  function findByText(root, tag, value) {
+    var list = root.querySelectorAll(tag);
+    for (var i = 0; i < list.length; i++) {
+      var t = (list[i].textContent || "").trim().replace(/\s+/g, " ");
+      if (t === value) return list[i];
+    }
+    return null;
+  }
+
+  function escapeAttr(value) {
+    return String(value).replace(/(["\\])/g, "\\$1");
+  }
+
+  function resolveSelectorChain(root, chain) {
+    if (!chain) return null;
+    if (chain.testid) {
+      var el = root.querySelector(
+        '[data-testid="' + escapeAttr(chain.testid) + '"]',
+      );
+      if (el) return el;
+    }
+    if (chain.aria && chain.aria.label) {
+      var sel = chain.aria.role
+        ? '[aria-label="' +
+          escapeAttr(chain.aria.label) +
+          '"][role="' +
+          escapeAttr(chain.aria.role) +
+          '"]'
+        : '[aria-label="' + escapeAttr(chain.aria.label) + '"]';
+      var el2 = root.querySelector(sel);
+      if (el2) return el2;
+    }
+    if (chain.text) {
+      var el3 = findByText(root, chain.text.tag, chain.text.value);
+      if (el3) return el3;
+    }
+    if (chain.css) {
+      try {
+        var el4 = root.querySelector(chain.css);
+        if (el4) return el4;
+      } catch (e) {}
+    }
+    if (chain.xpath && root.evaluate) {
+      try {
+        var r = root.evaluate(chain.xpath, root, null, 9, null);
+        if (r && r.singleNodeValue && r.singleNodeValue.nodeType === 1) {
+          return r.singleNodeValue;
+        }
+      } catch (e) {}
+    }
+    return null;
+  }
+
+  function dispatchSynthetic(el, action) {
+    var kind = action.kind;
+    if (kind === "widget.dom.click") {
+      el.dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+        }),
+      );
+      return;
+    }
+    if (kind === "widget.dom.input" || kind === "widget.dom.change") {
+      try {
+        el.focus();
+        var setter = Object.getOwnPropertyDescriptor(
+          Object.getPrototypeOf(el),
+          "value",
+        );
+        if (setter && setter.set) setter.set.call(el, action.value);
+        else el.value = action.value;
+      } catch (e) {
+        try {
+          el.value = action.value;
+        } catch (e2) {}
+      }
+      el.dispatchEvent(
+        new Event(kind === "widget.dom.input" ? "input" : "change", {
+          bubbles: true,
+        }),
+      );
+      return;
+    }
+    if (kind === "widget.dom.submit") {
+      // Prefer dispatching submit on the form; falls back to the element
+      var form = el.tagName === "FORM" ? el : el.closest && el.closest("form");
+      if (form) {
+        form.dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+      } else {
+        el.dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+      }
+      return;
+    }
+    if (kind === "widget.dom.keydown") {
+      var mods = action.mods || 0;
+      el.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: action.key,
+          code: action.code,
+          bubbles: true,
+          cancelable: true,
+          shiftKey: !!(mods & 1),
+          ctrlKey: !!(mods & 2),
+          altKey: !!(mods & 4),
+          metaKey: !!(mods & 8),
+        }),
+      );
+      return;
+    }
+  }
+
+  function ack(id, payload) {
+    payload.op = "ack";
+    payload.id = id;
+    post(payload);
+  }
+
+  window.addEventListener("message", function (e) {
+    var m = e.data;
+    if (!m || m.__recorder !== true) return;
+
+    if (m.op === "dispatch") {
+      var el = resolveSelectorChain(document, m.action && m.action.selectors);
+      if (!el) {
+        ack(m.id, { ok: false, reason: "selector-miss" });
+        return;
+      }
+      var before = digest(document.body);
+      try {
+        dispatchSynthetic(el, m.action);
+      } catch (err) {
+        ack(m.id, {
+          ok: false,
+          reason: "dispatch-error: " + (err && err.message),
+        });
+        return;
+      }
+      settle(function () {
+        ack(m.id, { ok: true, mutated: digest(document.body) !== before });
+      });
+      return;
+    }
+
+    if (m.op === "ping") {
+      ack(m.id, { ok: true });
+      return;
+    }
+
+    if (m.op === "snapshot") {
+      try {
+        post({
+          op: "snapshot.result",
+          id: m.id,
+          html: document.documentElement
+            ? document.documentElement.outerHTML
+            : "",
+          errors: [],
+        });
+      } catch (err) {
+        post({
+          op: "snapshot.result",
+          id: m.id,
+          html: "",
+          errors: [String(err && err.message)],
+        });
+      }
+      return;
+    }
+  });
+
+  // Emit render.complete after first paint settles. Used by the player to
+  // know the iframe is interactive. Handshake flag is set by mock-claude
+  // when ui/initialize round-trips.
+  var bootStart =
+    performance && performance.now ? performance.now() : Date.now();
+  window.addEventListener("load", function () {
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        var nowFn =
+          performance && performance.now ? performance.now() : Date.now();
+        post({
+          op: "render.complete",
+          bodyChars: document.body ? document.body.innerHTML.length : 0,
+          hasRuntimeErrors: (window.__mcprBridgeErrors || 0) > 0,
+          handshakeOk: window.__mcprBridgeHandshakeOk === true,
+          renderDurationMs: nowFn - bootStart,
+        });
+      });
+    });
+  });
 })();

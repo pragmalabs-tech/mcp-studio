@@ -4,7 +4,10 @@ mod cloud;
 mod config;
 mod forwarding;
 mod proxy;
+mod reports_api;
 mod server;
+mod storage;
+mod tests_api;
 mod tunnel;
 
 use std::sync::Arc;

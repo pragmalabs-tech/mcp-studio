@@ -5,7 +5,9 @@ import { Dialog, DialogOverlay, DialogPortal } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { recorder } from "@/lib/recorder/bus";
 import { downloadSession } from "@/lib/recorder/export";
+import { summarize } from "@/lib/recorder/summarize";
 import type { Recorded } from "@/lib/recorder/schema";
+import { useStudioStore } from "@/lib/studio/store";
 
 interface Props {
   open: boolean;
@@ -36,63 +38,34 @@ function formatRelMs(ms: number): string {
   return `${(ms / 1000).toFixed(2).padStart(6, " ")}s`;
 }
 
-function summarize(entry: Recorded): string {
-  switch (entry.kind) {
-    case "sidebar.select":
-      return `${entry.selection.type}:${entry.selection.name}`;
-    case "config.update":
-      return Object.keys(entry.patch).join(", ");
-    case "auth.update":
-      return entry.patch.method ?? "(token)";
-    case "mcp.request":
-      return `${entry.method} (${entry.source}) #${entry.id}`;
-    case "mcp.response":
-      return entry.error
-        ? `#${entry.requestId} error: ${entry.error.message}`
-        : `#${entry.requestId} ok (${entry.durationMs.toFixed(0)}ms)`;
-    case "mcp.notification":
-      return entry.method;
-    case "widget.render":
-      return `${entry.name} (${entry.htmlHash})`;
-    case "widget.intent":
-      return entry.name;
-    case "widget.dom.click":
-    case "widget.dom.submit":
-      return selectorBrief(entry.selectors);
-    case "widget.dom.input":
-    case "widget.dom.change":
-      return `${selectorBrief(entry.selectors)} = ${JSON.stringify(entry.value)}`;
-    case "widget.dom.keydown":
-      return `${selectorBrief(entry.selectors)} ${entry.key}${
-        entry.mods ? ` mods=${entry.mods}` : ""
-      }`;
-    case "csp.violation":
-      return `${entry.directive} ← ${entry.blockedUri}`;
-    default:
-      return "";
-  }
-}
-
-function selectorBrief(s: {
-  testid?: string;
-  aria?: { label?: string };
-  text?: { tag: string; value: string };
-  css?: string;
-}): string {
-  if (s.testid) return `[testid=${s.testid}]`;
-  if (s.aria?.label) return `[aria=${s.aria.label}]`;
-  if (s.text) return `${s.text.tag}:"${s.text.value}"`;
-  if (s.css) return s.css;
-  return "(unresolved)";
-}
-
-function HistoryRow({ entry, index }: { entry: Recorded; index: number }) {
+function HistoryRow({
+  entry,
+  index,
+  inSlice,
+  isStart,
+  isEnd,
+}: {
+  entry: Recorded;
+  index: number;
+  inSlice: boolean;
+  isStart: boolean;
+  isEnd: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const color = KIND_COLOR[entry.kind] ?? "text-muted-foreground";
   const summary = summarize(entry);
+  const gutter = isStart
+    ? "border-l-2 border-l-emerald-500"
+    : isEnd
+      ? "border-l-2 border-l-rose-500"
+      : inSlice
+        ? "border-l-2 border-l-emerald-500/40"
+        : "border-l-2 border-l-transparent";
   return (
     <div
-      className="px-3 py-1 text-xs font-mono border-b border-border/30 hover:bg-secondary/30 cursor-pointer"
+      className={`px-3 py-1 text-xs font-mono border-b border-border/30 hover:bg-secondary/30 cursor-pointer ${gutter} ${
+        inSlice ? "bg-emerald-500/5" : ""
+      }`}
       onClick={() => setOpen((v) => !v)}
     >
       <div className="flex items-center gap-2">
@@ -121,6 +94,7 @@ function HistoryRow({ entry, index }: { entry: Recorded; index: number }) {
 
 export function RecordingHistoryDialog({ open, onOpenChange }: Props) {
   const [entries, setEntries] = useState<Recorded[]>(() => recorder.snapshot());
+  const slicingState = useStudioStore((s) => s.slicingState);
 
   useEffect(() => {
     if (!open) return;
@@ -137,6 +111,10 @@ export function RecordingHistoryDialog({ open, onOpenChange }: Props) {
     };
   }, [open]);
 
+  const sliceStart = slicingState?.startIndex ?? null;
+  const sliceActive = sliceStart !== null;
+  const liveEnd = entries.length;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
@@ -151,6 +129,11 @@ export function RecordingHistoryDialog({ open, onOpenChange }: Props) {
               <span className="text-xs font-normal text-muted-foreground shrink-0">
                 {entries.length}
               </span>
+              {sliceActive && (
+                <span className="text-[10px] text-emerald-400 font-mono">
+                  recording test · {liveEnd - (sliceStart ?? 0)} actions so far
+                </span>
+              )}
             </DialogPrimitive.Title>
             <div className="flex items-center gap-1 shrink-0">
               <Button
@@ -178,7 +161,19 @@ export function RecordingHistoryDialog({ open, onOpenChange }: Props) {
                 execute, click inside the widget) and entries will appear here.
               </p>
             ) : (
-              entries.map((e, i) => <HistoryRow key={i} entry={e} index={i} />)
+              entries.map((e, i) => {
+                const inSlice = sliceStart !== null && i >= sliceStart;
+                return (
+                  <HistoryRow
+                    key={i}
+                    entry={e}
+                    index={i}
+                    inSlice={inSlice}
+                    isStart={sliceStart !== null && i === sliceStart}
+                    isEnd={false}
+                  />
+                );
+              })
             )}
           </div>
         </DialogPrimitive.Popup>

@@ -138,6 +138,26 @@ describe("attachInstrumentation", () => {
     recorder.stop();
   });
 
+  it("suppresses emission while studioMode === 'test'", () => {
+    const store = new FakeStore(baseState({ studioMode: "test" }));
+    const { detach } = attachInstrumentation(store, collect);
+    recorder.start({
+      connect: { url: "", auth: { method: "bearer", token: "" } },
+      config: {
+        platform: "claude",
+        theme: "dark",
+        displayMode: "inline",
+        locale: "en-US",
+        viewport: { preset: "desktop" },
+        strictMode: false,
+      },
+    });
+    store.setState({ platform: "openai" });
+    expect(captured).toEqual([]);
+    detach();
+    recorder.stop();
+  });
+
   it("ignores non-whitelisted state changes", () => {
     const store = new FakeStore(baseState());
     const { detach } = attachInstrumentation(store, collect);

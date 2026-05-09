@@ -125,4 +125,73 @@ describe("Recorder bus", () => {
     const session = recorder.stop();
     expect(session.widget).toBeUndefined();
   });
+
+  it("markIndex returns the live buffer length", () => {
+    recorder.start({ connect, config });
+    expect(recorder.markIndex()).toBe(0);
+    recorder.emit({
+      kind: "sidebar.select",
+      selection: { type: "tool", name: "a" },
+    });
+    recorder.emit({
+      kind: "sidebar.select",
+      selection: { type: "tool", name: "b" },
+    });
+    expect(recorder.markIndex()).toBe(2);
+  });
+
+  it("serializeRange returns a Session over [start, end)", () => {
+    recorder.start({ connect, config });
+    recorder.emit({
+      kind: "sidebar.select",
+      selection: { type: "tool", name: "a" },
+    });
+    const start = recorder.markIndex();
+    recorder.emit({
+      kind: "sidebar.select",
+      selection: { type: "tool", name: "b" },
+    });
+    recorder.emit({
+      kind: "sidebar.select",
+      selection: { type: "tool", name: "c" },
+    });
+    const end = recorder.markIndex();
+    recorder.emit({
+      kind: "sidebar.select",
+      selection: { type: "tool", name: "d" },
+    });
+
+    const session = recorder.serializeRange(start, end);
+    expect(session.timeline).toHaveLength(2);
+    if (session.timeline[0].kind === "sidebar.select") {
+      expect(session.timeline[0].selection.name).toBe("b");
+    }
+    if (session.timeline[1].kind === "sidebar.select") {
+      expect(session.timeline[1].selection.name).toBe("c");
+    }
+  });
+
+  it("serializeRange clamps out-of-range indices", () => {
+    recorder.start({ connect, config });
+    recorder.emit({
+      kind: "sidebar.select",
+      selection: { type: "tool", name: "a" },
+    });
+    const session = recorder.serializeRange(-5, 999);
+    expect(session.timeline).toHaveLength(1);
+  });
+
+  it("serializeRange with end omitted slices to the end of the buffer", () => {
+    recorder.start({ connect, config });
+    recorder.emit({
+      kind: "sidebar.select",
+      selection: { type: "tool", name: "a" },
+    });
+    recorder.emit({
+      kind: "sidebar.select",
+      selection: { type: "tool", name: "b" },
+    });
+    const session = recorder.serializeRange(1);
+    expect(session.timeline).toHaveLength(1);
+  });
 });

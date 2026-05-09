@@ -62,6 +62,7 @@ function redactRecorded(entry: Recorded): Recorded {
 
 class Recorder {
   private _mode: Mode = "idle";
+  private _suspended = false;
   private startedAt = 0;
   private buffer: Recorded[] = [];
   private setupSnapshot: { connect: SetupConnect; config: SetupConfig } | null =
@@ -77,6 +78,11 @@ class Recorder {
   /** Returns a snapshot copy of the current timeline buffer. */
   snapshot(): Recorded[] {
     return this.buffer.slice();
+  }
+
+  /** Index into the live buffer — use as start/end markers when slicing. */
+  markIndex(): number {
+    return this.buffer.length;
   }
 
   subscribe(listener: Listener): () => void {
@@ -107,13 +113,65 @@ class Recorder {
     if (this._mode !== "recording") return;
     const relMs = nowMs() - this.startedAt;
     const entry = { relMs, ...action } as Recorded;
-    this.buffer.push(entry);
+    // Suspended (i.e., the Player is replaying): skip persisting to the
+    // buffer so player-driven actions don't pollute the live timeline, but
+    // still notify listeners so the Player can observe responses / acks /
+    // render-completes via the same channel as during recording.
+    if (!this._suspended) {
+      this.buffer.push(entry);
+    }
     for (const l of this.emitListeners) l(entry);
+  }
+
+  /** Pause buffer persistence without resetting state. Listeners still fire. */
+  suspend(): void {
+    this._suspended = true;
+  }
+
+  resume(): void {
+    this._suspended = false;
   }
 
   setWidget(widget: SessionWidget): void {
     if (this._mode !== "recording") return;
     this.widgetSnapshot = widget;
+  }
+
+  /**
+   * Build a Session over a slice `[startIndex, endIndex)` of the buffer.
+   * `endIndex` defaults to the current buffer length. Setup snapshot is the
+   * current one — for v1 we accept that setup mutations mid-session won't be
+   * reflected per slice; users can re-mark a slice if needed.
+   */
+  serializeRange(startIndex: number, endIndex?: number): Session {
+    const start = Math.max(0, Math.min(startIndex, this.buffer.length));
+    const end = Math.max(
+      start,
+      Math.min(endIndex ?? this.buffer.length, this.buffer.length),
+    );
+    const slice = this.buffer.slice(start, end).map(redactRecorded);
+    const setup = this.setupSnapshot ?? {
+      connect: { url: "", auth: { method: "bearer", token: "" } },
+      config: {
+        platform: "claude",
+        theme: "light",
+        displayMode: "inline",
+        locale: "en-US",
+        viewport: { preset: "desktop" },
+        strictMode: false,
+      },
+    };
+    return {
+      version: SCHEMA_VERSION,
+      capturedAt: new Date().toISOString(),
+      studioVersion: STUDIO_VERSION,
+      setup: {
+        connect: redactSetupConnect(setup.connect),
+        config: setup.config,
+      },
+      ...(this.widgetSnapshot ? { widget: this.widgetSnapshot } : {}),
+      timeline: slice,
+    };
   }
 
   /**

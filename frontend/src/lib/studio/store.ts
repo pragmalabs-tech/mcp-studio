@@ -420,6 +420,20 @@ interface StudioState {
 
   // Studio UI
   studioTheme: "light" | "dark";
+  /**
+   * "test" while a recorded test is being replayed by the Player.
+   * UI components observe this to render the blocking overlay.
+   * Recorder instrumentation pauses emission so the player's actions don't
+   * pollute the live timeline.
+   */
+  studioMode: "normal" | "test";
+  /**
+   * Marker for an in-progress test slice. `startIndex` is the recorder
+   * buffer position where "Record Test" was clicked. The Save modal opens
+   * with `[startIndex, recorder.markIndex())` when the user clicks Stop.
+   * Null when no slice is in progress.
+   */
+  slicingState: { startIndex: number; startedAt: string } | null;
 
   // Widget config
   platform: Platform;
@@ -476,6 +490,10 @@ interface StudioState {
   select: (item: SelectedItem) => void;
   setEditorValue: (value: string) => void;
   setStudioTheme: (t: "light" | "dark") => void;
+  setStudioMode: (mode: "normal" | "test") => void;
+  setSlicingState: (
+    state: { startIndex: number; startedAt: string } | null,
+  ) => void;
   setPlatform: (p: Platform) => void;
   setTheme: (t: string) => void;
   setLocale: (l: string) => void;
@@ -578,6 +596,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     document.documentElement.classList.add("dark");
     return "dark" as "light" | "dark";
   })(),
+  studioMode: "normal" as "normal" | "test",
+  slicingState: null as { startIndex: number; startedAt: string } | null,
 
   // Widget config
   platform: "openai",
@@ -1014,6 +1034,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     set({ studioTheme: t });
     document.documentElement.classList.toggle("dark", t === "dark");
   },
+  setStudioMode: (mode) => set({ studioMode: mode }),
+  setSlicingState: (state) => set({ slicingState: state }),
   setPlatform: (p) => {
     set({ platform: p });
     setTimeout(() => get().loadWidget(), 50);

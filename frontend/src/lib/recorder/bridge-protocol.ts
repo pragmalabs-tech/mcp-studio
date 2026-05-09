@@ -1,8 +1,12 @@
-import type { SelectorChain } from "./schema";
+import type { SelectorChain, WidgetDomAction } from "./schema";
 
 export const BRIDGE_MARK = "__recorder" as const;
 
-export type BridgeMessage =
+/**
+ * Outbound: legacy capture events (no `op` tag, distinguished by `kind`).
+ * Kept untagged so existing recorder bridge versions keep working.
+ */
+export type BridgeCaptureMessage =
   | {
       __recorder: true;
       kind: "widget.dom.click";
@@ -40,11 +44,56 @@ export type BridgeMessage =
       mutated: boolean;
     };
 
+/** Outbound: render-complete + ack + snapshot.result (op-tagged). */
+export type BridgeOutboundOp =
+  | {
+      __recorder: true;
+      op: "render.complete";
+      bodyChars: number;
+      hasRuntimeErrors: boolean;
+      handshakeOk: boolean;
+      renderDurationMs: number;
+    }
+  | {
+      __recorder: true;
+      op: "ack";
+      id: number;
+      ok: boolean;
+      mutated?: boolean;
+      reason?: string;
+    }
+  | {
+      __recorder: true;
+      op: "snapshot.result";
+      id: number;
+      html: string;
+      errors: string[];
+    };
+
+/** Inbound: host → iframe replay commands. */
+export type BridgeInboundOp =
+  | { __recorder: true; op: "dispatch"; id: number; action: WidgetDomAction }
+  | { __recorder: true; op: "ping"; id: number }
+  | { __recorder: true; op: "snapshot"; id: number };
+
+export type BridgeMessage =
+  | BridgeCaptureMessage
+  | BridgeOutboundOp
+  | BridgeInboundOp;
+
 export function isBridgeMessage(value: unknown): value is BridgeMessage {
   return (
     !!value &&
     typeof value === "object" &&
-    (value as { [k: string]: unknown })[BRIDGE_MARK] === true &&
-    typeof (value as { kind?: unknown }).kind === "string"
+    (value as { [k: string]: unknown })[BRIDGE_MARK] === true
+  );
+}
+
+/** Outbound capture event (the legacy non-op case). */
+export function isCaptureMessage(
+  value: BridgeMessage,
+): value is BridgeCaptureMessage {
+  return (
+    !("op" in value) && typeof (value as { kind?: unknown }).kind === "string"
   );
 }

@@ -89,11 +89,31 @@ export type Action =
       mods: number;
     }
   | {
+      kind: "widget.render.complete";
+      bodyChars: number;
+      hasRuntimeErrors: boolean;
+      handshakeOk: boolean;
+      renderDurationMs: number;
+    }
+  | {
       kind: "csp.violation";
       directive: string;
       blockedUri: string;
       severity: string;
     };
+
+/** Subset of Action kinds the widget bridge can dispatch (host → iframe). */
+export type WidgetDomAction = Extract<
+  Action,
+  {
+    kind:
+      | "widget.dom.click"
+      | "widget.dom.input"
+      | "widget.dom.change"
+      | "widget.dom.submit"
+      | "widget.dom.keydown";
+  }
+>;
 
 export type ActionKind = Action["kind"];
 
@@ -114,6 +134,28 @@ export interface Session {
   timeline: Recorded[];
 }
 
+/** A user-saved test wrapping a Session slice with metadata. */
+export interface Test {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: string;
+  session: Session;
+}
+
+/** Catalog summary returned by `GET /api/studio/tests`. */
+export interface TestSummary {
+  /** Filename slug (matches the URL path component). */
+  name: string;
+  /** Human-friendly name lifted from the file body, when present. */
+  displayName?: string;
+  description?: string;
+  createdAt?: string;
+  totalActions?: number;
+  size: number;
+  modifiedMs: number;
+}
+
 export const REDACTED_TOKEN = "<<from-env>>" as const;
 
 const ALLOWED_KINDS: ReadonlySet<ActionKind> = new Set<ActionKind>([
@@ -132,6 +174,7 @@ const ALLOWED_KINDS: ReadonlySet<ActionKind> = new Set<ActionKind>([
   "widget.dom.change",
   "widget.dom.submit",
   "widget.dom.keydown",
+  "widget.render.complete",
   "csp.violation",
 ]);
 

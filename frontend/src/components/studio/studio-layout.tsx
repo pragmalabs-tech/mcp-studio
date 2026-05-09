@@ -12,6 +12,7 @@ import { ResizableSplit } from "@/components/studio/resizable-split";
 import { TopHeader } from "@/components/studio/top-header";
 import { SignInDialog } from "@/components/studio/sign-in-dialog";
 import { PublishDialog } from "@/components/studio/publish-dialog";
+import { TestModeOverlay } from "@/components/studio/test-mode-overlay";
 import { Badge } from "@/components/ui/badge";
 
 type BottomTab = "logs" | "csp" | "oauth";
@@ -53,6 +54,7 @@ export function StudioLayout() {
   return (
     <div className="h-screen flex flex-col">
       <TopHeader />
+      <TestModeOverlay />
       <SignInDialog />
       <PublishDialog />
       <div className="flex-1 flex min-h-0">

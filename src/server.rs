@@ -15,6 +15,8 @@ use tracing::Span;
 use crate::action_log;
 use crate::cloud::{self, CloudClient};
 use crate::config::{self, AuthConfig, Config, TunnelConfig};
+use crate::reports_api;
+use crate::tests_api;
 use crate::tunnel::{TunnelInfo, TunnelState};
 
 #[derive(Clone)]
@@ -35,6 +37,18 @@ pub fn router(state: AppState) -> Router {
         .route("/api/tunnel/start", post(tunnel_start))
         .route("/api/tunnel/events", get(tunnel_events))
         .route("/api/tunnel/endpoints", get(tunnel_endpoints))
+        .route("/api/studio/tests", get(tests_api::list_tests))
+        .route(
+            "/api/studio/tests/{name}",
+            get(tests_api::get_test)
+                .put(tests_api::put_test)
+                .delete(tests_api::delete_test),
+        )
+        .route("/api/studio/reports", get(reports_api::list_reports))
+        .route(
+            "/api/studio/reports/{name}",
+            get(reports_api::get_report).put(reports_api::put_report),
+        )
         .with_state(state)
         .fallback(crate::assets::handler)
         .layer(
@@ -266,11 +280,15 @@ async fn tunnel_events(
 // ── error type ─────────────────────────────────────────────────────────────
 
 #[derive(thiserror::Error, Debug)]
-enum AppError {
+pub enum AppError {
     #[error("unauthorized")]
     Unauthorized,
     #[error("cloud: {0}")]
     Cloud(#[from] cloud::CloudError),
+    #[error("not found: {0}")]
+    NotFound(String),
+    #[error("bad request: {0}")]
+    BadRequest(String),
     #[error("internal: {0}")]
     Internal(String),
 }
@@ -284,6 +302,8 @@ impl IntoResponse for AppError {
                 message.clone(),
             ),
             AppError::Cloud(e) => (StatusCode::BAD_GATEWAY, e.to_string()),
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
+            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             AppError::Internal(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.clone()),
         };
         if status.is_server_error() {

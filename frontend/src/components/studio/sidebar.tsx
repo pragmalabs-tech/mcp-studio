@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useStudioStore } from "@/lib/studio/store";
 import type { SelectedItem } from "@/lib/studio/store";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { AuthPanel } from "./auth-panel";
-import { LayoutDashboard } from "lucide-react";
 
 function displayName(name: string) {
   return name.replace(/_/g, " ");
@@ -20,6 +21,8 @@ export function Sidebar() {
     loadAll,
     select,
   } = useStudioStore();
+  const studioTheme = useStudioStore((s) => s.studioTheme);
+  const setStudioTheme = useStudioStore((s) => s.setStudioTheme);
 
   const [filter, setFilter] = useState("");
   const [sections, setSections] = useState({
@@ -195,24 +198,32 @@ export function Sidebar() {
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t shrink-0 text-[10px] text-muted-foreground space-y-2">
-        <a
-          href="/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 hover:text-foreground transition-colors"
-        >
-          <LayoutDashboard className="size-3" />
-          Dashboard
-        </a>
+      <div className="px-4 py-3 border-t shrink-0 text-[10px] text-muted-foreground flex items-center justify-between gap-2">
         <a
           href="https://pragmalabs.tech/studio"
           target="_blank"
           rel="noopener noreferrer"
-          className="hover:text-foreground transition-colors"
+          className="hover:text-foreground transition-colors truncate"
         >
           pragmalabs.tech/studio
         </a>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Switch
+            size="sm"
+            checked={studioTheme === "dark"}
+            onCheckedChange={(checked) =>
+              setStudioTheme(checked ? "dark" : "light")
+            }
+          />
+          <Label
+            className="text-[10px] text-muted-foreground cursor-pointer"
+            onClick={() =>
+              setStudioTheme(studioTheme === "dark" ? "light" : "dark")
+            }
+          >
+            Dark
+          </Label>
+        </div>
       </div>
     </div>
   );

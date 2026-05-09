@@ -45,6 +45,7 @@ describe("isKnownActionKind", () => {
       "widget.dom.change",
       "widget.dom.submit",
       "widget.dom.keydown",
+      "widget.render.complete",
       "csp.violation",
     ]) {
       expect(isKnownActionKind(kind)).toBe(true);

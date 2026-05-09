@@ -35,6 +35,9 @@ export interface RecordableState {
     | { type: "widget"; name: string }
     | null;
   editorValue: string;
+  /** "test" while the Player is replaying — instrumentation pauses to avoid
+   *  re-capturing player-driven setters into the live timeline. */
+  studioMode?: "normal" | "test";
 }
 
 const EDITOR_DEBOUNCE_MS = 300;
@@ -196,6 +199,9 @@ export function attachInstrumentation<T extends RecordableState>(
 
   const unsubscribe = store.subscribe((state, prev) => {
     if (recorder.mode !== "recording") return;
+    // While the Player drives the store, suppress emission so player-driven
+    // setters don't pollute the live timeline with synthetic actions.
+    if (state.studioMode === "test") return;
 
     const cfgPatch = diffConfig(configFrom(prev), configFrom(state));
     if (cfgPatch) emit({ kind: "config.update", patch: cfgPatch });

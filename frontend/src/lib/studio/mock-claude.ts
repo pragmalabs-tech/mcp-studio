@@ -77,11 +77,24 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
     if (event.source !== iframe.contentWindow) return;
     const msg = event.data;
 
-    // Recorder bridge messages bypass JSON-RPC dispatch and go straight to
-    // the recorder bus. The bridge only runs while recording, but check the
-    // recorder mode anyway so a stray message from a hostile widget can't
-    // pollute a stopped session.
+    // Recorder bridge messages bypass JSON-RPC dispatch. Capture events feed
+    // the recorder bus; ack / snapshot.result are claimed by the host-side
+    // BridgeClient and ignored here. render.complete is forwarded to the bus
+    // so it appears in the timeline as an observation action.
     if (isBridgeMessage(msg)) {
+      if ("op" in msg) {
+        if (msg.op === "render.complete" && recorder.mode === "recording") {
+          recorder.emit({
+            kind: "widget.render.complete",
+            bodyChars: msg.bodyChars,
+            hasRuntimeErrors: msg.hasRuntimeErrors,
+            handshakeOk: msg.handshakeOk,
+            renderDurationMs: msg.renderDurationMs,
+          });
+        }
+        // ack / snapshot.result handled elsewhere (BridgeClient).
+        return;
+      }
       if (recorder.mode !== "recording") return;
       switch (msg.kind) {
         case "widget.dom.click":
