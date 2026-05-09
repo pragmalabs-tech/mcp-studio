@@ -113,6 +113,26 @@ function lineOf(html: string, index: number): number {
 }
 
 /**
+ * Heuristic: is the call at `matchIndex` wrapped in a `try { ... } catch`?
+ *
+ * Bundles often probe for eval availability with `try { new Function("") }
+ * catch { ... }` (e.g. Zod's `allowsEval`). Under strict CSP the throw is
+ * caught and the bundle falls back to a non-eval path, so flagging these as
+ * errors is a false positive. We still surface them as warnings so the widget
+ * author knows the construct is present.
+ *
+ * Window-based — does not parse JS, so deeply nested or unusual layouts may
+ * misclassify. The cost of a misclassification is downgrading error→warning
+ * (or vice versa), not silencing the finding.
+ */
+function isGuardedByTryCatch(html: string, matchIndex: number): boolean {
+  const WINDOW = 300;
+  const before = html.slice(Math.max(0, matchIndex - WINDOW), matchIndex);
+  const after = html.slice(matchIndex, matchIndex + WINDOW);
+  return /\btry\s*\{/.test(before) && /\}\s*catch\b/.test(after);
+}
+
+/**
  * Build the recommended fix for a domain-style violation.
  *
  * The server-side path (declaring CSP on the resource `_meta` directly)
@@ -259,15 +279,22 @@ export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
     }
   }
 
-  // 4. eval() / new Function() usage
+  // 4. eval() / new Function() usage. Calls wrapped in try/catch are downgraded
+  // to warnings: the throw under strict CSP is swallowed and the surrounding
+  // code falls back to a non-eval path (common in feature-detection probes).
   const evalRe = /\beval\s*\(/g;
   while ((m = evalRe.exec(html)) !== null) {
+    const guarded = isGuardedByTryCatch(html, m.index);
     issues.push({
-      severity: "error",
+      severity: guarded ? "warning" : "error",
       directive: "script-src",
-      description: "eval() is blocked — 'unsafe-eval' is not allowed",
+      description: guarded
+        ? "eval() found inside try/catch — appears to be a feature probe; will throw under strict CSP and the catch handles it"
+        : "eval() is blocked — 'unsafe-eval' is not allowed",
       blocked: "eval(...)",
-      fix: "Replace eval() with JSON.parse() or a safe alternative",
+      fix: guarded
+        ? "Likely safe: the catch swallows the CSP throw. Verify the fallback path works without eval, or remove the probe"
+        : "Replace eval() with JSON.parse() or a safe alternative",
       platforms: both,
       line: lineOf(html, m.index),
     });
@@ -275,12 +302,17 @@ export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
 
   const newFuncRe = /new\s+Function\s*\(/g;
   while ((m = newFuncRe.exec(html)) !== null) {
+    const guarded = isGuardedByTryCatch(html, m.index);
     issues.push({
-      severity: "error",
+      severity: guarded ? "warning" : "error",
       directive: "script-src",
-      description: "new Function() is blocked — 'unsafe-eval' is not allowed",
+      description: guarded
+        ? "new Function() found inside try/catch — appears to be a feature probe; will throw under strict CSP and the catch handles it"
+        : "new Function() is blocked — 'unsafe-eval' is not allowed",
       blocked: "new Function(...)",
-      fix: "Rewrite to avoid dynamic code generation",
+      fix: guarded
+        ? "Likely safe: the catch swallows the CSP throw. Verify the fallback path works without eval, or remove the probe"
+        : "Rewrite to avoid dynamic code generation",
       platforms: both,
       line: lineOf(html, m.index),
     });

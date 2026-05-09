@@ -163,7 +163,7 @@ describe("analyzeHtml — image rule", () => {
 });
 
 describe("analyzeHtml — eval / new Function", () => {
-  it("flags eval()", () => {
+  it("flags unguarded eval() as error", () => {
     const html = `<script>eval("1+1")</script>`;
     const issues = analyzeHtml(html, emptyDomains());
     const issue = issues.find((i) => i.blocked === "eval(...)");
@@ -171,11 +171,53 @@ describe("analyzeHtml — eval / new Function", () => {
     expect(issue!.severity).toBe("error");
   });
 
-  it("flags new Function()", () => {
+  it("flags unguarded new Function() as error", () => {
     const html = `<script>const f = new Function("return 1");</script>`;
     const issues = analyzeHtml(html, emptyDomains());
     const issue = issues.find((i) => i.blocked === "new Function(...)");
     expect(issue).toBeDefined();
+    expect(issue!.severity).toBe("error");
+  });
+
+  it("downgrades eval() in try/catch to warning", () => {
+    const html = `<script>try { eval("1+1") } catch { /* ignore */ }</script>`;
+    const issues = analyzeHtml(html, emptyDomains());
+    const issue = issues.find((i) => i.blocked === "eval(...)");
+    expect(issue).toBeDefined();
+    expect(issue!.severity).toBe("warning");
+    expect(issue!.description).toContain("try/catch");
+  });
+
+  it("downgrades new Function() in try/catch to warning (Zod allowsEval pattern)", () => {
+    const html = `<script>try{return new Function(""),!0}catch{return!1}</script>`;
+    const issues = analyzeHtml(html, emptyDomains());
+    const issue = issues.find((i) => i.blocked === "new Function(...)");
+    expect(issue).toBeDefined();
+    expect(issue!.severity).toBe("warning");
+    expect(issue!.description).toContain("try/catch");
+  });
+
+  it("downgrades new Function() in multi-line try/catch", () => {
+    const html = [
+      "<script>",
+      "  function probe() {",
+      "    try {",
+      '      return new Function("return 1")();',
+      "    } catch (e) {",
+      "      return null;",
+      "    }",
+      "  }",
+      "</script>",
+    ].join("\n");
+    const issues = analyzeHtml(html, emptyDomains());
+    const issue = issues.find((i) => i.blocked === "new Function(...)");
+    expect(issue!.severity).toBe("warning");
+  });
+
+  it("does NOT downgrade when try/catch precedes the call but closes before it", () => {
+    const html = `<script>try { foo() } catch { bar() } eval("x")</script>`;
+    const issues = analyzeHtml(html, emptyDomains());
+    const issue = issues.find((i) => i.blocked === "eval(...)");
     expect(issue!.severity).toBe("error");
   });
 });
