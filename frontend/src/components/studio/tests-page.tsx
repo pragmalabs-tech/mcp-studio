@@ -13,6 +13,17 @@ import {
   Eye,
 } from "lucide-react";
 import { Dialog, DialogOverlay, DialogPortal } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { listTests, getTest, deleteTest } from "@/lib/tests/api";
 import type { Recorded, Test, TestSummary } from "@/lib/recorder/schema";
@@ -168,6 +179,8 @@ export function TestsPage({ open, onOpenChange }: Props) {
   const [loadedTests, setLoadedTests] = useState<Record<string, Test>>({});
   const [loadingName, setLoadingName] = useState<string | null>(null);
   const [hideObservations, setHideObservations] = useState(true);
+  const [pendingDelete, setPendingDelete] = useState<TestSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -209,9 +222,14 @@ export function TestsPage({ open, onOpenChange }: Props) {
     }
   }
 
-  async function handleDelete(name: string) {
-    if (!confirm(`Delete test "${name}"? This removes the file from disk.`))
-      return;
+  function requestDelete(t: TestSummary) {
+    setPendingDelete(t);
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    const name = pendingDelete.name;
+    setDeleting(true);
     setBusyName(name);
     try {
       await deleteTest(name);
@@ -226,9 +244,11 @@ export function TestsPage({ open, onOpenChange }: Props) {
         next.delete(name);
         return next;
       });
+      setPendingDelete(null);
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      setDeleting(false);
       setBusyName(null);
     }
   }
@@ -474,7 +494,7 @@ export function TestsPage({ open, onOpenChange }: Props) {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            onClick={() => handleDelete(t.name)}
+                            onClick={() => requestDelete(t)}
                             disabled={busyName === t.name}
                             title="Delete"
                           >
@@ -520,6 +540,41 @@ export function TestsPage({ open, onOpenChange }: Props) {
           }}
         />
       )}
+      <AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={(v) => {
+          if (!v && !deleting) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia className="bg-red-500/10 text-red-400">
+              <Trash2 />
+            </AlertDialogMedia>
+            <AlertDialogTitle>Delete this test?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="text-foreground font-medium">
+                {pendingDelete?.displayName ?? pendingDelete?.name}
+              </span>{" "}
+              ({pendingDelete?.totalActions ?? 0} action
+              {pendingDelete?.totalActions === 1 ? "" : "s"}) will be
+              permanently removed from{" "}
+              <span className="font-mono">~/.mcp-studio/tests/</span>. This
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <TestResultModal
         report={resultReport}
         open={resultOpen}

@@ -53,6 +53,12 @@ export function PublishDialog() {
             {isChanging ? "Change subdomain" : "Publish to a tunnel URL"}
           </DialogTitle>
         </DialogHeader>
+        <p className="text-xs text-muted-foreground -mt-1">
+          Exposes your local MCP server on a public{" "}
+          <span className="font-mono text-foreground">https://</span> URL so
+          Claude, ChatGPT, or any other MCP client can connect to it. The tunnel
+          forwards requests to the MCP URL set in Studio settings.
+        </p>
         <form onSubmit={submit} className="space-y-4 py-2">
           {endpoints && endpoints.length > 0 && (
             <div className="space-y-1.5">

@@ -8,7 +8,7 @@ import {
   ChevronDown,
   Settings2,
   Clock,
-  FolderOpen,
+  FlaskConical,
   Circle,
   Square,
 } from "lucide-react";
@@ -84,18 +84,13 @@ export function TopHeader() {
   }
 
   function handleStartRecording() {
-    // First-time users see the explainer; once dismissed, subsequent clicks
-    // start immediately.
-    const seen = localStorage.getItem("mcpr_studio:record_test_seen") === "1";
-    if (!seen) {
-      setRecordExplainerOpen(true);
-      return;
-    }
-    beginSlice();
+    // Always show the explainer — the description has real content (file
+    // location, replay modes, redaction note) and recording is intentional
+    // enough to warrant a confirmation step.
+    setRecordExplainerOpen(true);
   }
 
   function beginSlice() {
-    localStorage.setItem("mcpr_studio:record_test_seen", "1");
     setSlicingState({
       startIndex: recorder.markIndex(),
       startedAt: new Date().toISOString(),
@@ -305,9 +300,10 @@ export function TopHeader() {
         type="button"
         onClick={() => setTestsOpen(true)}
         title="Saved tests"
-        className="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+        className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md hover:bg-muted text-xs text-muted-foreground hover:text-foreground transition-colors"
       >
-        <FolderOpen className="h-4 w-4" />
+        <FlaskConical className="h-4 w-4" />
+        Tests
       </button>
 
       <button
@@ -336,20 +332,36 @@ export function TopHeader() {
           </DialogHeader>
           <div className="space-y-2 py-2 text-sm text-muted-foreground">
             <p>
-              Studio captures every interaction in the background. Pressing
+              Studio captures every interaction in the background — tool calls,
+              widget renders, clicks and inputs inside widgets.
               <span className="text-foreground font-medium"> Record Test </span>
-              marks the start of a slice; do whatever the test should cover,
-              then press
+              marks the start of a slice. Drive Studio through the flow you want
+              to test, then press
               <span className="text-foreground font-medium">
                 {" "}
                 Stop Record Test{" "}
               </span>
-              to name and save it.
+              to name and save it as a JSON file in
+              <span className="font-mono text-foreground">
+                {" "}
+                ~/.mcp-studio/tests/
+              </span>
+              .
             </p>
             <p>
-              Saved tests appear in the
+              Saved tests live in the
               <span className="text-foreground font-medium"> Tests </span>
-              drawer (folder icon) where you can replay them.
+              drawer (flask icon, top right). From there you can
+              <span className="text-foreground font-medium"> Run </span>
+              one back end-to-end, or
+              <span className="text-foreground font-medium"> Step </span>
+              through it action-by-action like a debugger. The result modal
+              shows a per-step pass/fail timeline with a sandboxed preview of
+              every widget render.
+            </p>
+            <p className="text-xs italic">
+              Auth tokens are redacted on save — Studio uses your live token
+              when replaying.
             </p>
           </div>
           <DialogFooter>
