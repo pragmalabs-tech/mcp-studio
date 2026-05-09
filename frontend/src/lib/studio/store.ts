@@ -67,6 +67,13 @@ import {
   authLogout,
   startTunnel as apiStartTunnel,
 } from "./cloud-api";
+import { recorder } from "../recorder/bus";
+import {
+  attachInstrumentation,
+  snapshotSetup,
+  type RecordableState,
+} from "../recorder/instrumentation";
+import RECORDER_BRIDGE_SOURCE from "@/widget-bridge/recorder-bridge.js?raw";
 
 function generateRandomString(length: number): string {
   const array = new Uint8Array(length);
@@ -350,6 +357,15 @@ function extractWidgetUri(meta: Record<string, unknown>): string | null {
     }
   }
   return null;
+}
+
+function simpleHash(input: string): string {
+  let h = 0;
+  for (let i = 0; i < input.length; i++) {
+    h = (h << 5) - h + input.charCodeAt(i);
+    h |= 0;
+  }
+  return (h >>> 0).toString(36);
 }
 
 function formatTimestamp(): string {
@@ -1315,6 +1331,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         "allow-scripts allow-same-origin allow-popups allow-forms";
     }
 
+    // Recorder bridge: inject when CSP is relaxed (the bridge cannot run under
+    // strict CSP). Recording is always-on; widget DOM events simply degrade
+    // when strict mode is enabled while chrome + MCP events keep flowing.
+    if (recorder.mode === "recording" && !strictMode) {
+      const bridgeTag = `<script>${RECORDER_BRIDGE_SOURCE}</script>`;
+      html = html.replace(/<head([^>]*)>/i, `<head$1>${bridgeTag}`);
+    }
+
     // Static protocol detection from widget HTML source + metadata
     if (/window\.openai\b/.test(html)) {
       get().setProtocolDetected("legacy_openai");
@@ -1342,7 +1366,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     // Shared: ext-apps JSON-RPC mock (used by both platforms — ChatGPT now supports it too)
     const onToolCall = async (name: string, args: Record<string, unknown>) => {
       logAction("system", `Calling tool "${name}"…`);
-      return callTool(name, args);
+      return callTool(name, args, "widget");
     };
     const onMessage = (content: unknown) => {
       get().addPendingMessage(
@@ -1360,6 +1384,19 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       onProtocolDetected: () => get().setProtocolDetected("ext_apps"),
     });
     set({ _extAppsMock: extAppsMock });
+
+    // Recorder: emit a render entry every time and refresh the widget snapshot
+    // so the most recent HTML is the one exported.
+    if (recorder.mode === "recording") {
+      const htmlHash = simpleHash(originalHtml);
+      recorder.emit({
+        kind: "widget.render",
+        name,
+        htmlHash,
+        initialMock: mock,
+      });
+      recorder.setWidget({ name, html: originalHtml, initialMock: mock });
+    }
 
     if (platform === "openai") {
       // Legacy: also inject window.openai global (detection getters included)
@@ -1568,3 +1605,40 @@ document.addEventListener('click', function(e) {
     }
   },
 }));
+
+// Always-on recorder: subscribe instrumentation and start a session as soon as
+// the store module loads. Browser-only — guard for SSR / unit tests.
+if (typeof window !== "undefined") {
+  attachInstrumentation({
+    getState: () => useStudioStore.getState() as unknown as RecordableState,
+    subscribe: (listener) =>
+      useStudioStore.subscribe((s, p) =>
+        listener(
+          s as unknown as RecordableState,
+          p as unknown as RecordableState,
+        ),
+      ),
+  });
+  const s = useStudioStore.getState();
+  recorder.start(
+    snapshotSetup({
+      proxyUrl: s.proxyUrl,
+      authMethod: s.authMethod,
+      token: s.token,
+      oauth: {
+        accessToken: s.oauth.accessToken,
+        selectedScopes: s.oauth.selectedScopes,
+        customHeaders: s.oauth.customHeaders,
+      },
+      platform: s.platform,
+      theme: s.theme,
+      displayMode: s.displayMode,
+      locale: s.locale,
+      viewportPreset: s.viewportPreset,
+      viewportCustom: s.viewportCustom,
+      strictMode: s.strictMode,
+      selected: s.selected,
+      editorValue: s.editorValue,
+    }),
+  );
+}

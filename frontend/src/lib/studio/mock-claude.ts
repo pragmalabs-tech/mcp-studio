@@ -1,4 +1,6 @@
 import type { MockData } from "./mock-openai";
+import { recorder } from "../recorder/bus";
+import { isBridgeMessage } from "../recorder/bridge-protocol";
 
 export interface ExtAppsMockOptions {
   iframe: HTMLIFrameElement;
@@ -74,6 +76,55 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
   function handleMessage(event: MessageEvent) {
     if (event.source !== iframe.contentWindow) return;
     const msg = event.data;
+
+    // Recorder bridge messages bypass JSON-RPC dispatch and go straight to
+    // the recorder bus. The bridge only runs while recording, but check the
+    // recorder mode anyway so a stray message from a hostile widget can't
+    // pollute a stopped session.
+    if (isBridgeMessage(msg)) {
+      if (recorder.mode !== "recording") return;
+      switch (msg.kind) {
+        case "widget.dom.click":
+          recorder.emit({
+            kind: "widget.dom.click",
+            selectors: msg.selectors,
+            mutated: msg.mutated,
+          });
+          break;
+        case "widget.dom.input":
+          recorder.emit({
+            kind: "widget.dom.input",
+            selectors: msg.selectors,
+            value: msg.value,
+            inputType: msg.inputType,
+          });
+          break;
+        case "widget.dom.change":
+          recorder.emit({
+            kind: "widget.dom.change",
+            selectors: msg.selectors,
+            value: msg.value,
+          });
+          break;
+        case "widget.dom.submit":
+          recorder.emit({
+            kind: "widget.dom.submit",
+            selectors: msg.selectors,
+          });
+          break;
+        case "widget.dom.keydown":
+          recorder.emit({
+            kind: "widget.dom.keydown",
+            selectors: msg.selectors,
+            key: msg.key,
+            code: msg.code,
+            mods: msg.mods,
+          });
+          break;
+      }
+      return;
+    }
+
     if (!msg || msg.jsonrpc !== "2.0") return;
 
     // Request (has id + method)

@@ -7,7 +7,9 @@ import {
   AlertCircle,
   ChevronDown,
   Settings2,
+  Clock,
 } from "lucide-react";
+import { RecordingHistoryDialog } from "@/components/studio/recording-history-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -40,6 +42,7 @@ export function TopHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(!proxyUrl);
   const [urlDraft, setUrlDraft] = useState(proxyUrl);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   async function copyUrl() {
     if (!tunnel.url) return;
@@ -252,6 +255,22 @@ export function TopHeader() {
           </div>
         </>
       )}
+
+      <Separator orientation="vertical" className="h-5 mx-0.5" />
+
+      <button
+        type="button"
+        onClick={() => setHistoryOpen(true)}
+        title="View recorded actions"
+        className="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <Clock className="h-4 w-4" />
+      </button>
+
+      <RecordingHistoryDialog
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+      />
 
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="sm:max-w-md">

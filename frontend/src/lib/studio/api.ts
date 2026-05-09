@@ -6,6 +6,9 @@
  * with mcpr-cloud's own auth (cookie-based JWT).
  */
 
+import { recordedMcpCall } from "../recorder/mcp-interceptor";
+import type { Source } from "../recorder/schema";
+
 // ── Proxy URL ──
 
 /** Mutable proxy URL set at runtime via setProxyUrl(). */
@@ -456,7 +459,7 @@ export async function mcpInitialize(): Promise<void> {
   await ensureSession();
 }
 
-export async function mcpCall(
+async function rawMcpCall(
   method: string,
   params: Record<string, unknown> = {},
 ): Promise<unknown> {
@@ -469,6 +472,13 @@ export async function mcpCall(
         JSON.stringify(data.error),
     );
   return data.result;
+}
+
+export async function mcpCall(
+  method: string,
+  params: Record<string, unknown> = {},
+): Promise<unknown> {
+  return recordedMcpCall(rawMcpCall, method, params, "user");
 }
 
 export interface McpToolInfo {
@@ -492,8 +502,14 @@ export async function listTools(): Promise<McpToolInfo[]> {
 export async function callTool(
   name: string,
   args: Record<string, unknown>,
+  source: Source = "user",
 ): Promise<unknown> {
-  return mcpCall("tools/call", { name, arguments: args });
+  return recordedMcpCall(
+    rawMcpCall,
+    "tools/call",
+    { name, arguments: args },
+    source,
+  );
 }
 
 export interface McpResourceInfo {
