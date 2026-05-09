@@ -18,6 +18,7 @@ pub struct TestSummary {
     pub display_name: Option<String>,
     pub description: Option<String>,
     pub created_at: Option<String>,
+    pub profile_id: Option<String>,
     pub total_actions: Option<usize>,
 }
 
@@ -34,6 +35,10 @@ fn lift_summary(name: &str, file: storage::JsonFile, value: &Value) -> TestSumma
         .get("createdAt")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
+    let profile_id = value
+        .get("profileId")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let total_actions = value
         .pointer("/session/timeline")
         .and_then(|t| t.as_array())
@@ -45,6 +50,7 @@ fn lift_summary(name: &str, file: storage::JsonFile, value: &Value) -> TestSumma
         display_name,
         description,
         created_at,
+        profile_id,
         total_actions,
     }
 }

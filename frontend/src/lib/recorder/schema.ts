@@ -142,6 +142,8 @@ export interface Test {
   name: string;
   description?: string;
   createdAt: string;
+  /** Profile this test was recorded against. Empty/missing on legacy tests. */
+  profileId?: string;
   session: Session;
 }
 
@@ -153,6 +155,7 @@ export interface TestSummary {
   displayName?: string;
   description?: string;
   createdAt?: string;
+  profileId?: string;
   totalActions?: number;
   size: number;
   modifiedMs: number;

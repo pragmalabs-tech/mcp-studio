@@ -17,6 +17,7 @@ function StudioPage() {
   const proxyConnected = useStudioStore((s) => s.proxyConnected);
   const hydrateCloudAuth = useStudioStore((s) => s.hydrateCloudAuth);
   const hydrateTunnel = useStudioStore((s) => s.hydrateTunnel);
+  const refreshProfiles = useStudioStore((s) => s.refreshProfiles);
 
   useEffect(() => {
     if (proxyConnected) {
@@ -24,11 +25,12 @@ function StudioPage() {
     }
   }, [loadAll, proxyConnected]);
 
-  // Cloud auth + tunnel hydration on mount.
+  // Cloud auth + tunnel + profiles hydration on mount.
   useEffect(() => {
     hydrateCloudAuth();
     hydrateTunnel();
-  }, [hydrateCloudAuth, hydrateTunnel]);
+    refreshProfiles();
+  }, [hydrateCloudAuth, hydrateTunnel, refreshProfiles]);
 
   // Hydrate the store when the callback tab saves tokens to localStorage.
   // storage event = optimistic fast path. visibilitychange = reliable catch-up

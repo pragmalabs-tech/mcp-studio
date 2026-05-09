@@ -376,7 +376,12 @@ export function createEngine(deps: EngineDeps): Engine {
 
 async function applySetup(test: Test, store: EngineStore): Promise<void> {
   const { connect, config } = test.session.setup;
-  if (connect.url) store.setProxyUrl(connect.url);
+  // Replay follows the active profile's URL (set externally by the profiles
+  // dialog / startup hydration). The recorded URL is only used as a fallback
+  // when no profile is active yet, so tests stay portable on a fresh install.
+  if (!store.getProxyUrl() && connect.url) {
+    store.setProxyUrl(connect.url);
+  }
   store.setAuthMethod(connect.auth.method);
   if (connect.auth.method === "bearer" || connect.auth.method === "oauth") {
     if (connect.auth.token && connect.auth.token !== "<<from-env>>") {

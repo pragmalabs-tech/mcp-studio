@@ -6,6 +6,7 @@ export interface EngineStore {
   setStudioMode(mode: "normal" | "test"): void;
   setStrictMode(on: boolean): void;
   setProxyUrl(url: string): void;
+  getProxyUrl(): string;
   setAuthMethod(method: "oauth" | "bearer" | "custom"): void;
   setToken(draft: string): void;
   saveToken(): void;

@@ -15,6 +15,7 @@ use tracing::Span;
 use crate::action_log;
 use crate::cloud::{self, CloudClient};
 use crate::config::{self, AuthConfig, Config, TunnelConfig};
+use crate::profiles;
 use crate::reports_api;
 use crate::tests_api;
 use crate::tunnel::{TunnelInfo, TunnelState};
@@ -48,6 +49,18 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/studio/reports/{name}",
             get(reports_api::get_report).put(reports_api::put_report),
+        )
+        .route(
+            "/api/studio/profiles",
+            get(profiles::list_profiles).post(profiles::create_profile),
+        )
+        .route(
+            "/api/studio/profiles/{id}",
+            axum::routing::put(profiles::update_profile).delete(profiles::delete_profile),
+        )
+        .route(
+            "/api/studio/profiles/{id}/activate",
+            post(profiles::activate_profile),
         )
         .with_state(state)
         .fallback(crate::assets::handler)

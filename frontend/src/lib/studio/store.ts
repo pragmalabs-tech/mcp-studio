@@ -67,6 +67,11 @@ import {
   authLogout,
   startTunnel as apiStartTunnel,
 } from "./cloud-api";
+import {
+  listProfiles,
+  activateProfile as apiActivateProfile,
+  type Profile,
+} from "./profiles-api";
 import { recorder } from "../recorder/bus";
 import {
   attachInstrumentation,
@@ -385,6 +390,12 @@ interface StudioState {
   proxyConnected: boolean;
   setProxyUrl: (url: string) => void;
 
+  // Profiles (MCP server targets persisted by the local backend)
+  profiles: Profile[];
+  activeProfileId: string | null;
+  refreshProfiles: () => Promise<void>;
+  activateAndApply: (id: string) => Promise<void>;
+
   // Data
   tools: McpToolInfo[];
   resources: McpResourceInfo[];
@@ -542,6 +553,38 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     set({ proxyUrl: getBaseUrl(), proxyConnected: true });
     resetSession();
     get().loadAll();
+  },
+
+  // Profiles
+  profiles: [] as Profile[],
+  activeProfileId: null as string | null,
+
+  refreshProfiles: async () => {
+    try {
+      const resp = await listProfiles();
+      set({ profiles: resp.profiles, activeProfileId: resp.active_id });
+      // First-run hydration: if URL is unset and the active profile has one,
+      // adopt it so Studio connects without an extra click. Skip when the
+      // user already opened with `?proxy=` so we never override an explicit URL.
+      const { proxyUrl } = get();
+      if (!proxyUrl && resp.active_id) {
+        const active = resp.profiles.find((p) => p.id === resp.active_id);
+        if (active && active.server_url) {
+          get().setProxyUrl(active.server_url);
+        }
+      }
+    } catch {
+      /* backend not ready yet — caller can retry */
+    }
+  },
+
+  activateAndApply: async (id: string) => {
+    const resp = await apiActivateProfile(id);
+    set({ profiles: resp.profiles, activeProfileId: resp.active_id });
+    const active = resp.profiles.find((p) => p.id === resp.active_id);
+    if (active && active.server_url) {
+      get().setProxyUrl(active.server_url);
+    }
   },
 
   // Data

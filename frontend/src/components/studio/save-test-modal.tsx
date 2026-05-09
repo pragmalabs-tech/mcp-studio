@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { recorder } from "@/lib/recorder/bus";
 import { newTest, slugify } from "@/lib/tests/format";
 import { saveTest } from "@/lib/tests/api";
+import { useStudioStore } from "@/lib/studio/store";
 
 interface Props {
   open: boolean;
@@ -33,6 +34,10 @@ export function SaveTestModal({
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const activeProfileId = useStudioStore((s) => s.activeProfileId);
+  const activeProfile = useStudioStore((s) =>
+    s.profiles.find((p) => p.id === s.activeProfileId),
+  );
 
   useEffect(() => {
     if (open) {
@@ -63,6 +68,7 @@ export function SaveTestModal({
       const test = newTest({
         name: name.trim(),
         description: description.trim() || undefined,
+        profileId: activeProfileId || undefined,
         session,
       });
       await saveTest(slug, test);
@@ -114,7 +120,10 @@ export function SaveTestModal({
           </div>
           <div className="rounded-md bg-muted/30 p-2 text-[10px] font-mono text-muted-foreground">
             {count} action{count === 1 ? "" : "s"}
-            {preview && ` — ${preview}${count > 3 ? ", …" : ""}`}
+            {preview && ` - ${preview}${count > 3 ? ", …" : ""}`}
+            {activeProfile && (
+              <div className="mt-0.5">profile: {activeProfile.name}</div>
+            )}
           </div>
           {error && (
             <p className="text-xs text-destructive font-mono">{error}</p>

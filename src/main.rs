@@ -3,6 +3,7 @@ mod assets;
 mod cloud;
 mod config;
 mod forwarding;
+mod profiles;
 mod proxy;
 mod reports_api;
 mod server;

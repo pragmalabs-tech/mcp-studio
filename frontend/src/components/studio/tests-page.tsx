@@ -146,6 +146,8 @@ function ActionList({
 }
 
 export function TestsPage({ open, onOpenChange }: Props) {
+  const profiles = useStudioStore((s) => s.profiles);
+  const profilesById = new Map(profiles.map((p) => [p.id, p.name]));
   const [tests, setTests] = useState<TestSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -436,6 +438,14 @@ export function TestsPage({ open, onOpenChange }: Props) {
                             hideObservations={hideObservations}
                             savedAt={t.modifiedMs}
                           />
+                          {t.profileId && (
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              profile:{" "}
+                              <span className="font-mono">
+                                {profilesById.get(t.profileId) ?? t.profileId}
+                              </span>
+                            </div>
+                          )}
                           {t.description && (
                             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                               {t.description}

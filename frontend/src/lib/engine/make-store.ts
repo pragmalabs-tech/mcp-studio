@@ -13,6 +13,7 @@ export function makeEngineStore(): EngineStore {
     setStudioMode: (m) => get().setStudioMode(m),
     setStrictMode: (b) => get().setStrictMode(b),
     setProxyUrl: (u) => get().setProxyUrl(u),
+    getProxyUrl: () => get().proxyUrl,
     setAuthMethod: (m) => get().setAuthMethod(m),
     setToken: (t) => get().setToken(t),
     saveToken: () => get().saveToken(),

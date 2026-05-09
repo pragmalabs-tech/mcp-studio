@@ -12,6 +12,7 @@ function fakeStore() {
     setStudioMode: (m: string) => calls.push(`setStudioMode:${m}`),
     setStrictMode: () => calls.push("setStrictMode"),
     setProxyUrl: () => calls.push("setProxyUrl"),
+    getProxyUrl: () => "",
     setAuthMethod: () => calls.push("setAuthMethod"),
     setToken: () => calls.push("setToken"),
     saveToken: () => calls.push("saveToken"),

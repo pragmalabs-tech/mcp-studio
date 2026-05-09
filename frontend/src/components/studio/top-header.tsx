@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Radio,
   Loader2,
@@ -17,17 +17,16 @@ import { RecordingHistoryDialog } from "@/components/studio/recording-history-di
 import { TestsPage } from "@/components/studio/tests-page";
 import { ReportsPage } from "@/components/studio/reports-page";
 import { SaveTestModal } from "@/components/studio/save-test-modal";
+import { ProfilesDialog } from "@/components/studio/profiles-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
 import { useStudioStore } from "@/lib/studio/store";
-import { isRemoteProxy, getBaseUrl } from "@/lib/studio/api";
 import { Separator } from "@/components/ui/separator";
 import { recorder } from "@/lib/recorder/bus";
 
@@ -39,15 +38,27 @@ export function TopHeader() {
   const cloudSignOut = useStudioStore((s) => s.cloudSignOut);
   const startTunnel = useStudioStore((s) => s.startTunnel);
   const proxyUrl = useStudioStore((s) => s.proxyUrl);
-  const setProxyUrl = useStudioStore((s) => s.setProxyUrl);
+  const profiles = useStudioStore((s) => s.profiles);
+  const activeProfileId = useStudioStore((s) => s.activeProfileId);
   const mcpError = useStudioStore((s) => s.mcpError);
   const slicingState = useStudioStore((s) => s.slicingState);
   const setSlicingState = useStudioStore((s) => s.setSlicingState);
 
+  const activeProfile = profiles.find((p) => p.id === activeProfileId) || null;
+
   const [copied, setCopied] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(!proxyUrl);
-  const [urlDraft, setUrlDraft] = useState(proxyUrl);
+  const [profilesOpen, setProfilesOpen] = useState(false);
+  // First-run prompt: once profiles have loaded, if there's still no URL
+  // configured, open the manager so the user can pick or create one.
+  useEffect(() => {
+    if (!proxyUrl && profiles.length > 0) {
+      setProfilesOpen(true);
+    }
+    // Only on the initial transition from "no profiles loaded yet" — runs
+    // once when profiles hydrate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profiles.length === 0]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [testsOpen, setTestsOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
@@ -73,17 +84,8 @@ export function TopHeader() {
     }
   }
 
-  function openSettings() {
-    setUrlDraft(proxyUrl);
-    setSettingsOpen(true);
-  }
-
-  function handleSaveUrl() {
-    const trimmed = urlDraft.trim();
-    if (trimmed && trimmed !== proxyUrl) {
-      setProxyUrl(trimmed);
-    }
-    setSettingsOpen(false);
+  function openProfiles() {
+    setProfilesOpen(true);
   }
 
   function handleStartRecording() {
@@ -121,38 +123,42 @@ export function TopHeader() {
 
       <div className="flex-1" />
 
-      {/* Connection cluster: status dot + URL */}
-      {isRemoteProxy() ? (
-        <button
-          type="button"
-          onClick={openSettings}
-          className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border bg-muted/30 text-xs font-mono text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          title="Click to change MCP server URL"
-        >
-          <span
-            className={`inline-block w-1.5 h-1.5 rounded-full ${
-              mcpError ? "bg-red-500" : "bg-green-500"
-            }`}
-            aria-label={mcpError ? "Connection error" : "Connected"}
-          />
-          {getBaseUrl().replace(/^https?:\/\//, "")}
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={openSettings}
-          className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border bg-muted/30 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          title="Configure MCP server"
-        >
-          <span
-            className={`inline-block w-1.5 h-1.5 rounded-full ${
-              mcpError ? "bg-red-500" : "bg-green-500"
-            }`}
-            aria-label={mcpError ? "Connection error" : "Connected"}
-          />
-          Connected
-        </button>
-      )}
+      {/* Connection cluster: profile name + URL */}
+      <button
+        type="button"
+        onClick={openProfiles}
+        className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border bg-muted/30 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+        title="Switch profile or edit server URL"
+      >
+        <span
+          className={`inline-block w-1.5 h-1.5 rounded-full ${
+            mcpError
+              ? "bg-red-500"
+              : proxyUrl
+                ? "bg-green-500"
+                : "bg-muted-foreground/40"
+          }`}
+          aria-label={mcpError ? "Connection error" : "Connected"}
+        />
+        {activeProfile ? (
+          <>
+            <span className="font-medium text-foreground">
+              {activeProfile.name}
+            </span>
+            {proxyUrl && (
+              <span className="font-mono">
+                {proxyUrl.replace(/^https?:\/\//, "")}
+              </span>
+            )}
+          </>
+        ) : proxyUrl ? (
+          <span className="font-mono">
+            {proxyUrl.replace(/^https?:\/\//, "")}
+          </span>
+        ) : (
+          <span>No server</span>
+        )}
+      </button>
 
       <Separator orientation="vertical" className="h-5 mx-0.5" />
 
@@ -413,51 +419,7 @@ export function TopHeader() {
         />
       )}
 
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Studio Settings</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
-                MCP Server URL
-              </label>
-              <Input
-                type="url"
-                placeholder="http://localhost:9000"
-                value={urlDraft}
-                onChange={(e) => setUrlDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSaveUrl();
-                }}
-                autoFocus
-                className="h-9 font-mono text-sm"
-              />
-              <p className="text-[10px] text-muted-foreground">
-                The URL of your MCP server. Changing this will reconnect and
-                reload all tools and resources.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setSettingsOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleSaveUrl}
-              disabled={!urlDraft.trim()}
-            >
-              Connect
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ProfilesDialog open={profilesOpen} onOpenChange={setProfilesOpen} />
     </header>
   );
 }

@@ -15,6 +15,7 @@ function uuid(): string {
 export function newTest(input: {
   name: string;
   description?: string;
+  profileId?: string;
   session: Session;
 }): Test {
   return {
@@ -22,6 +23,7 @@ export function newTest(input: {
     name: input.name,
     description: input.description,
     createdAt: new Date().toISOString(),
+    profileId: input.profileId,
     session: input.session,
   };
 }
