@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AuthPanel } from "./auth-panel";
+import { CloudPanel } from "./cloud-panel";
+import { ProfilePanel } from "./profile-panel";
 
 function displayName(name: string) {
   return name.replace(/_/g, " ");
@@ -109,7 +111,8 @@ export function Sidebar() {
 
   return (
     <div className="w-72 shrink-0 border-r flex flex-col h-full">
-      {/* Auth */}
+      {/* Per-server credentials — top of sidebar so MCP work has the most
+          immediate vertical real estate. */}
       <AuthPanel />
 
       {/* Search */}
@@ -196,6 +199,13 @@ export function Sidebar() {
           </p>
         )}
       </div>
+
+      {/* Bottom meta cluster: cloud account + publish, profile (MCP server
+          target), and theme/credit. All sit below the per-server work
+          (auth + tools/resources) so the top of the sidebar stays
+          MCP-focused. */}
+      <CloudPanel />
+      <ProfilePanel />
 
       {/* Footer */}
       <div className="px-4 py-3 border-t shrink-0 text-[10px] text-muted-foreground flex items-center justify-between gap-2">

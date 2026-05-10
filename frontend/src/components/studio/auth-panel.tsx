@@ -110,7 +110,7 @@ export function AuthPanel() {
         className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:bg-secondary/50 transition-colors"
       >
         <span className="flex items-center gap-1.5">
-          Auth
+          Authentication
           {hasAuth && !authOpen && (
             <span className="text-green-500 normal-case font-normal text-[10px]">
               {authMethod === "oauth"

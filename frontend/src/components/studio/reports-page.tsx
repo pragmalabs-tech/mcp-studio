@@ -142,11 +142,10 @@ export function ReportsPage({ open, onOpenChange }: Props) {
           <div className="flex-1 overflow-y-auto min-h-0">
             {!loading && reports.length === 0 ? (
               <p className="text-center text-muted-foreground text-xs py-12 px-6">
-                No saved reports yet. Run a test from the Tests drawer, then
-                click <span className="font-medium">Save to disk</span> in the
-                result modal — or use{" "}
+                No saved reports yet. Use{" "}
                 <span className="font-medium">Open report</span> to load a
-                shared file.
+                shared file, or <span className="font-medium">Export</span> a
+                fresh run's report from the result modal.
               </p>
             ) : (
               reports.map((r) => (

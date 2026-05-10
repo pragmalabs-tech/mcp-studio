@@ -3,7 +3,6 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import {
   XIcon,
   Download,
-  Save,
   CheckCircle2,
   XCircle,
   MinusCircle,
@@ -24,9 +23,6 @@ interface Props {
   report: ReplayReport | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Provided for fresh runs that haven't been persisted yet. Omitted when
-   *  the report was loaded from disk (no need to save back). */
-  onSaveToDisk?: (report: ReplayReport) => Promise<void>;
 }
 
 function StatusIcon({ status }: { status: StepResult["status"] }) {
@@ -221,14 +217,7 @@ function StepRow({
   );
 }
 
-export function TestResultModal({
-  report,
-  open,
-  onOpenChange,
-  onSaveToDisk,
-}: Props) {
-  const [saving, setSaving] = useState(false);
-  const [savedAs, setSavedAs] = useState<string | null>(null);
+export function TestResultModal({ report, open, onOpenChange }: Props) {
   const [hideObservations, setHideObservations] = useState(true);
   /** Step index forced open by a click on the timeline. Resets on next click
    *  on a different step or when the user collapses it manually. */
@@ -260,17 +249,6 @@ export function TestResultModal({
     URL.revokeObjectURL(url);
   }
 
-  async function handleSaveToDisk() {
-    if (!report || !onSaveToDisk) return;
-    setSaving(true);
-    try {
-      await onSaveToDisk(report);
-      setSavedAs(reportFilename(report));
-    } finally {
-      setSaving(false);
-    }
-  }
-
   const { summary } = report;
   const visibleSteps = report.steps.filter(
     (s) => !hideObservations || !isObservation(s.action),
@@ -298,17 +276,6 @@ export function TestResultModal({
                 <Download className="h-3.5 w-3.5 mr-1.5" />
                 Export
               </Button>
-              {onSaveToDisk && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSaveToDisk}
-                  disabled={saving}
-                >
-                  <Save className="h-3.5 w-3.5 mr-1.5" />
-                  {saving ? "Saving…" : savedAs ? "Saved" : "Save to disk"}
-                </Button>
-              )}
               <DialogPrimitive.Close
                 render={<Button variant="ghost" size="icon-sm" />}
               >
@@ -376,11 +343,6 @@ export function TestResultModal({
               />
             ))}
           </div>
-          {savedAs && (
-            <div className="px-4 py-2 border-t text-[10px] text-muted-foreground font-mono">
-              saved as {savedAs}.json in ~/.mcp-studio/reports/
-            </div>
-          )}
         </DialogPrimitive.Popup>
       </DialogPortal>
     </Dialog>

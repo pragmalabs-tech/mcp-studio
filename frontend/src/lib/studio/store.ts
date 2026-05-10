@@ -772,7 +772,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   authMethod: readAuthMethod(),
   token: getBearerToken(),
   tokenDraft: getBearerToken(),
-  authOpen: !getBearerToken() && !loadOAuthTokens().accessToken,
+  // Default closed — sidebar real estate stays for tools/resources. The
+  // auth panel still auto-opens on connection errors / missing tokens
+  // (see `loadAll`, `saveToken`, `clearToken`).
+  authOpen: false,
   oauth: (() => {
     const saved = loadOAuthTokens();
     const hasToken = !!saved.accessToken;

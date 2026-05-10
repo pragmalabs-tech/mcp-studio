@@ -41,12 +41,7 @@ import { runtime } from "@/lib/engine/runtime";
 import { TestPreconditionDialog } from "@/components/studio/test-precondition-dialog";
 import { TestResultModal } from "@/components/studio/test-result-modal";
 import { createArtifactCollector } from "@/lib/engine/artifacts";
-import {
-  buildReport,
-  reportFilename,
-  type ReplayReport,
-} from "@/lib/engine/report";
-import { saveReport } from "@/lib/tests/reports-api";
+import { buildReport, type ReplayReport } from "@/lib/engine/report";
 import { makeEngineStore } from "@/lib/engine/make-store";
 
 interface Props {
@@ -282,10 +277,6 @@ export function TestsPage({ open, onOpenChange }: Props) {
     } finally {
       runtime.clear();
     }
-  }
-
-  async function handleSaveReport(report: ReplayReport) {
-    await saveReport(reportFilename(report), report);
   }
 
   async function toggleExpanded(name: string) {
@@ -564,7 +555,6 @@ export function TestsPage({ open, onOpenChange }: Props) {
           setResultOpen(v);
           if (!v) setResultReport(null);
         }}
-        onSaveToDisk={handleSaveReport}
       />
     </Dialog>
   );

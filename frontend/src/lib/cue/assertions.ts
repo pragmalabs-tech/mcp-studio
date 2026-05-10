@@ -140,59 +140,70 @@ export async function evaluateBundle(
  *  the bundle's `warnings` array without failing the bundle. */
 type RunOneResult = { ok: true; warn?: string } | { ok: false; reason: string };
 
+type AssertionKind = CueAssertion["kind"];
+
+type Handler<K extends AssertionKind> = (
+  a: Extract<CueAssertion, { kind: K }>,
+  ctx: AssertCtx,
+) => Promise<RunOneResult> | RunOneResult;
+
+/**
+ * Registry mapping each `CueAssertion.kind` to its evaluator. Adding a new
+ * assertion kind is one entry here plus the union variant in
+ * `CueAssertion`. The compiler enforces every kind has a handler via the
+ * mapped-type signature.
+ */
+const HANDLERS: { [K in AssertionKind]: Handler<K> } = {
+  result_match: (a, ctx) => runResultMatch(a.expect, ctx.result),
+  dom_text: runDomText,
+  dom_visible: runDomVisible,
+  dom_wait: runDomWait,
+  no_runtime_errors: (_a, ctx) => runNoRuntimeErrors(ctx),
+  no_csp_violations: (a, ctx) => runNoCspViolations(a.since, ctx),
+  triggers_mcp_call: runTriggersMcpCall,
+  tool_response: runToolResponse,
+  html_drift_warn: runHtmlDriftWarn,
+};
+
 async function runOne(a: CueAssertion, ctx: AssertCtx): Promise<RunOneResult> {
-  switch (a.kind) {
-    case "result_match":
-      return runResultMatch(a.expect, ctx.result);
+  const handler = HANDLERS[a.kind] as Handler<AssertionKind>;
+  return handler(a, ctx);
+}
 
-    case "dom_text": {
-      const html = await ctx.getSnapshot();
-      if (html === null) return { ok: false, reason: "no snapshot available" };
-      const text = queryText(html, a.target);
-      if (text === null) {
-        return { ok: false, reason: "locator did not resolve" };
-      }
-      if (a.equals !== undefined && text !== a.equals) {
-        return { ok: false, reason: `expected "${a.equals}", got "${text}"` };
-      }
-      if (a.contains !== undefined && !text.includes(a.contains)) {
-        return { ok: false, reason: `text does not contain "${a.contains}"` };
-      }
-      if (a.matches !== undefined) {
-        const re = new RegExp(a.matches);
-        if (!re.test(text)) {
-          return { ok: false, reason: `/${re.source}/ did not match` };
-        }
-      }
-      return { ok: true };
-    }
-
-    case "dom_visible": {
-      const html = await ctx.getSnapshot();
-      if (html === null) return { ok: false, reason: "no snapshot available" };
-      return queryVisible(html, a.target)
-        ? { ok: true }
-        : { ok: false, reason: "element not visible" };
-    }
-
-    case "dom_wait":
-      return runDomWait(a, ctx);
-
-    case "no_runtime_errors":
-      return runNoRuntimeErrors(ctx);
-
-    case "no_csp_violations":
-      return runNoCspViolations(a.since, ctx);
-
-    case "triggers_mcp_call":
-      return runTriggersMcpCall(a, ctx);
-
-    case "tool_response":
-      return runToolResponse(a, ctx);
-
-    case "html_drift_warn":
-      return runHtmlDriftWarn(a, ctx);
+async function runDomText(
+  a: Extract<CueAssertion, { kind: "dom_text" }>,
+  ctx: AssertCtx,
+): Promise<RunOneResult> {
+  const html = await ctx.getSnapshot();
+  if (html === null) return { ok: false, reason: "no snapshot available" };
+  const text = queryText(html, a.target);
+  if (text === null) {
+    return { ok: false, reason: "locator did not resolve" };
   }
+  if (a.equals !== undefined && text !== a.equals) {
+    return { ok: false, reason: `expected "${a.equals}", got "${text}"` };
+  }
+  if (a.contains !== undefined && !text.includes(a.contains)) {
+    return { ok: false, reason: `text does not contain "${a.contains}"` };
+  }
+  if (a.matches !== undefined) {
+    const re = new RegExp(a.matches);
+    if (!re.test(text)) {
+      return { ok: false, reason: `/${re.source}/ did not match` };
+    }
+  }
+  return { ok: true };
+}
+
+async function runDomVisible(
+  a: Extract<CueAssertion, { kind: "dom_visible" }>,
+  ctx: AssertCtx,
+): Promise<RunOneResult> {
+  const html = await ctx.getSnapshot();
+  if (html === null) return { ok: false, reason: "no snapshot available" };
+  return queryVisible(html, a.target)
+    ? { ok: true }
+    : { ok: false, reason: "element not visible" };
 }
 
 async function runHtmlDriftWarn(
