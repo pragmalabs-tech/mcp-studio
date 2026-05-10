@@ -70,7 +70,9 @@ import {
 import {
   listProfiles,
   activateProfile as apiActivateProfile,
+  updateProfile as apiUpdateProfile,
   type Profile,
+  type ProfileAuth,
 } from "./profiles-api";
 import { recorder } from "../recorder/bus";
 import {
@@ -382,6 +384,84 @@ function formatTimestamp(): string {
   );
 }
 
+const PROFILE_AUTH_MIGRATION_FLAG = "mcpr_studio:profile_auth_migrated_v1";
+
+/**
+ * Push a profile's auth into the localStorage origin-scoped cache that
+ * `buildHeaders()` reads. Must run after `setProxyUrl(profile.server_url)`
+ * so the underlying `studioKey()` resolves to the new origin.
+ *
+ * For the `oauth` marker, leaves origin-scoped OAuth tokens untouched
+ * (those are written by the OAuth callback flow and survive across
+ * profile activations sharing the same origin).
+ */
+function applyProfileAuthToLocalStorage(auth: ProfileAuth | undefined): void {
+  if (!auth) return;
+  switch (auth.method) {
+    case "none":
+      writeAuthMethod("oauth");
+      setBearerToken("");
+      writeCustomHeaders("");
+      break;
+    case "bearer":
+      writeAuthMethod("bearer");
+      setBearerToken(auth.token);
+      break;
+    case "custom":
+      writeAuthMethod("custom");
+      writeCustomHeaders(JSON.stringify(auth.headers));
+      break;
+    case "oauth":
+      writeAuthMethod("oauth");
+      break;
+  }
+}
+
+/**
+ * Resync the OAuth slice (panel state, decoded JWT, custom-headers draft)
+ * from whatever the active origin's localStorage holds. Called after a
+ * profile switch so stale tokens / compliance results from the previous
+ * profile don't linger in the OAuth debugger panel.
+ */
+function snapshotOauthSliceFromOrigin(prev: OAuthState): OAuthState {
+  const saved = loadOAuthTokens();
+  const headersStr = JSON.stringify(readCustomHeaders());
+  return {
+    ...prev,
+    status: saved.accessToken ? "connected" : "idle",
+    metadata: null,
+    complianceChecks: [],
+    accessToken: saved.accessToken,
+    refreshToken: saved.refreshToken,
+    expiresAt: saved.expiresAt,
+    clientId: saved.clientId || "",
+    customHeaders: headersStr === "{}" ? "" : headersStr,
+    error: null,
+    decodedToken: saved.accessToken ? decodeToken(saved.accessToken) : null,
+  };
+}
+
+/**
+ * Read whatever auth is currently configured in localStorage for the active
+ * origin and convert it into a `ProfileAuth`. Used by the one-shot migration
+ * to seed profiles from pre-profile installs.
+ */
+function snapshotOriginAuthForMigration(): ProfileAuth | null {
+  const method = readAuthMethod();
+  if (method === "bearer") {
+    const token = getBearerToken();
+    if (token) return { method: "bearer", token };
+  } else if (method === "custom") {
+    const headers = readCustomHeaders();
+    if (Object.keys(headers).length > 0) {
+      return { method: "custom", headers };
+    }
+  } else if (method === "oauth") {
+    if (loadOAuthTokens().accessToken) return { method: "oauth" };
+  }
+  return null;
+}
+
 // ── Store ──
 
 interface StudioState {
@@ -390,11 +470,17 @@ interface StudioState {
   proxyConnected: boolean;
   setProxyUrl: (url: string) => void;
 
-  // Profiles (MCP server targets persisted by the local backend)
+  // Profiles (MCP server targets + auth, persisted by the local backend)
   profiles: Profile[];
   activeProfileId: string | null;
   refreshProfiles: () => Promise<void>;
   activateAndApply: (id: string) => Promise<void>;
+  /**
+   * Persist a new auth blob on the active profile, then mirror into
+   * localStorage. The profile is the single writer; localStorage is a
+   * derived cache that drives `buildHeaders()` without further changes.
+   */
+  updateActiveProfileAuth: (auth: ProfileAuth) => Promise<void>;
 
   // Data
   tools: McpToolInfo[];
@@ -480,8 +566,8 @@ interface StudioState {
   loadAll: () => Promise<void>;
   setAuthMethod: (method: AuthMethod) => void;
   setToken: (draft: string) => void;
-  saveToken: () => void;
-  clearToken: () => void;
+  saveToken: () => Promise<void>;
+  clearToken: () => Promise<void>;
   setAuthOpen: (open: boolean) => void;
 
   // OAuth actions
@@ -493,6 +579,11 @@ interface StudioState {
   setOAuthClientSecret: (secret: string) => void;
   setOAuthRedirectUri: (uri: string) => void;
   setOAuthCustomHeaders: (headers: string) => void;
+  /**
+   * Validate the current custom-headers draft and persist it to the active
+   * profile. Throws if the draft is not a JSON object of string values.
+   */
+  applyCustomHeaders: () => Promise<void>;
   setOAuthSelectedScopes: (scopes: string[]) => void;
   testOAuthEndpoints: () => Promise<void>;
   addOAuthDebugEvent: (event: OAuthDebugEvent) => void;
@@ -563,6 +654,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     try {
       const resp = await listProfiles();
       set({ profiles: resp.profiles, activeProfileId: resp.active_id });
+
       // First-run hydration: if URL is unset and the active profile has one,
       // adopt it so Studio connects without an extra click. Skip when the
       // user already opened with `?proxy=` so we never override an explicit URL.
@@ -573,6 +665,57 @@ export const useStudioStore = create<StudioState>((set, get) => ({
           get().setProxyUrl(active.server_url);
         }
       }
+
+      // One-shot migration: existing installs have origin-scoped auth in
+      // localStorage but profiles with `auth: undefined`. Walk every profile
+      // once, setProxyUrl to its origin, snapshot whatever auth is configured
+      // for that origin, and persist it onto the profile. Gated by a global
+      // flag so creating a new empty profile later does not auto-seed from
+      // stale localStorage.
+      if (!localStorage.getItem(PROFILE_AUTH_MIGRATION_FLAG)) {
+        const originalUrl = get().proxyUrl;
+        for (const p of resp.profiles) {
+          if (p.auth || !p.server_url) continue;
+          // setProxyUrl is what makes studioKey() resolve to this origin.
+          apiSetProxyUrl(p.server_url);
+          const snapshot = snapshotOriginAuthForMigration();
+          if (snapshot) {
+            try {
+              await apiUpdateProfile(p.id, { auth: snapshot });
+            } catch {
+              /* migration is best-effort; user can re-enter auth manually */
+            }
+          }
+        }
+        // Restore the originally active URL so we don't leave the store
+        // pointing at the last profile we visited during migration.
+        if (originalUrl) {
+          apiSetProxyUrl(originalUrl);
+        }
+        localStorage.setItem(PROFILE_AUTH_MIGRATION_FLAG, "1");
+        // Re-list so the store reflects the seeded auth.
+        const after = await listProfiles();
+        set({ profiles: after.profiles, activeProfileId: after.active_id });
+      }
+
+      // Apply active profile's auth into the localStorage cache so
+      // `buildHeaders()` sees the right token from the first request on.
+      // Also resync the store's auth slice; without this the auth panel
+      // renders the empty snapshot taken at store-init time (before any
+      // profile URL was known) and the green "OAuth"/"Bearer" badge never
+      // lights up even when a token is present.
+      const finalActive = get().profiles.find(
+        (p) => p.id === get().activeProfileId,
+      );
+      if (finalActive) {
+        applyProfileAuthToLocalStorage(finalActive.auth);
+        set((s) => ({
+          authMethod: readAuthMethod(),
+          token: getBearerToken(),
+          tokenDraft: getBearerToken(),
+          oauth: snapshotOauthSliceFromOrigin(s.oauth),
+        }));
+      }
     } catch {
       /* backend not ready yet — caller can retry */
     }
@@ -582,9 +725,40 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const resp = await apiActivateProfile(id);
     set({ profiles: resp.profiles, activeProfileId: resp.active_id });
     const active = resp.profiles.find((p) => p.id === resp.active_id);
-    if (active && active.server_url) {
+    if (!active) return;
+    // Order matters: setProxyUrl first so studioKey() in
+    // applyProfileAuthToLocalStorage resolves to the new origin.
+    if (active.server_url) {
       get().setProxyUrl(active.server_url);
     }
+    applyProfileAuthToLocalStorage(active.auth);
+    // Reflect the new auth in the studio store so the auth panel updates.
+    set((s) => ({
+      authMethod: readAuthMethod(),
+      token: getBearerToken(),
+      tokenDraft: getBearerToken(),
+      oauth: snapshotOauthSliceFromOrigin(s.oauth),
+    }));
+    resetSession();
+  },
+
+  updateActiveProfileAuth: async (auth: ProfileAuth) => {
+    const id = get().activeProfileId;
+    if (!id) throw new Error("No active profile");
+    // Profile is the single writer; mirror to localStorage only on success
+    // so a failed PUT cannot leave disk and cache disagreeing.
+    const updated = await apiUpdateProfile(id, { auth });
+    set((s) => ({
+      profiles: s.profiles.map((p) => (p.id === id ? updated : p)),
+    }));
+    applyProfileAuthToLocalStorage(auth);
+    set((s) => ({
+      authMethod: readAuthMethod(),
+      token: getBearerToken(),
+      tokenDraft: getBearerToken(),
+      oauth: snapshotOauthSliceFromOrigin(s.oauth),
+    }));
+    resetSession();
   },
 
   // Data
@@ -733,21 +907,27 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   },
 
   setAuthMethod: (method) => {
-    writeAuthMethod(method);
+    // UI-only: switches the visible tab in the auth panel. Persistence to
+    // the active profile (and localStorage cache) happens at the explicit
+    // commit moments below: saveToken / clearToken / applyCustomHeaders /
+    // OAuth callback success.
     set({ authMethod: method });
   },
 
   setToken: (draft) => set({ tokenDraft: draft }),
 
-  saveToken: () => {
-    const { tokenDraft, loadAll } = get();
-    setBearerToken(tokenDraft);
+  saveToken: async () => {
+    const { tokenDraft } = get();
+    await get().updateActiveProfileAuth({
+      method: "bearer",
+      token: tokenDraft,
+    });
     set({ token: tokenDraft, authOpen: !tokenDraft });
-    loadAll();
+    get().loadAll();
   },
 
-  clearToken: () => {
-    setBearerToken("");
+  clearToken: async () => {
+    await get().updateActiveProfileAuth({ method: "bearer", token: "" });
     set({ token: "", tokenDraft: "", authOpen: true });
     get().loadAll();
   },
@@ -782,8 +962,29 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   },
 
   setOAuthCustomHeaders: (headers) => {
+    // Draft only. `applyCustomHeaders` commits to the active profile.
     set((s) => ({ oauth: { ...s.oauth, customHeaders: headers } }));
-    writeCustomHeaders(headers);
+  },
+
+  applyCustomHeaders: async () => {
+    const raw = get().oauth.customHeaders.trim();
+    if (!raw) return;
+    let parsed: Record<string, string>;
+    try {
+      const value = JSON.parse(raw);
+      if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        throw new Error("custom headers must be a JSON object");
+      }
+      parsed = {};
+      for (const [k, v] of Object.entries(value)) {
+        if (typeof v !== "string") continue;
+        parsed[k] = v;
+      }
+    } catch (e) {
+      throw new Error((e as Error).message);
+    }
+    await get().updateActiveProfileAuth({ method: "custom", headers: parsed });
+    get().loadAll();
   },
 
   setOAuthRedirectUri: (uri) => {
@@ -935,6 +1136,16 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
       saveOAuthTokens(tokens, clientId);
       removePKCE();
+
+      // Mark the active profile as `oauth` so future activations know to
+      // resolve the token from origin localStorage rather than treat the
+      // profile as unauthed. Best-effort: the OAuth flow itself succeeded
+      // even if the profile write fails.
+      try {
+        await get().updateActiveProfileAuth({ method: "oauth" });
+      } catch {
+        /* ignore */
+      }
 
       const decoded = decodeToken(tokens.access_token);
 

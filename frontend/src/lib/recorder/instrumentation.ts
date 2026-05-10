@@ -126,25 +126,6 @@ function diffConfig(
   return Object.keys(patch).length ? patch : null;
 }
 
-function diffAuth(prev: AuthBlock, next: AuthBlock): Partial<AuthBlock> | null {
-  if (prev.method !== next.method) return next;
-  if (prev.method === "custom" && next.method === "custom") {
-    if (JSON.stringify(prev.headers) !== JSON.stringify(next.headers)) {
-      return { method: "custom", headers: next.headers };
-    }
-    return null;
-  }
-  if (
-    (prev.method === "oauth" || prev.method === "bearer") &&
-    prev.method === next.method
-  ) {
-    if (prev.token !== (next as { token: string }).token) {
-      return { method: prev.method, token: (next as { token: string }).token };
-    }
-  }
-  return null;
-}
-
 function selectionFrom(
   selected: RecordableState["selected"],
 ): { type: "tool" | "resource"; name: string } | null {
@@ -206,8 +187,9 @@ export function attachInstrumentation<T extends RecordableState>(
     const cfgPatch = diffConfig(configFrom(prev), configFrom(state));
     if (cfgPatch) emit({ kind: "config.update", patch: cfgPatch });
 
-    const authPatch = diffAuth(authFrom(prev), authFrom(state));
-    if (authPatch) emit({ kind: "auth.update", patch: authPatch });
+    // Auth is profile-scoped; mid-recording auth changes no longer represent
+    // a meaningful test input. Old recordings still parse and the chrome
+    // driver no-ops `auth.update` events for back-compat.
 
     if (prev.selected !== state.selected) {
       const sel = selectionFrom(state.selected);

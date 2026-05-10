@@ -3,10 +3,23 @@
  * same origin; profiles persist in `~/.mcp-studio/profiles.json`.
  */
 
+/**
+ * Auth a profile carries. Bearer/custom values live in the profile so
+ * switching profile = switching auth (multi-identity per origin). The
+ * "oauth" variant is a marker only: actual tokens stay in localStorage
+ * keyed by origin because the OAuth callback page has no profile context.
+ */
+export type ProfileAuth =
+  | { method: "none" }
+  | { method: "bearer"; token: string }
+  | { method: "custom"; headers: Record<string, string> }
+  | { method: "oauth" };
+
 export interface Profile {
   id: string;
   name: string;
   server_url: string;
+  auth?: ProfileAuth;
 }
 
 export interface ProfilesResponse {
@@ -35,6 +48,7 @@ export async function listProfiles(): Promise<ProfilesResponse> {
 export async function createProfile(input: {
   name: string;
   server_url?: string;
+  auth?: ProfileAuth;
 }): Promise<Profile> {
   return asJson<Profile>(
     await fetch("/api/studio/profiles", {
@@ -43,14 +57,23 @@ export async function createProfile(input: {
       body: JSON.stringify({
         name: input.name,
         server_url: input.server_url ?? "",
+        auth: input.auth,
       }),
     }),
   );
 }
 
+/**
+ * `auth: undefined` leaves the field alone. To clear auth, send `auth: null`.
+ * Mirrors the backend's `Option<Option<ProfileAuth>>` semantics.
+ */
 export async function updateProfile(
   id: string,
-  patch: { name?: string; server_url?: string },
+  patch: {
+    name?: string;
+    server_url?: string;
+    auth?: ProfileAuth | null;
+  },
 ): Promise<Profile> {
   return asJson<Profile>(
     await fetch(`/api/studio/profiles/${encodeURIComponent(id)}`, {

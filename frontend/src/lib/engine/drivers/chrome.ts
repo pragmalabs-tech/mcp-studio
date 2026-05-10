@@ -34,26 +34,14 @@ function applyConfig(
   }
 }
 
+// Auth is profile-scoped now: in-timeline `auth.update` events from old
+// recordings no longer drive replay. The driver still acknowledges the kind
+// so old test JSON loads without "no driver registered" errors.
 function applyAuth(
-  store: DriverContext["store"],
-  patch: Record<string, unknown>,
+  _store: DriverContext["store"],
+  _patch: Record<string, unknown>,
 ) {
-  if (typeof patch.method === "string") {
-    store.setAuthMethod(patch.method as "oauth" | "bearer" | "custom");
-  }
-  if (typeof patch.token === "string") {
-    // Player never receives real tokens (redacted at recording time).
-    // Setting an empty / placeholder string is intentionally a no-op for
-    // bearer; oauth replay is out of scope for v1 (preconditions catch it).
-    if (patch.token && patch.token !== "<<from-env>>") {
-      store.setToken(patch.token);
-      store.saveToken();
-    }
-  }
-  const headers = patch.headers as Record<string, string> | undefined;
-  if (headers) {
-    store.setOAuthCustomHeaders(JSON.stringify(headers));
-  }
+  /* intentionally empty */
 }
 
 function findToolByName(

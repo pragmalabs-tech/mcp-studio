@@ -110,6 +110,30 @@ pub fn write_json(path: &Path, value: &serde_json::Value) -> io::Result<()> {
     std::fs::write(path, bytes)
 }
 
+/// Write `bytes` to `path` and chmod 0600 on unix. Used for any file that may
+/// hold credentials (config.json, profiles.json) so other local users on a
+/// shared machine cannot read tokens.
+pub fn write_secure(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, bytes)?;
+    set_owner_only(path)
+}
+
+#[cfg(unix)]
+fn set_owner_only(path: &Path) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = std::fs::metadata(path)?.permissions();
+    perms.set_mode(0o600);
+    std::fs::set_permissions(path, perms)
+}
+
+#[cfg(not(unix))]
+fn set_owner_only(_path: &Path) -> io::Result<()> {
+    Ok(())
+}
+
 pub fn delete_file(path: &Path) -> io::Result<()> {
     match std::fs::remove_file(path) {
         Ok(()) => Ok(()),

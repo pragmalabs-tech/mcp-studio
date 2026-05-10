@@ -382,15 +382,11 @@ async function applySetup(test: Test, store: EngineStore): Promise<void> {
   if (!store.getProxyUrl() && connect.url) {
     store.setProxyUrl(connect.url);
   }
-  store.setAuthMethod(connect.auth.method);
-  if (connect.auth.method === "bearer" || connect.auth.method === "oauth") {
-    if (connect.auth.token && connect.auth.token !== "<<from-env>>") {
-      store.setToken(connect.auth.token);
-      store.saveToken();
-    }
-  } else if (connect.auth.method === "custom") {
-    store.setOAuthCustomHeaders(JSON.stringify(connect.auth.headers));
-  }
+  // Auth is profile-scoped: whatever the active profile pushed into the
+  // localStorage cache is what `buildHeaders()` reads. Recorded auth in
+  // `connect.auth` is intentionally ignored so a test recorded against
+  // staging-bearer can replay against prod-oauth without stomping the
+  // active profile's credentials.
   store.setPlatform(config.platform);
   store.setTheme(config.theme);
   store.setLocale(config.locale);

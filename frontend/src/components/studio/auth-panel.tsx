@@ -51,10 +51,11 @@ export function AuthPanel() {
     setOAuthClientSecret,
     setOAuthRedirectUri,
     setOAuthCustomHeaders,
+    applyCustomHeaders,
     setOAuthSelectedScopes,
     setOAuthDebugOpen,
-    loadAll,
   } = useStudioStore();
+  const [applyError, setApplyError] = useState<string | null>(null);
 
   const [timeRemaining, setTimeRemaining] = useState("");
   const [copiedUri, setCopiedUri] = useState(false);
@@ -428,10 +429,20 @@ export function AuthPanel() {
                 size="sm"
                 className="h-8 text-xs px-4 w-full"
                 disabled={!oauth.customHeaders.trim() || !customHeadersValid}
-                onClick={loadAll}
+                onClick={async () => {
+                  setApplyError(null);
+                  try {
+                    await applyCustomHeaders();
+                  } catch (e) {
+                    setApplyError((e as Error).message);
+                  }
+                }}
               >
                 Apply Headers
               </Button>
+              {applyError && (
+                <p className="text-[10px] text-destructive">{applyError}</p>
+              )}
               <p className="text-[9px] text-muted-foreground/50">
                 JSON object — each key-value pair becomes an HTTP header on
                 every MCP request.

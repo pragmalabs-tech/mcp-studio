@@ -52,22 +52,6 @@ pub fn load() -> Config {
 pub fn save(cfg: &Config) -> io::Result<()> {
     let dir = config_dir().ok_or_else(|| io::Error::other("no home directory"))?;
     let path = dir.join("config.json");
-    std::fs::create_dir_all(&dir)?;
     let bytes = serde_json::to_vec_pretty(cfg).map_err(io::Error::other)?;
-    std::fs::write(&path, bytes)?;
-    set_owner_only(&path)?;
-    Ok(())
-}
-
-#[cfg(unix)]
-fn set_owner_only(path: &std::path::Path) -> io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    let mut perms = std::fs::metadata(path)?.permissions();
-    perms.set_mode(0o600);
-    std::fs::set_permissions(path, perms)
-}
-
-#[cfg(not(unix))]
-fn set_owner_only(_path: &std::path::Path) -> io::Result<()> {
-    Ok(())
+    crate::storage::write_secure(&path, &bytes)
 }

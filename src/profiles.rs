@@ -1,26 +1,43 @@
 //! Persistent profile catalog at `~/.mcp-studio/profiles.json`.
 //!
-//! A profile is a named MCP server target the user can return to across runs.
-//! The file holds the list of profiles and the currently active id; auth
-//! credentials stay scoped per origin in browser localStorage and are not
-//! mirrored here.
+//! A profile is a named MCP server target the user can return to across runs,
+//! with the auth credentials needed to talk to that server. Storing auth here
+//! enables multiple identities for the same origin (e.g. prod-admin vs
+//! prod-readonly). OAuth tokens stay origin-scoped in browser localStorage
+//! because the redirect flow has no profile context after callback; the
+//! `Oauth` variant is a marker that tells the auth panel which UI to show.
 
+use std::collections::BTreeMap;
 use std::io;
 use std::path::PathBuf;
 
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::config;
 use crate::server::{AppError, AppState};
+use crate::storage;
+
+/// Auth variants a profile can carry. Tagged enum keeps invalid combinations
+/// (e.g. method=bearer with a custom_headers payload) unrepresentable.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "method", rename_all = "lowercase")]
+pub enum ProfileAuth {
+    None,
+    Bearer { token: String },
+    Custom { headers: BTreeMap<String, String> },
+    Oauth,
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Profile {
     pub id: String,
     pub name: String,
     pub server_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<ProfileAuth>,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
@@ -58,9 +75,8 @@ pub fn load() -> ProfilesFile {
 fn save(file: &ProfilesFile) -> io::Result<()> {
     let dir = config::config_dir().ok_or_else(|| io::Error::other("no home directory"))?;
     let path = dir.join("profiles.json");
-    std::fs::create_dir_all(&dir)?;
     let bytes = serde_json::to_vec_pretty(file).map_err(io::Error::other)?;
-    std::fs::write(&path, bytes)
+    storage::write_secure(&path, &bytes)
 }
 
 /// Ensure at least one profile exists. Returns the file with a `default`
@@ -71,6 +87,7 @@ fn ensure_default(mut file: ProfilesFile) -> ProfilesFile {
             id: random_id(),
             name: "default".into(),
             server_url: String::new(),
+            auth: None,
         };
         file.active_id = Some(default.id.clone());
         file.profiles.push(default);
@@ -100,6 +117,8 @@ pub struct CreateProfileReq {
     pub name: String,
     #[serde(default)]
     pub server_url: String,
+    #[serde(default)]
+    pub auth: Option<ProfileAuth>,
 }
 
 pub async fn create_profile(
@@ -115,16 +134,29 @@ pub async fn create_profile(
         id: random_id(),
         name,
         server_url: req.server_url.trim().to_string(),
+        auth: req.auth,
     };
     file.profiles.push(profile.clone());
     save(&file).map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(Json(profile))
 }
 
+/// `auth: None` means "leave alone"; `auth: Some(None)` means "clear it".
+/// `deserialize_some` lets us distinguish a missing field from explicit null.
+fn deserialize_some<'de, T, D>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Deserialize::deserialize(deserializer).map(Some)
+}
+
 #[derive(Deserialize)]
 pub struct UpdateProfileReq {
     pub name: Option<String>,
     pub server_url: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_some")]
+    pub auth: Option<Option<ProfileAuth>>,
 }
 
 pub async fn update_profile(
@@ -147,6 +179,9 @@ pub async fn update_profile(
     }
     if let Some(url) = req.server_url {
         profile.server_url = url.trim().to_string();
+    }
+    if let Some(auth) = req.auth {
+        profile.auth = auth;
     }
     let updated = profile.clone();
     save(&file).map_err(|e| AppError::Internal(e.to_string()))?;
