@@ -101,6 +101,17 @@ export const cueDriver: Driver<Action> = {
           durationMs: performance.now() - t0,
         };
       }
+      // Pre-flight: the tool definition must declare a widget reference,
+      // either via Claude's `meta.ui.resourceUri` / `meta.ui.uri` or
+      // OpenAI's `meta["openai/outputTemplate"]`. Fail fast so we don't
+      // wait the full render timeout on a tool that has no widget.
+      if (!toolDeclaresWidget(tool.meta)) {
+        return {
+          ok: false,
+          reason: `tool "${action.tool}" does not declare a widget UI (no _meta.ui.resourceUri / _meta.openai/outputTemplate)`,
+          durationMs: performance.now() - t0,
+        };
+      }
       ctx.store.select({ type: "tool", tool });
       await sleep(SELECT_SETTLE_MS, ctx.signal);
       ctx.store.setEditorValue(JSON.stringify(action.args ?? {}, null, 2));
@@ -128,6 +139,25 @@ export const cueDriver: Driver<Action> = {
     return { ok: false, reason: "unsupported-kind", durationMs: 0 };
   },
 };
+
+/** True when the tool's `meta` carries a widget reference under any of the
+ *  known conventions (Claude, OpenAI Apps SDK, mcpr). Mirrors the studio's
+ *  `extractWidgetUri` in `lib/studio/store.ts` so behavior matches what a
+ *  human user would see when selecting the tool in the sidebar. */
+function toolDeclaresWidget(
+  meta: Record<string, unknown> | undefined,
+): boolean {
+  if (!meta) return false;
+  const ui = meta.ui as Record<string, unknown> | undefined;
+  if (
+    ui &&
+    (typeof ui.resourceUri === "string" || typeof ui.uri === "string")
+  ) {
+    return true;
+  }
+  if (typeof meta["openai/outputTemplate"] === "string") return true;
+  return false;
+}
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {

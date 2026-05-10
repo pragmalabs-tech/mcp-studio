@@ -124,6 +124,16 @@ export type WidgetExpectEntry =
       method: string;
       match?: ExpectBlock;
       within_ms?: number;
+    }
+  | {
+      // Compares the rendered widget's HTML against a snapshot captured at
+      // record time. Soft-only: differences surface in the report as a
+      // warning rather than failing the step. Useful drift signal without
+      // forcing test churn on every cosmetic widget change.
+      kind: "html_drift_warn";
+      recorded_html: string;
+      // Tolerance: pct length difference before warning fires. Default 5%.
+      tolerance_pct?: number;
     };
 
 // ── Assert namespace ────────────────────────────────────────────────────────

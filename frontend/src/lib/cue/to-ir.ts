@@ -173,6 +173,23 @@ function translateWidgetOpen(step: WidgetOpen, _ids: IdGen): Recorded[] {
       kind: "result_match",
       expect: { "result._meta.openai/outputTemplate": { exists: true } },
     },
+    // Render-success implicits. The cueDriver's cue.widget_open returns
+    // observation = { result, render: RenderCompleteResult | null }, so
+    // these path-keyed expects walk into the render payload directly.
+    // - render.bodyChars > 0  → widget mounted with non-empty body
+    // - render.handshakeOk    → ext-apps init handshake completed
+    // - render.hasRuntimeErrors !== true  → no window.onerror during init
+    // If render is null (timeout / never fired), every path resolves to
+    // nothing and the bundle fails with a clear "path resolved to nothing"
+    // for the first check — pinpointing "render did not fire".
+    {
+      kind: "result_match",
+      expect: {
+        "render.bodyChars": { gte: 1 },
+        "render.handshakeOk": true,
+        "render.hasRuntimeErrors": { not: true },
+      },
+    },
     { kind: "no_runtime_errors" },
   ];
   if (step.expect) {
@@ -312,6 +329,12 @@ function widgetExpectToAssertion(e: WidgetExpectEntry): CueAssertion | null {
         method: e.method,
         match: e.match,
         withinMs: e.within_ms ?? 1_000,
+      };
+    case "html_drift_warn":
+      return {
+        kind: "html_drift_warn",
+        recordedHtml: e.recorded_html,
+        tolerancePct: e.tolerance_pct ?? 5,
       };
   }
 }

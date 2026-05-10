@@ -54,6 +54,22 @@ export function irToCue(input: FromIrInput): Cue {
         consumed.add(i);
         continue;
       }
+
+      // Widget-pattern detection. When a `tools/call` response declares a
+      // widget reference (per OpenAI Apps SDK / Claude conventions) and the
+      // recording captured a follow-up `resources/read` for that exact URI,
+      // collapse all four entries into a single `widget.open` step. This
+      // keeps recordings of widget interactions automatically widget-tested
+      // — the widget.open driver handles the render side effect that two
+      // raw `mcp.call` steps wouldn't trigger.
+      if (a.method === "tools/call") {
+        const widgetSteps = tryFoldWidgetPattern(t, i, consumed);
+        if (widgetSteps) {
+          for (const s of widgetSteps) steps.push(s);
+          continue;
+        }
+      }
+
       const responseIdx = findResponse(t, a.id, i);
       if (responseIdx === -1) {
         steps.push({
@@ -166,6 +182,116 @@ export function irToCue(input: FromIrInput): Cue {
     description: input.description,
     steps,
   };
+}
+
+/**
+ * Detect the widget-render pattern in a recording: a user-source
+ * `tools/call` whose response declares a widget URI, immediately followed
+ * by a user-source `resources/read` for that exact URI. When found,
+ * returns the Cue step(s) to emit and marks all consumed indices.
+ *
+ * Returns `null` when the pattern doesn't match — the caller falls back
+ * to emitting a plain `mcp.call`.
+ *
+ * Why fold: widget.open in Cue triggers the studio's full render
+ * pipeline (call → fetch widget HTML → render iframe → assert). Two
+ * separate `mcp.call` steps would make the requests but skip the render,
+ * so widget tests would never fire their visual checks.
+ */
+function tryFoldWidgetPattern(
+  t: Recorded[],
+  callIdx: number,
+  consumed: Set<number>,
+): CueStep[] | null {
+  const callReq = t[callIdx];
+  if (callReq.kind !== KIND.MCP_REQUEST) return null;
+  if (callReq.method !== "tools/call") return null;
+
+  const callRespIdx = findResponse(t, callReq.id, callIdx);
+  if (callRespIdx === -1) return null;
+  const callResp = t[callRespIdx];
+  if (callResp.kind !== KIND.MCP_RESPONSE || callResp.error) return null;
+
+  const widgetUri = extractWidgetUri(callResp.result);
+  if (!widgetUri) return null;
+
+  // Find the next user-source resources/read for this URI within a small
+  // window (the studio fires it synchronously after the tool call).
+  let readReqIdx = -1;
+  for (let j = callRespIdx + 1; j < Math.min(t.length, callRespIdx + 20); j++) {
+    const e = t[j];
+    if (e.kind !== KIND.MCP_REQUEST) continue;
+    if (e.source === "widget") continue;
+    if (e.method !== "resources/read") continue;
+    const params = e.params as { uri?: unknown } | null | undefined;
+    if (params?.uri === widgetUri) {
+      readReqIdx = j;
+      break;
+    }
+  }
+  if (readReqIdx === -1) return null;
+  const readReq = t[readReqIdx];
+  if (readReq.kind !== KIND.MCP_REQUEST) return null;
+
+  const readRespIdx = findResponse(t, readReq.id, readReqIdx);
+  if (readRespIdx === -1) return null;
+  const readResp = t[readRespIdx];
+  if (readResp.kind !== KIND.MCP_RESPONSE || readResp.error) return null;
+
+  // Pull the recorded widget HTML for the drift warning.
+  const recordedHtml = extractFirstResourceText(readResp.result);
+
+  // Mark every consumed index so the outer loop skips them.
+  consumed.add(callIdx);
+  consumed.add(callRespIdx);
+  consumed.add(readReqIdx);
+  consumed.add(readRespIdx);
+
+  const params = callReq.params as { name?: unknown; arguments?: unknown };
+  const tool = typeof params?.name === "string" ? params.name : "(unknown)";
+  const args = (params?.arguments ?? {}) as unknown;
+
+  const out: CueStep[] = [
+    {
+      kind: "widget.open",
+      tool,
+      args,
+    },
+  ];
+
+  // Attach the drift warning as a separate widget.expect step right after
+  // the open. Soft-only: the report flags drift in `info.warnings`, the
+  // step itself still passes (the rest of the bundle catches real bugs).
+  if (recordedHtml) {
+    out.push({
+      kind: "widget.expect",
+      expect: [{ kind: "html_drift_warn", recorded_html: recordedHtml }],
+    });
+  }
+
+  return out;
+}
+
+function extractWidgetUri(result: unknown): string | null {
+  if (!result || typeof result !== "object") return null;
+  const meta = (result as { _meta?: unknown })._meta;
+  if (!meta || typeof meta !== "object") return null;
+  const m = meta as Record<string, unknown>;
+  const ui = m.ui as Record<string, unknown> | undefined;
+  if (typeof ui?.resourceUri === "string") return ui.resourceUri;
+  if (typeof ui?.uri === "string") return ui.uri;
+  if (typeof m["openai/outputTemplate"] === "string") {
+    return m["openai/outputTemplate"] as string;
+  }
+  return null;
+}
+
+function extractFirstResourceText(result: unknown): string | null {
+  if (!result || typeof result !== "object") return null;
+  const contents = (result as { contents?: unknown }).contents;
+  if (!Array.isArray(contents) || contents.length === 0) return null;
+  const first = contents[0] as { text?: unknown };
+  return typeof first?.text === "string" ? first.text : null;
 }
 
 function findResponse(t: Recorded[], requestId: number, from: number): number {

@@ -50,6 +50,7 @@ const WIDGET_EXPECT_KIND_SET: ReadonlySet<string> = new Set([
   "no_runtime_errors",
   "no_csp_violations",
   "triggers_mcp_call",
+  "html_drift_warn",
 ]);
 
 const WAIT_TYPE_SET: ReadonlySet<string> = new Set([
@@ -453,6 +454,22 @@ function validateWidgetExpectEntry(
         `${path}/match`,
         ctx,
       );
+    }
+  } else if (k === "html_drift_warn") {
+    if (
+      typeof (value as { recorded_html?: unknown }).recorded_html !== "string"
+    ) {
+      ctx.add(
+        `${path}/recorded_html`,
+        "must be a string (recorded widget HTML)",
+      );
+    }
+    const tol = (value as { tolerance_pct?: unknown }).tolerance_pct;
+    if (
+      tol !== undefined &&
+      (typeof tol !== "number" || tol < 0 || tol > 100)
+    ) {
+      ctx.add(`${path}/tolerance_pct`, "must be a number 0-100");
     }
   }
 }

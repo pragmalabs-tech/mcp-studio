@@ -112,6 +112,141 @@ describe("irToCue", () => {
     }
   });
 
+  it("collapses tools/call (with widget ref) + resources/read into widget.open", () => {
+    const widgetUri = "ui://weather-app/index.html";
+    const widgetHtml = "<!DOCTYPE html><html><body>weather</body></html>";
+    const cue = irToCue({
+      name: "demo",
+      timeline: [
+        rec({
+          relMs: 0,
+          kind: KIND.MCP_REQUEST,
+          id: 1,
+          source: "user",
+          method: "tools/call",
+          params: { name: "get_weather", arguments: { city: "Tokyo" } },
+        }),
+        rec({
+          relMs: 5,
+          kind: KIND.MCP_RESPONSE,
+          requestId: 1,
+          result: {
+            content: [{ type: "text", text: "{}" }],
+            structuredContent: { temp: 22 },
+            _meta: { "openai/outputTemplate": widgetUri },
+          },
+          durationMs: 4,
+        }),
+        rec({
+          relMs: 6,
+          kind: KIND.MCP_REQUEST,
+          id: 2,
+          source: "user",
+          method: "resources/read",
+          params: { uri: widgetUri },
+        }),
+        rec({
+          relMs: 8,
+          kind: KIND.MCP_RESPONSE,
+          requestId: 2,
+          result: {
+            contents: [
+              { uri: widgetUri, mimeType: "text/html", text: widgetHtml },
+            ],
+          },
+          durationMs: 2,
+        }),
+      ],
+    });
+    // Two steps: widget.open + widget.expect with html_drift_warn.
+    expect(cue.steps).toHaveLength(2);
+    expect(cue.steps[0].kind).toBe("widget.open");
+    if (cue.steps[0].kind === "widget.open") {
+      expect(cue.steps[0].tool).toBe("get_weather");
+      expect(cue.steps[0].args).toEqual({ city: "Tokyo" });
+    }
+    expect(cue.steps[1].kind).toBe("widget.expect");
+    if (cue.steps[1].kind === "widget.expect") {
+      const entries = Array.isArray(cue.steps[1].expect)
+        ? cue.steps[1].expect
+        : [cue.steps[1].expect];
+      const drift = entries.find((e) => e.kind === "html_drift_warn");
+      expect(drift).toBeDefined();
+      if (drift && drift.kind === "html_drift_warn") {
+        expect(drift.recorded_html).toBe(widgetHtml);
+      }
+    }
+  });
+
+  it("supports Claude widget meta (ui.resourceUri)", () => {
+    const widgetUri = "ui://app/index.html";
+    const cue = irToCue({
+      name: "demo",
+      timeline: [
+        rec({
+          relMs: 0,
+          kind: KIND.MCP_REQUEST,
+          id: 1,
+          source: "user",
+          method: "tools/call",
+          params: { name: "x" },
+        }),
+        rec({
+          relMs: 1,
+          kind: KIND.MCP_RESPONSE,
+          requestId: 1,
+          result: {
+            content: [{ type: "text", text: "{}" }],
+            _meta: { ui: { resourceUri: widgetUri } },
+          },
+          durationMs: 1,
+        }),
+        rec({
+          relMs: 2,
+          kind: KIND.MCP_REQUEST,
+          id: 2,
+          source: "user",
+          method: "resources/read",
+          params: { uri: widgetUri },
+        }),
+        rec({
+          relMs: 3,
+          kind: KIND.MCP_RESPONSE,
+          requestId: 2,
+          result: { contents: [{ uri: widgetUri, text: "hi" }] },
+          durationMs: 1,
+        }),
+      ],
+    });
+    expect(cue.steps[0].kind).toBe("widget.open");
+  });
+
+  it("falls back to plain mcp.call when tools/call has no widget ref", () => {
+    const cue = irToCue({
+      name: "demo",
+      timeline: [
+        rec({
+          relMs: 0,
+          kind: KIND.MCP_REQUEST,
+          id: 1,
+          source: "user",
+          method: "tools/call",
+          params: { name: "x" },
+        }),
+        rec({
+          relMs: 1,
+          kind: KIND.MCP_RESPONSE,
+          requestId: 1,
+          // No _meta.openai/outputTemplate or ui.* — plain tool call.
+          result: { content: [{ type: "text", text: "ok" }] },
+          durationMs: 1,
+        }),
+      ],
+    });
+    expect(cue.steps).toHaveLength(1);
+    expect(cue.steps[0].kind).toBe("mcp.call");
+  });
+
   it("unknown method drops the implicit lift", () => {
     const cue = irToCue({
       name: "demo",

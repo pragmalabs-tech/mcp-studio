@@ -219,15 +219,141 @@ function previewJson(v: unknown): string {
   }
 }
 
-/** Find the most recent widget.render step at or before step index i. */
+/** Find the most recent widget-rendering step at or before step index i.
+ *  Recognizes both the legacy `widget.render` and the Cue-synthetic
+ *  `cue.widget_open` — both produce a rendered iframe captured as a
+ *  preview snapshot by the engine. */
 function renderAtIndex(report: ReplayReport, i: number): StepResult | null {
   let best: StepResult | null = null;
   for (let k = 0; k <= i && k < report.steps.length; k++) {
-    if (report.steps[k].action.kind === KIND.WIDGET_RENDER) {
+    const kind = report.steps[k].action.kind;
+    if (kind === KIND.WIDGET_RENDER || kind === KIND.CUE_WIDGET_OPEN) {
       best = report.steps[k];
     }
   }
   return best;
+}
+
+/** Pull a widget URI out of a tools/call response per the conventions the
+ *  studio's `extractWidgetUri` recognizes. */
+function widgetUriFromToolResult(result: unknown): string | null {
+  if (!result || typeof result !== "object") return null;
+  const meta = (result as { _meta?: unknown })._meta;
+  if (!meta || typeof meta !== "object") return null;
+  const m = meta as Record<string, unknown>;
+  const ui = m.ui as Record<string, unknown> | undefined;
+  if (typeof ui?.resourceUri === "string") return ui.resourceUri;
+  if (typeof ui?.uri === "string") return ui.uri;
+  if (typeof m["openai/outputTemplate"] === "string") {
+    return m["openai/outputTemplate"] as string;
+  }
+  return null;
+}
+
+/** Walk the report up to (and including) `cursor` looking for any HTML
+ *  resource to render. Returns the synthesized preview iframe srcDoc with
+ *  `window.openai` mocked from the recorded data — best-effort, partial
+ *  data is fine. The HTML alone is enough to render; a matching tool call
+ *  layers in real values when present, otherwise empty mocks let the
+ *  widget at least mount.
+ *
+ *  Works for any Cue: raw `mcp.call` pairs, legacy recordings, the new
+ *  `widget.open` step, and partial timelines. */
+function synthesizePreviewHtml(
+  report: ReplayReport,
+  cursor: number,
+): string | null {
+  // Find an HTML resource in any resources/read response up to the cursor.
+  let html: string | null = null;
+  let resourceUri: string | null = null;
+  for (let k = 0; k <= cursor && k < report.steps.length; k++) {
+    const step = report.steps[k];
+    if (step.action.kind !== KIND.MCP_REQUEST) continue;
+    if (step.action.method !== "resources/read") continue;
+    const obs = step.observation as
+      | {
+          result?: {
+            contents?: { text?: string; mimeType?: string; uri?: string }[];
+          };
+        }
+      | null
+      | undefined;
+    const content = obs?.result?.contents?.[0];
+    if (!content) continue;
+    const text = content.text;
+    if (typeof text !== "string" || text.length === 0) continue;
+    const looksLikeHtml =
+      (typeof content.mimeType === "string" &&
+        content.mimeType.includes("html")) ||
+      text.trimStart().startsWith("<");
+    if (!looksLikeHtml) continue;
+    html = text;
+    resourceUri = typeof content.uri === "string" ? content.uri : null;
+  }
+  if (!html) return null;
+
+  // Optional: pair with a tools/call response so the widget gets real
+  // input/output. Prefer a call whose widget reference matches the
+  // resource URI; fall back to the most recent tools/call.
+  let matchedTool: { result: unknown; args: unknown } | null = null;
+  let fallbackTool: { result: unknown; args: unknown } | null = null;
+  for (let k = 0; k <= cursor && k < report.steps.length; k++) {
+    const step = report.steps[k];
+    if (step.action.kind !== KIND.MCP_REQUEST) continue;
+    if (step.action.method !== "tools/call") continue;
+    const obs = step.observation as { result?: unknown } | null | undefined;
+    const result = obs?.result;
+    if (!result) continue;
+    const params = step.action.params as
+      | { arguments?: unknown }
+      | null
+      | undefined;
+    const args = params?.arguments ?? {};
+    fallbackTool = { result, args };
+    if (resourceUri && widgetUriFromToolResult(result) === resourceUri) {
+      matchedTool = { result, args };
+    }
+  }
+  const tool = matchedTool ?? fallbackTool;
+
+  const tr = (tool?.result ?? {}) as {
+    structuredContent?: unknown;
+    content?: unknown;
+    _meta?: unknown;
+  };
+  const mock = {
+    toolInput: tool?.args ?? {},
+    toolOutput:
+      tr.structuredContent ?? extractFirstTextContent(tr.content) ?? null,
+    toolResponseMetadata: tr._meta ?? {},
+    widgetState: null,
+    theme: "dark",
+    locale: "en-US",
+    displayMode: "compact",
+  };
+  const mockScript = `<script>window.openai = ${JSON.stringify(mock)};</script>`;
+  return html.replace(/<head([^>]*)>/i, `<head$1>${mockScript}`);
+}
+
+function extractFirstTextContent(content: unknown): unknown {
+  if (!Array.isArray(content)) return null;
+  for (const item of content) {
+    if (
+      item &&
+      typeof item === "object" &&
+      (item as { type?: unknown }).type === "text"
+    ) {
+      const text = (item as { text?: unknown }).text;
+      if (typeof text === "string") {
+        try {
+          return JSON.parse(text);
+        } catch {
+          return text;
+        }
+      }
+    }
+  }
+  return null;
 }
 
 export function TestResultPlayer({
@@ -264,17 +390,29 @@ export function TestResultPlayer({
   }, [cursor, total, report]);
 
   /** Update the preview html when the cursor crosses into a different
-   *  widget.render boundary. */
+   *  widget render boundary. Two sources, in order:
+   *  1. Engine-captured snapshot from a `widget.render` / `cue.widget_open`
+   *     step — what the iframe actually painted at run time.
+   *  2. Data-driven synthesis from the Cue's tools/call + resources/read
+   *     responses — works for raw Cues that don't use `widget.open`. The
+   *     tool's recorded result is injected as `window.openai` so the widget
+   *     renders with real data.
+   *  Both keyed off the cursor so scrubbing updates the preview. */
   useEffect(() => {
     const render = renderAtIndex(report, cursor);
     const idx = render ? render.index : null;
-    if (idx === lastRenderIndexRef.current) return;
+    let html =
+      render && idx !== null
+        ? (report.artifacts.previews?.[render.index]?.domSnapshot ?? "")
+        : "";
+    if (!html) {
+      html = synthesizePreviewHtml(report, cursor) ?? "";
+    }
+    // Only re-set when the source step changed OR synthesis produced new html.
+    if (idx === lastRenderIndexRef.current && html === previewHtml) return;
     lastRenderIndexRef.current = idx;
-    const snap = render
-      ? (report.artifacts.previews?.[render.index]?.domSnapshot ?? "")
-      : "";
-    setPreviewHtml(snap);
-  }, [cursor, report]);
+    setPreviewHtml(html);
+  }, [cursor, report, previewHtml]);
 
   /** Drive the cursor one step at a time when playing. */
   useEffect(() => {
@@ -459,21 +597,20 @@ export function TestResultPlayer({
           widget.render boundary, plus a kind-specific data card for whatever
           step the cursor is currently sitting on. */}
       <div className="px-3 pb-3 space-y-2">
-        {previewHtml ? (
+        {previewHtml && (
           <div className="space-y-1">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
               widget preview
             </div>
             <iframe
               title="Cursor render preview"
-              sandbox=""
+              // `allow-scripts` lets the synthesized preview's injected
+              // window.openai script run so widgets display with data. No
+              // `allow-same-origin` so the iframe can't reach the host.
+              sandbox="allow-scripts"
               srcDoc={previewHtml}
               className="w-full h-56 rounded border border-border/40 bg-white"
             />
-          </div>
-        ) : (
-          <div className="text-[10px] text-muted-foreground italic">
-            Widget preview appears once the cursor reaches a widget.render step.
           </div>
         )}
 

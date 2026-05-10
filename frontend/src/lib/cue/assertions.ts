@@ -45,6 +45,15 @@ export type CueAssertion =
       method?: string;
       matchParams?: ExpectBlock;
       expect: ExpectBlock;
+    }
+  | {
+      // Soft check: compares the rendered widget's snapshot HTML against
+      // a snapshot captured at record time. Always returns ok:true; any
+      // drift surfaces as a `warnings` entry on the bundle report and
+      // ends up in the step's `info.warnings` for the report renderer.
+      kind: "html_drift_warn";
+      recordedHtml: string;
+      tolerancePct: number;
     };
 
 /**
@@ -69,6 +78,10 @@ export interface CueAssertionReport {
   ok: boolean;
   passed: number;
   failures: CueAssertionFailure[];
+  /** Soft signals that don't fail the bundle (e.g. HTML drift). Surfaced
+   *  in the report's `info.warnings` so users see them without the test
+   *  going red. */
+  warnings?: string[];
 }
 
 /** Per-step context the assertion runner consumes. The engine populates
@@ -102,23 +115,32 @@ export async function evaluateBundle(
 ): Promise<CueAssertionReport> {
   if (bundle.post.length === 0) return PASS_REPORT;
   const failures: CueAssertionFailure[] = [];
+  const warnings: string[] = [];
   let passed = 0;
   for (let i = 0; i < bundle.post.length; i++) {
     const a = bundle.post[i];
     const r = await runOne(a, ctx);
     if (r.ok) {
       passed++;
+      if (r.warn) warnings.push(r.warn);
     } else {
       failures.push({ index: i, kind: a.kind, reason: r.reason });
     }
   }
-  return { ok: failures.length === 0, passed, failures };
+  const report: CueAssertionReport = {
+    ok: failures.length === 0,
+    passed,
+    failures,
+  };
+  if (warnings.length > 0) report.warnings = warnings;
+  return report;
 }
 
-async function runOne(
-  a: CueAssertion,
-  ctx: AssertCtx,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
+/** Per-assertion result. `warn` carries a soft message that surfaces in
+ *  the bundle's `warnings` array without failing the bundle. */
+type RunOneResult = { ok: true; warn?: string } | { ok: false; reason: string };
+
+async function runOne(a: CueAssertion, ctx: AssertCtx): Promise<RunOneResult> {
   switch (a.kind) {
     case "result_match":
       return runResultMatch(a.expect, ctx.result);
@@ -167,7 +189,27 @@ async function runOne(
 
     case "tool_response":
       return runToolResponse(a, ctx);
+
+    case "html_drift_warn":
+      return runHtmlDriftWarn(a, ctx);
   }
+}
+
+async function runHtmlDriftWarn(
+  a: Extract<CueAssertion, { kind: "html_drift_warn" }>,
+  ctx: AssertCtx,
+): Promise<RunOneResult> {
+  const html = await ctx.getSnapshot();
+  if (html === null) return { ok: true };
+  const recorded = a.recordedHtml.length;
+  const observed = html.length;
+  if (recorded === 0) return { ok: true };
+  const diffPct = (Math.abs(observed - recorded) / recorded) * 100;
+  if (diffPct <= a.tolerancePct) return { ok: true };
+  return {
+    ok: true,
+    warn: `widget HTML drifted from recording (recorded ${recorded} chars, observed ${observed} chars, ${diffPct.toFixed(1)}% diff > ${a.tolerancePct}% tolerance)`,
+  };
 }
 
 function runResultMatch(

@@ -26,7 +26,10 @@ export interface EngineStore {
   /** Read-only access to current state for assertions / preconditions. */
   getState(): {
     strictMode: boolean;
-    tools: { name: string }[];
+    /** `meta` carries the tool's `_meta` (normalized to `meta` by the studio
+     *  loader). Used by `cue.widget_open` to verify the tool declares a
+     *  widget reference before executing. */
+    tools: { name: string; meta?: Record<string, unknown> }[];
     resources: { uri: string; name?: string }[];
     selected: unknown;
     /** Last MCP response observed by `execute()`. Used by `cue.widget_open`

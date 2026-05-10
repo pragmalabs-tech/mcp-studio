@@ -329,11 +329,14 @@ export function createEngine(deps: EngineDeps): Engine {
             const snap = await deps.bridge.snapshot(1000).catch(() => null);
             deps.artifacts?.recordFailure(i, snap);
           } else if (
-            recordedAction.kind === "widget.render" &&
+            (recordedAction.kind === "widget.render" ||
+              recordedAction.kind === "cue.widget_open") &&
             step.status === "pass"
           ) {
             // Capture a lightweight DOM snapshot so the report can render an
             // inline preview of what the widget looked like for this step.
+            // Both legacy `widget.render` recordings and the new
+            // `cue.widget_open` synthetic step result in a rendered iframe.
             const snap = await deps.bridge.snapshot(500).catch(() => null);
             deps.artifacts?.recordPreview(i, snap);
           }
@@ -478,28 +481,38 @@ function makeWaitFor(
 }
 
 /** Combine the driver's per-kind assertion with the Cue bundle outcome.
- *  Either failing fails the step. Pass info merges so the report sees both. */
+ *  Either failing fails the step. Pass info merges so the report sees both.
+ *  Soft warnings from the bundle (e.g. HTML drift) ride along on `info`
+ *  even when the step passes — the report renderer can highlight them. */
 function mergeAssertions(
   base: AssertionResult,
   cue: {
     ok: boolean;
     passed: number;
     failures: { kind: string; reason: string }[];
+    warnings?: string[];
   },
   label?: string,
 ): AssertionResult {
   if (base.status === "skip") return base;
   if (!cue.ok) {
     const reason = cue.failures.map((f) => `${f.kind}: ${f.reason}`).join("; ");
+    const info: Record<string, unknown> = { cue_failures: cue.failures, base };
+    if (cue.warnings && cue.warnings.length > 0) info.warnings = cue.warnings;
     return {
       status: "fail",
       reason: label ? `${label} - ${reason}` : reason,
-      info: { cue_failures: cue.failures, base },
+      info,
     };
   }
   if (base.status === "fail") return base;
+  const info: Record<string, unknown> = {
+    ...(base.info ?? {}),
+    cue_passed: cue.passed,
+  };
+  if (cue.warnings && cue.warnings.length > 0) info.warnings = cue.warnings;
   return {
     status: "pass",
-    info: { ...(base.info ?? {}), cue_passed: cue.passed },
+    info,
   };
 }
