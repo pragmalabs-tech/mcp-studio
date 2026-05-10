@@ -1,4 +1,8 @@
-//! HTTP handlers for the test catalog: `~/.mcp-studio/tests/<slug>.json`.
+//! HTTP handlers for the Cue catalog at `~/.mcp-studio/tests/<slug>.json`.
+//!
+//! Files on disk are Cue JSON (`docs/cue-spec.md`). The frontend translates
+//! a Cue into Engine IR before running. Backend validation is structural
+//! only; the frontend does deep validation against the spec.
 
 use axum::Json;
 use axum::extract::Path;
@@ -14,11 +18,12 @@ pub struct TestSummary {
     pub name: String,
     pub size: u64,
     pub modified_ms: u128,
-    /// Best-effort fields lifted out of the JSON for catalog UX.
+    /// Best-effort fields lifted out of the Cue JSON for catalog UX.
     pub display_name: Option<String>,
     pub description: Option<String>,
+    /// Cue files don't currently track createdAt; left for future use.
     pub created_at: Option<String>,
-    pub profile_id: Option<String>,
+    /// Number of `steps[]` declared in the Cue.
     pub total_actions: Option<usize>,
 }
 
@@ -35,12 +40,8 @@ fn lift_summary(name: &str, file: storage::JsonFile, value: &Value) -> TestSumma
         .get("createdAt")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
-    let profile_id = value
-        .get("profileId")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
     let total_actions = value
-        .pointer("/session/timeline")
+        .get("steps")
         .and_then(|t| t.as_array())
         .map(|a| a.len());
     TestSummary {
@@ -50,7 +51,6 @@ fn lift_summary(name: &str, file: storage::JsonFile, value: &Value) -> TestSumma
         display_name,
         description,
         created_at,
-        profile_id,
         total_actions,
     }
 }
@@ -92,12 +92,17 @@ pub async fn put_test(
     Path(name): Path<String>,
     Json(body): Json<Value>,
 ) -> Result<Json<TestSummary>, AppError> {
-    if body.get("session").is_none() {
-        return Err(AppError::BadRequest("missing `session` field".into()));
-    }
-    if body.pointer("/session/version") != Some(&Value::from(1)) {
+    // Minimal structural check; deep validation lives in the frontend
+    // (`lib/cue/validate.ts`). The backend only ensures the body looks
+    // like a Cue at all so we don't accept arbitrary JSON.
+    let name_ok = body.get("name").and_then(|v| v.as_str()).is_some();
+    let steps_ok = body
+        .get("steps")
+        .and_then(|v| v.as_array())
+        .is_some_and(|a| !a.is_empty());
+    if !name_ok || !steps_ok {
         return Err(AppError::BadRequest(
-            "unsupported `session.version` (expected 1)".into(),
+            "expected Cue file with `name` (string) and non-empty `steps` (array)".into(),
         ));
     }
     let path = resolve_path(&name)?;

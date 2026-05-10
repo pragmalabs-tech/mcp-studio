@@ -1,36 +1,7 @@
-import type { Session, Test } from "@/lib/recorder/schema";
-
-function uuid(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  // RFC 4122 v4-ish fallback for environments without randomUUID
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-export function newTest(input: {
-  name: string;
-  description?: string;
-  profileId?: string;
-  session: Session;
-}): Test {
-  return {
-    id: uuid(),
-    name: input.name,
-    description: input.description,
-    createdAt: new Date().toISOString(),
-    profileId: input.profileId,
-    session: input.session,
-  };
-}
-
 /**
- * Mirror of the backend `safe_filename` slug rules so the UI can preview the
- * filename a user's name will produce. Keep in sync with `mcp-studio/src/storage.rs`.
+ * Slug rules shared with the backend so the UI can preview the filename
+ * a user's chosen name will produce. Keep in sync with
+ * `mcp-studio/src/storage.rs:safe_filename`.
  */
 export function slugify(input: string): string {
   let out = "";

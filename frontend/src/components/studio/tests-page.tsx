@@ -36,11 +36,10 @@ import { createBridgeClient } from "@/lib/engine/bridge-client";
 import { chromeDriver } from "@/lib/engine/drivers/chrome";
 import { mcpDriver } from "@/lib/engine/drivers/mcp";
 import { widgetDriver } from "@/lib/engine/drivers/widget";
+import { cueDriver } from "@/lib/engine/drivers/cue";
 import { runtime } from "@/lib/engine/runtime";
 import { TestPreconditionDialog } from "@/components/studio/test-precondition-dialog";
-import { TestAuthPreconditionDialog } from "@/components/studio/test-auth-precondition-dialog";
 import { TestResultModal } from "@/components/studio/test-result-modal";
-import { getBearerToken, loadOAuthTokens } from "@/lib/studio/api";
 import { createArtifactCollector } from "@/lib/engine/artifacts";
 import {
   buildReport,
@@ -148,8 +147,6 @@ function ActionList({
 }
 
 export function TestsPage({ open, onOpenChange }: Props) {
-  const profiles = useStudioStore((s) => s.profiles);
-  const profilesById = new Map(profiles.map((p) => [p.id, p.name]));
   const [tests, setTests] = useState<TestSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -157,11 +154,6 @@ export function TestsPage({ open, onOpenChange }: Props) {
   const [pendingRun, setPendingRun] = useState<{
     test: Test;
     mode: "auto" | "step";
-  } | null>(null);
-  const [pendingAuth, setPendingAuth] = useState<{
-    test: Test;
-    mode: "auto" | "step";
-    reason: string;
   } | null>(null);
   const [resultReport, setResultReport] = useState<ReplayReport | null>(null);
   const [resultOpen, setResultOpen] = useState(false);
@@ -247,41 +239,6 @@ export function TestsPage({ open, onOpenChange }: Props) {
     return test.session.timeline.some((e) => e.kind.startsWith("widget.dom."));
   }
 
-  /**
-   * Check whether the active profile has the auth a test needs. Returns
-   * `null` when good to go, or a human-readable reason to surface in the
-   * precondition dialog. The "needs auth" signal is whether the recording
-   * went out with an authed method; tests recorded against open servers
-   * skip the check.
-   */
-  function describeMissingAuth(test: Test): string | null {
-    const studio = useStudioStore.getState();
-    const recordedMethod = test.session.setup.connect.auth.method;
-    if (recordedMethod === "bearer" && !test.session.setup.connect.auth.token) {
-      return null;
-    }
-    const profile = studio.profiles.find(
-      (p) => p.id === studio.activeProfileId,
-    );
-    const auth = profile?.auth;
-    if (!auth || auth.method === "none") {
-      return "the active profile has no auth configured";
-    }
-    if (auth.method === "bearer" && !auth.token) {
-      return "the active profile's bearer token is empty";
-    }
-    if (auth.method === "custom" && Object.keys(auth.headers).length === 0) {
-      return "the active profile has no custom headers";
-    }
-    if (auth.method === "oauth") {
-      const hasToken = !!getBearerToken() || !!loadOAuthTokens().accessToken;
-      if (!hasToken) {
-        return "the active profile uses OAuth but no token is signed in";
-      }
-    }
-    return null;
-  }
-
   async function startRun(test: Test, mode: "auto" | "step" = "auto") {
     onOpenChange(false);
     const studio = useStudioStore.getState();
@@ -290,7 +247,7 @@ export function TestsPage({ open, onOpenChange }: Props) {
       store: makeEngineStore(),
       iframe: () => useStudioStore.getState()._iframeRef,
       bridge: createBridgeClient(() => useStudioStore.getState()._iframeRef),
-      drivers: [chromeDriver, mcpDriver, widgetDriver],
+      drivers: [chromeDriver, mcpDriver, widgetDriver, cueDriver],
       artifacts,
       mode,
     });
@@ -361,11 +318,6 @@ export function TestsPage({ open, onOpenChange }: Props) {
     try {
       const test = await getTest(name);
       const studio = useStudioStore.getState();
-      const missing = describeMissingAuth(test);
-      if (missing) {
-        setPendingAuth({ test, mode, reason: missing });
-        return;
-      }
       if (studio.strictMode && hasWidgetDom(test)) {
         setPendingRun({ test, mode });
         return;
@@ -485,14 +437,6 @@ export function TestsPage({ open, onOpenChange }: Props) {
                             hideObservations={hideObservations}
                             savedAt={t.modifiedMs}
                           />
-                          {t.profileId && (
-                            <div className="text-[10px] text-muted-foreground mt-0.5">
-                              profile:{" "}
-                              <span className="font-mono">
-                                {profilesById.get(t.profileId) ?? t.profileId}
-                              </span>
-                            </div>
-                          )}
                           {t.description && (
                             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                               {t.description}
@@ -574,36 +518,6 @@ export function TestsPage({ open, onOpenChange }: Props) {
             setPendingRun(null);
             useStudioStore.getState().setStrictMode(false);
             await new Promise((r) => setTimeout(r, 100));
-            await startRun(test, mode);
-          }}
-        />
-      )}
-      {pendingAuth && (
-        <TestAuthPreconditionDialog
-          open={true}
-          testName={pendingAuth.test.name}
-          profileName={
-            useStudioStore
-              .getState()
-              .profiles.find(
-                (p) => p.id === useStudioStore.getState().activeProfileId,
-              )?.name ?? "(none)"
-          }
-          reason={pendingAuth.reason}
-          onCancel={() => setPendingAuth(null)}
-          onConfigure={() => {
-            setPendingAuth(null);
-            onOpenChange(false);
-            useStudioStore.getState().setAuthOpen(true);
-          }}
-          onProceed={async () => {
-            const { test, mode } = pendingAuth;
-            setPendingAuth(null);
-            const studio = useStudioStore.getState();
-            if (studio.strictMode && hasWidgetDom(test)) {
-              setPendingRun({ test, mode });
-              return;
-            }
             await startRun(test, mode);
           }}
         />

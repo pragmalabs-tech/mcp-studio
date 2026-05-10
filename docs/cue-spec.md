@@ -52,7 +52,6 @@ A Cue file is a single JSON object:
 
 ```jsonc
 {
-  "schema_version": 2,
   "id": "uuid-v4",
   "name": "Search flow renders results",
   "description": "Optional human description of what this Cue proves.",
@@ -74,7 +73,6 @@ A Cue file is a single JSON object:
 
 | Field | Required | Meaning |
 |---|---|---|
-| `schema_version` | yes | Always `2` for this spec. Engines reject other versions with a clear error. |
 | `id` | yes | UUID v4. Stable across renames so reports can correlate. |
 | `name` | yes | Short human-readable label. Shown in the catalog. |
 | `description` | no | Free-form prose. Agents should populate this with the Cue's intent. |
@@ -533,7 +531,6 @@ annotate intent.
 
 ```jsonc
 {
-  "schema_version": 2,
   "id": "5b09b9b4-1f3f-4d29-9fa1-3b9f0e0f6a44",
   "name": "Weather widget renders Tokyo and refresh re-fetches",
   "description": "Cover the happy path: open the widget, see the temperature, click refresh, see a new render.",
@@ -656,7 +653,7 @@ The mcp-studio engine consumes a Cue through this pipeline:
 
 1. **Load** — read JSON from `~/.mcp-studio/tests/<slug>.json` or a project
    directory.
-2. **Validate** — JSON Schema check against `schema/cue.v2.schema.json`.
+2. **Validate** — structural validation in `lib/cue/validate.ts`.
 3. **Translate** — convert each Cue step into one or more low-level Engine
    IR `Action` objects (e.g. `widget.open` → `mcp.request` + implicit
    render-wait; `widget.fill` → `widget.dom.input` + `widget.dom.change`).

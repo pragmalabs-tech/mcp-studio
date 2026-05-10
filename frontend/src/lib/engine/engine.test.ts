@@ -40,6 +40,7 @@ function fakeStore() {
       tools: [],
       resources: [],
       selected: null,
+      lastResult: null,
     }),
   };
 }

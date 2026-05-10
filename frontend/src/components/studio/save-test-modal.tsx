@@ -11,8 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { recorder } from "@/lib/recorder/bus";
-import { newTest, slugify } from "@/lib/tests/format";
-import { saveTest } from "@/lib/tests/api";
+import { slugify } from "@/lib/tests/format";
+import { saveCue } from "@/lib/tests/api";
+import { irToCue } from "@/lib/cue/from-ir";
 import { useStudioStore } from "@/lib/studio/store";
 
 interface Props {
@@ -65,13 +66,13 @@ export function SaveTestModal({
     setError(null);
     try {
       const session = recorder.serializeRange(startIndex, endIndex);
-      const test = newTest({
+      const cue = irToCue({
         name: name.trim(),
         description: description.trim() || undefined,
         profileId: activeProfileId || undefined,
-        session,
+        timeline: session.timeline,
       });
-      await saveTest(slug, test);
+      await saveCue(slug, cue);
       onSaved(slug);
     } catch (e) {
       setError((e as Error).message);

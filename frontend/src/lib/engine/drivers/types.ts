@@ -29,6 +29,9 @@ export interface EngineStore {
     tools: { name: string }[];
     resources: { uri: string; name?: string }[];
     selected: unknown;
+    /** Last MCP response observed by `execute()`. Used by `cue.widget_open`
+     *  to feed the rendered tool's response into the assertion bundle. */
+    lastResult: unknown;
   };
 }
 

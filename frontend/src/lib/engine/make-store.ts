@@ -37,6 +37,7 @@ export function makeEngineStore(): EngineStore {
         tools: s.tools,
         resources: s.resources,
         selected: s.selected,
+        lastResult: s.lastResult,
       };
     },
   };

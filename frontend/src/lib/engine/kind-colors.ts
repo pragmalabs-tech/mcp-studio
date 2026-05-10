@@ -22,6 +22,11 @@ export const KIND_COLOR: Record<ActionKind, string> = {
   [KIND.WIDGET_DOM_SUBMIT]: "text-orange-400",
   [KIND.WIDGET_DOM_KEYDOWN]: "text-yellow-400",
   [KIND.CSP_VIOLATION]: "text-red-400",
+  [KIND.CUE_ASSERT]: "text-cyan-400",
+  [KIND.CUE_WAIT]: "text-cyan-300/70",
+  [KIND.CUE_NOTIFY]: "text-cyan-300",
+  [KIND.CUE_EXPECT_INBOUND]: "text-cyan-300/70",
+  [KIND.CUE_WIDGET_OPEN]: "text-fuchsia-400",
 };
 
 /** Background fill (lower opacity) for timeline blocks. Same hue palette
@@ -44,4 +49,9 @@ export const KIND_BG: Record<ActionKind, string> = {
   [KIND.WIDGET_DOM_SUBMIT]: "bg-orange-400/70",
   [KIND.WIDGET_DOM_KEYDOWN]: "bg-yellow-400/70",
   [KIND.CSP_VIOLATION]: "bg-red-400/70",
+  [KIND.CUE_ASSERT]: "bg-cyan-400/70",
+  [KIND.CUE_WAIT]: "bg-cyan-300/40",
+  [KIND.CUE_NOTIFY]: "bg-cyan-300/70",
+  [KIND.CUE_EXPECT_INBOUND]: "bg-cyan-300/40",
+  [KIND.CUE_WIDGET_OPEN]: "bg-fuchsia-400/70",
 };

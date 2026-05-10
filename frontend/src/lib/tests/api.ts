@@ -1,4 +1,13 @@
+/**
+ * Saved-test API: stored on disk as Cue JSON, executed by translating to
+ * Engine IR. The translator runs at the file boundary so the engine never
+ * sees the Cue format directly.
+ */
+
 import type { Test, TestSummary } from "@/lib/recorder/schema";
+import type { Cue } from "@/lib/cue/schema";
+import { validateCue, formatValidationErrors } from "@/lib/cue/validate";
+import { cueToIr } from "@/lib/cue/to-ir";
 
 interface BackendSummary {
   name: string;
@@ -43,16 +52,41 @@ export async function listTests(): Promise<TestSummary[]> {
   return list.map(toSummary);
 }
 
+/**
+ * Load a saved Cue file and translate it to the Engine IR `Test` shape the
+ * runner consumes. Validation runs first; structural errors throw with the
+ * step index and JSON Pointer path so the user can fix the file before any
+ * step runs.
+ */
 export async function getTest(name: string): Promise<Test> {
   const resp = await fetch(`/api/studio/tests/${encodeURIComponent(name)}`);
-  return unwrap<Test>(resp);
+  const json = await unwrap<unknown>(resp);
+  const validated = validateCue(json);
+  if (!validated.ok) {
+    throw new Error(
+      `Cue file is invalid:\n${formatValidationErrors(validated.errors)}`,
+    );
+  }
+  return cueToIr(validated.cue);
 }
 
-export async function saveTest(name: string, test: Test): Promise<TestSummary> {
+export async function getCue(name: string): Promise<Cue> {
+  const resp = await fetch(`/api/studio/tests/${encodeURIComponent(name)}`);
+  const json = await unwrap<unknown>(resp);
+  const validated = validateCue(json);
+  if (!validated.ok) {
+    throw new Error(
+      `Cue file is invalid:\n${formatValidationErrors(validated.errors)}`,
+    );
+  }
+  return validated.cue;
+}
+
+export async function saveCue(name: string, cue: Cue): Promise<TestSummary> {
   const resp = await fetch(`/api/studio/tests/${encodeURIComponent(name)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(test),
+    body: JSON.stringify(cue),
   });
   const summary = await unwrap<BackendSummary>(resp);
   return toSummary(summary);

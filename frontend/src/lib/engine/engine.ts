@@ -7,6 +7,8 @@ import type { ArtifactCollector } from "./artifacts";
 import { recorder } from "@/lib/recorder/bus";
 import { skipReasonForKind } from "@/lib/recorder/summarize";
 import { timeoutFor } from "./timing";
+import { evaluateBundle } from "@/lib/cue/assertions";
+import type { AssertCtx } from "@/lib/cue/assertions";
 
 export interface StepResult {
   index: number;
@@ -272,6 +274,9 @@ export function createEngine(deps: EngineDeps): Engine {
           }
 
           const t = performance.now();
+          // Cue's `triggers_mcp_call` and `no_csp_violations.since=last_action`
+          // need to scan only events emitted during this step's window.
+          const stepWindowStart = recorder.markIndex();
           const driveResult = await withTimeout(
             driver.drive(recordedAction as Action, ctx),
             timeoutFor(recordedAction.kind),
@@ -292,6 +297,23 @@ export function createEngine(deps: EngineDeps): Engine {
             assertion = { status: "skip" };
           } else {
             assertion = { status: "fail", reason: "step timed out" };
+          }
+
+          // Cue assertion bundle: when the step came from the Cue → IR
+          // translator, evaluate its `_cue` block and merge with the
+          // driver's own assertion. Any failure in either side fails the
+          // step. Skipped if abort.
+          const bundle = (recordedAction as Recorded)._cue;
+          if (bundle && assertion.status !== "skip") {
+            const cueCtx: AssertCtx = {
+              result: extractResult(observation),
+              getSnapshot: makeSnapshotGetter(deps.bridge),
+              history: recorder.snapshot(),
+              windowStart: stepWindowStart,
+              waitFor: makeWaitFor(controller.signal),
+            };
+            const cueReport = await evaluateBundle(bundle, cueCtx);
+            assertion = mergeAssertions(assertion, cueReport, bundle.label);
           }
 
           const step = toStep(
@@ -401,4 +423,83 @@ async function applySetup(test: Test, store: EngineStore): Promise<void> {
     });
   }
   // Strict mode is a precondition handled by caller — don't toggle it here.
+}
+
+/** Pull the result envelope out of a driver's observation. For `mcp.request`
+ *  the bus emits `mcp.response { result, error }` and the mcp driver returns
+ *  it as the observation. Other drivers return action-shaped acks. */
+function extractResult(observation: unknown): unknown {
+  if (
+    observation &&
+    typeof observation === "object" &&
+    "result" in observation
+  ) {
+    return observation as { result: unknown };
+  }
+  return observation;
+}
+
+/** Lazily fetch a snapshot HTML for DOM assertions. Cached per call so a
+ *  bundle with several DOM queries doesn't re-bridge. */
+function makeSnapshotGetter(
+  bridge: BridgeClient,
+): () => Promise<string | null> {
+  let cached: string | null | undefined;
+  return async () => {
+    if (cached !== undefined) return cached;
+    try {
+      const snap = await bridge.snapshot(1_000);
+      cached = snap.html || null;
+    } catch {
+      cached = null;
+    }
+    return cached;
+  };
+}
+
+/** Polling helper that respects the engine's abort signal. Used by
+ *  `dom_wait` and `triggers_mcp_call`. */
+function makeWaitFor(
+  signal: AbortSignal,
+): (predicate: () => Promise<boolean>, timeoutMs: number) => Promise<boolean> {
+  return async (predicate, timeoutMs) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      if (signal.aborted) return false;
+      try {
+        if (await predicate()) return true;
+      } catch {
+        /* keep polling */
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return false;
+  };
+}
+
+/** Combine the driver's per-kind assertion with the Cue bundle outcome.
+ *  Either failing fails the step. Pass info merges so the report sees both. */
+function mergeAssertions(
+  base: AssertionResult,
+  cue: {
+    ok: boolean;
+    passed: number;
+    failures: { kind: string; reason: string }[];
+  },
+  label?: string,
+): AssertionResult {
+  if (base.status === "skip") return base;
+  if (!cue.ok) {
+    const reason = cue.failures.map((f) => `${f.kind}: ${f.reason}`).join("; ");
+    return {
+      status: "fail",
+      reason: label ? `${label} - ${reason}` : reason,
+      info: { cue_failures: cue.failures, base },
+    };
+  }
+  if (base.status === "fail") return base;
+  return {
+    status: "pass",
+    info: { ...(base.info ?? {}), cue_passed: cue.passed },
+  };
 }
