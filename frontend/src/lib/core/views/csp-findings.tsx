@@ -4,7 +4,7 @@
  * surfaces present analyze() output identically.
  */
 
-import { AlertTriangle, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { CspFinding } from "@/lib/core/csp/types";
 
@@ -38,11 +38,14 @@ export function CspFindingsList({
   if (findings.length === 0) {
     return (
       <div
-        className={`px-3 py-4 text-[11px] text-muted-foreground italic ${
+        className={`px-3 py-4 text-[11px] flex items-center gap-2 ${
           className ?? ""
         }`}
       >
-        No CSP findings.
+        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+        <span className="text-muted-foreground">
+          No CSP issues detected in this widget.
+        </span>
       </div>
     );
   }

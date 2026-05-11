@@ -26,6 +26,7 @@ import { extractCspDomains } from "@/lib/core/csp/profiles";
 import type { MockData } from "@/lib/studio/mock-openai";
 import { ContentDialog } from "./content-dialog";
 import { CspFindingsList } from "./csp-findings";
+import { TracePlayer, type PlayerSpeed } from "./trace-player";
 import { WidgetFrame } from "./widget-frame";
 
 interface Props {
@@ -53,10 +54,51 @@ export function TraceModal({
   const [selectedIdx, setSelectedIdx] = useState(
     Math.max(0, replayed.steps.length - 1),
   );
-  // Reset selection whenever the dialog (re)opens against a new trace.
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [speed, setSpeed] = useState<PlayerSpeed>(1);
+  // Reset selection + playback whenever the dialog (re)opens against a
+  // new trace.
   useEffect(() => {
-    if (open) setSelectedIdx(Math.max(0, replayed.steps.length - 1));
+    if (open) {
+      setSelectedIdx(Math.max(0, replayed.steps.length - 1));
+      setIsPlaying(false);
+    }
   }, [open, replayed]);
+
+  // Auto-advance loop. Each step lingers long enough for a viewer to
+  // read it; steps with drifts hold a touch longer so the failure is
+  // visible. Stops at the last step and flips playback off so the
+  // play button re-arms cleanly.
+  useEffect(() => {
+    if (!isPlaying) return;
+    if (selectedIdx >= replayed.steps.length - 1) {
+      setIsPlaying(false);
+      return;
+    }
+    const base = 1200 / speed;
+    const failed = (driftsByStep.get(selectedIdx) ?? []).length > 0;
+    const delay = failed ? base * 1.6 : base;
+    const t = setTimeout(() => setSelectedIdx((i) => i + 1), delay);
+    return () => clearTimeout(t);
+  }, [isPlaying, selectedIdx, speed, replayed.steps.length, driftsByStep]);
+
+  const stepCount = replayed.steps.length;
+
+  // Restart from the beginning if the user hits play after the trace
+  // has already ended.
+  const handlePlayPauseToggle = () => {
+    if (!isPlaying && selectedIdx >= stepCount - 1) {
+      setSelectedIdx(0);
+    }
+    setIsPlaying((p) => !p);
+  };
+
+  // Manual selection (clicking a step row or scrubber tick) pauses
+  // playback so the viewer can inspect that step.
+  const selectStep = (idx: number) => {
+    setSelectedIdx(idx);
+    setIsPlaying(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -80,6 +122,17 @@ export function TraceModal({
             </DialogPrimitive.Close>
           </header>
 
+          <TracePlayer
+            steps={replayed.steps}
+            driftsByStep={driftsByStep}
+            selectedIdx={selectedIdx}
+            onSelect={selectStep}
+            isPlaying={isPlaying}
+            onPlayPauseToggle={handlePlayPauseToggle}
+            speed={speed}
+            onSpeedChange={setSpeed}
+          />
+
           <div className="flex-1 min-h-0 flex">
             <div className="w-[480px] shrink-0 flex flex-col border-r">
               <div className="flex-1 overflow-y-auto p-3 space-y-1">
@@ -91,7 +144,7 @@ export function TraceModal({
                     allSteps={replayed.steps}
                     drifts={driftsByStep.get(i) ?? []}
                     isSelected={i === selectedIdx}
-                    onSelect={() => setSelectedIdx(i)}
+                    onSelect={() => selectStep(i)}
                   />
                 ))}
                 {replayed.steps.length === 0 && (
