@@ -19,6 +19,11 @@ import type { McpHealth } from "@/lib/studio/api";
 export function TopHeader() {
   const slicingState = useStudioStore((s) => s.slicingState);
   const setSlicingState = useStudioStore((s) => s.setSlicingState);
+  const { status: healthStatus } = useMcpHealth();
+  // Gate destructive / network-bound controls on the server being live.
+  // Stop Record stays enabled while disconnected so an in-flight slice
+  // can still be saved locally.
+  const recordDisabled = healthStatus !== "connected" && !slicingState;
 
   const [historyOpen, setHistoryOpen] = useState(false);
   const [testsOpen, setTestsOpen] = useState(false);
@@ -72,7 +77,12 @@ export function TopHeader() {
           variant="outline"
           size="sm"
           onClick={handleStartRecording}
-          title="Start a named test by recording the next series of actions"
+          disabled={recordDisabled}
+          title={
+            recordDisabled
+              ? "MCP server not reachable - reconnect to record"
+              : "Start a named test by recording the next series of actions"
+          }
         >
           <Circle className="h-3.5 w-3.5 mr-1.5" />
           Record Test

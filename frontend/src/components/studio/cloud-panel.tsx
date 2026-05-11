@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useStudioStore } from "@/lib/studio/store";
+import { useMcpHealth } from "@/lib/studio/health";
 
 /**
  * Sidebar panel for cloud-account state: signed-in identity + Publish /
@@ -23,6 +24,10 @@ export function CloudPanel() {
   const setPublishOpen = useStudioStore((s) => s.setPublishOpen);
   const cloudSignOut = useStudioStore((s) => s.cloudSignOut);
   const startTunnel = useStudioStore((s) => s.startTunnel);
+  const { status: healthStatus } = useMcpHealth();
+  // Publishing exposes the local MCP server through a tunnel - pointless
+  // (and confusing) when the server isn't reachable locally.
+  const publishDisabled = healthStatus !== "connected";
 
   // Default closed — most users don't publish on every session, so the
   // sidebar stays focused on tools/resources. Click the header to open.
@@ -113,11 +118,14 @@ export function CloudPanel() {
               variant="outline"
               size="sm"
               onClick={handlePublishClick}
+              disabled={publishDisabled}
               className="w-full"
               title={
-                cloudAuth
-                  ? "Expose your local MCP server at a public tunnel URL"
-                  : "Sign in to publish a tunnel URL"
+                publishDisabled
+                  ? "MCP server not reachable - reconnect to publish"
+                  : cloudAuth
+                    ? "Expose your local MCP server at a public tunnel URL"
+                    : "Sign in to publish a tunnel URL"
               }
             >
               <Radio className="h-3.5 w-3.5 mr-1.5" />
