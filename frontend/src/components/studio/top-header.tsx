@@ -12,7 +12,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useStudioStore } from "@/lib/studio/store";
+import { useMcpHealth } from "@/lib/studio/health";
 import { recorder } from "@/lib/recorder/bus";
+import type { McpHealth } from "@/lib/studio/api";
 
 export function TopHeader() {
   const slicingState = useStudioStore((s) => s.slicingState);
@@ -58,6 +60,7 @@ export function TopHeader() {
           className="w-6 h-6 rounded"
         />
         <span className="font-semibold text-sm">mcp studio</span>
+        <HealthDot />
       </div>
 
       <div className="flex-1" />
@@ -189,5 +192,38 @@ export function TopHeader() {
         />
       )}
     </header>
+  );
+}
+
+const HEALTH_LABELS: Record<McpHealth, string> = {
+  checking: "Checking MCP server...",
+  connected: "MCP server reachable",
+  unauthorized: "Auth required (401) - click to recheck",
+  disconnected: "MCP server unreachable - click to retry",
+};
+
+const HEALTH_TONES: Record<McpHealth, string> = {
+  checking: "text-muted-foreground",
+  connected: "text-emerald-400",
+  unauthorized: "text-amber-400",
+  disconnected: "text-red-400",
+};
+
+function HealthDot() {
+  const { status, recheck } = useMcpHealth();
+  return (
+    <button
+      type="button"
+      onClick={recheck}
+      title={HEALTH_LABELS[status]}
+      aria-label={HEALTH_LABELS[status]}
+      className={`inline-flex items-center justify-center h-5 w-5 rounded-full hover:bg-muted/50 transition-colors ${HEALTH_TONES[status]}`}
+    >
+      <span
+        className={`block h-2 w-2 rounded-full bg-current ${
+          status === "checking" ? "animate-pulse" : ""
+        }`}
+      />
+    </button>
   );
 }

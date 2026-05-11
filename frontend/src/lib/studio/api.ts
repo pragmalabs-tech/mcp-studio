@@ -8,6 +8,7 @@
 
 import { recordedMcpCall } from "../recorder/mcp-interceptor";
 import type { Source } from "../recorder/schema";
+import { reportHealth } from "./health";
 
 // ── Proxy URL ──
 
@@ -459,12 +460,90 @@ export async function mcpInitialize(): Promise<void> {
   await ensureSession();
 }
 
+export type McpHealth =
+  | "checking"
+  | "connected"
+  | "disconnected"
+  | "unauthorized";
+
+/**
+ * Live MCP server probe. Reuses the cached session (calling
+ * `ensureSession()` if needed) so the request is a real, valid
+ * `tools/list` and the upstream server doesn't log 400s every tick.
+ * Does not throw - callers treat the return as a status enum.
+ *
+ * Categories:
+ *   - 401 / 403         -> unauthorized (token issue)
+ *   - 5xx / fetch throw -> disconnected (server / gateway down)
+ *   - everything else   -> connected
+ *
+ * After the first successful probe the session is cached, so every
+ * follow-up probe is a single round-trip with no init overhead.
+ */
+export async function probeMcpHealth(signal?: AbortSignal): Promise<McpHealth> {
+  let status: McpHealth;
+  try {
+    await ensureSession();
+    const resp = await fetch(getMcpFetchUrl(), {
+      method: "POST",
+      headers: buildHeaders(),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: -1,
+        method: "tools/list",
+        params: {},
+      }),
+      signal,
+    });
+    if (resp.status === 401 || resp.status === 403) status = "unauthorized";
+    else if (resp.status >= 500) status = "disconnected";
+    else status = "connected";
+  } catch (e) {
+    status = classifyError(e);
+  }
+  reportHealth(status);
+  return status;
+}
+
+/** Match auth-shaped errors so a 401 during `initialize` surfaces as
+ *  `unauthorized` rather than a generic `disconnected`. */
+function classifyError(e: unknown): McpHealth {
+  const msg = String((e as Error)?.message ?? e).toLowerCase();
+  if (
+    msg.includes("unauthorized") ||
+    msg.includes("forbidden") ||
+    msg.includes(" 401") ||
+    msg.startsWith("401") ||
+    msg.includes(" 403") ||
+    msg.startsWith("403")
+  ) {
+    return "unauthorized";
+  }
+  return "disconnected";
+}
+
 async function rawMcpCall(
   method: string,
   params: Record<string, unknown> = {},
 ): Promise<unknown> {
-  await ensureSession();
-  const resp = await rawMcpPost(method, params);
+  let resp: Response;
+  try {
+    await ensureSession();
+    resp = await rawMcpPost(method, params);
+  } catch (e) {
+    reportHealth(classifyError(e));
+    throw e;
+  }
+  // We got an HTTP response back - server is reachable. Classify by
+  // status so a stale token still shows up as `unauthorized` even when
+  // the body otherwise looks fine.
+  if (resp.status === 401 || resp.status === 403) {
+    reportHealth("unauthorized");
+  } else if (resp.status >= 500) {
+    reportHealth("disconnected");
+  } else {
+    reportHealth("connected");
+  }
   const data = await parseResponse(resp);
   if (data.error)
     throw new Error(
