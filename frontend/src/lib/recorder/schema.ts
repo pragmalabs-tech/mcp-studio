@@ -102,24 +102,6 @@ export type Action =
       directive: string;
       blockedUri: string;
       severity: string;
-    }
-  // Synthetic kinds emitted only by the Cue → IR translator. The cueDriver
-  // in lib/engine/drivers/cue.ts handles these. They never appear in
-  // recordings; carrying them in the Action union just keeps one driver
-  // contract for the engine.
-  | { kind: "cue.assert"; label: string }
-  | { kind: "cue.wait"; ms: number }
-  | { kind: "cue.notify"; method: string; params?: unknown }
-  | {
-      kind: "cue.expect_inbound";
-      type: "request" | "notification";
-      method: string;
-      timeoutMs: number;
-    }
-  | {
-      kind: "cue.widget_open";
-      tool: string;
-      args: unknown;
     };
 
 /** Subset of Action kinds the widget bridge can dispatch (host → iframe). */
@@ -137,14 +119,9 @@ export type WidgetDomAction = Extract<
 
 export type ActionKind = Action["kind"];
 
-/**
- * `_cue` is set only by the Cue → IR translator and consumed by the engine's
- * post-driver assertion runner. Recorder never emits it; serializers should
- * strip it before writing to disk to keep recordings clean.
- */
+/** A captured Action with timing. The recorder bus emits these. */
 export type Recorded = {
   relMs: number;
-  _cue?: import("../cue/assertions").CueAssertionBundle;
 } & Action;
 
 export interface SessionWidget {

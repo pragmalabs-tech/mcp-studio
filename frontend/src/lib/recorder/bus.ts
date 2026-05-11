@@ -110,14 +110,15 @@ class Recorder {
   }
 
   emit(action: Action): void {
-    if (this._mode !== "recording") return;
     const relMs = nowMs() - this.startedAt;
     const entry = { relMs, ...action } as Recorded;
-    // Suspended (i.e., the Player is replaying): skip persisting to the
-    // buffer so player-driven actions don't pollute the live timeline, but
-    // still notify listeners so the Player can observe responses / acks /
-    // render-completes via the same channel as during recording.
-    if (!this._suspended) {
+    // Buffer push is gated: only persist into the recorded timeline when
+    // actively recording AND not suspended. Idle and suspended emits stay
+    // out of the captured `Session.timeline`. Listeners always fire so
+    // observation pipelines (engine replay history, history dialog) see
+    // events regardless of mode — the engine relies on this to grow its
+    // own per-run history during replay.
+    if (this._mode === "recording" && !this._suspended) {
       this.buffer.push(entry);
     }
     for (const l of this.emitListeners) l(entry);

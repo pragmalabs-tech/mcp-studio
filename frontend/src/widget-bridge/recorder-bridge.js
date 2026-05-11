@@ -428,11 +428,15 @@
       requestAnimationFrame(function () {
         var nowFn =
           performance && performance.now ? performance.now() : Date.now();
+        // `handshakeOk` is host-authoritative now — mock-claude overrides
+        // this on the recorder.emit path based on its own ui/initialize
+        // observation. The bridge JS reports false; the host fills in
+        // the real value before persisting to the bus.
         post({
           op: "render.complete",
           bodyChars: document.body ? document.body.innerHTML.length : 0,
           hasRuntimeErrors: (window.__mcprBridgeErrors || 0) > 0,
-          handshakeOk: window.__mcprBridgeHandshakeOk === true,
+          handshakeOk: false,
           renderDurationMs: nowFn - bootStart,
         });
       });

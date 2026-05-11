@@ -1,13 +1,11 @@
 /**
- * Saved-test API: stored on disk as Cue JSON, executed by translating to
- * Engine IR. The translator runs at the file boundary so the engine never
- * sees the Cue format directly.
+ * Saved-test API. Persists Trace JSON directly; the new engine loads
+ * what was captured, byte-for-byte.
  */
 
-import type { Test, TestSummary } from "@/lib/recorder/schema";
-import type { Cue } from "@/lib/cue/schema";
-import { validateCue, formatValidationErrors } from "@/lib/cue/validate";
-import { cueToIr } from "@/lib/cue/to-ir";
+import type { TestSummary } from "@/lib/recorder/schema";
+import { loadTrace, saveTrace as serializeTrace } from "@/lib/core/trace-io";
+import type { Trace } from "@/lib/core/types";
 
 interface BackendSummary {
   name: string;
@@ -52,44 +50,24 @@ export async function listTests(): Promise<TestSummary[]> {
   return list.map(toSummary);
 }
 
-/**
- * Load a saved Cue file and translate it to the Engine IR `Test` shape the
- * runner consumes. Validation runs first; structural errors throw with the
- * step index and JSON Pointer path so the user can fix the file before any
- * step runs.
- */
-export async function getTest(name: string): Promise<Test> {
+/** Load a saved test and validate it against the current Trace schema.
+ *  Legacy Test envelope shape is auto-migrated by `loadTrace`. */
+export async function getTrace(name: string): Promise<Trace> {
   const resp = await fetch(`/api/studio/tests/${encodeURIComponent(name)}`);
   const json = await unwrap<unknown>(resp);
-  const validated = validateCue(json);
-  if (!validated.ok) {
-    throw new Error(
-      `Cue file is invalid:\n${formatValidationErrors(validated.errors)}`,
-    );
-  }
-  return cueToIr(validated.cue);
+  return loadTrace(json);
 }
 
-export async function getCue(name: string): Promise<Cue> {
-  const resp = await fetch(`/api/studio/tests/${encodeURIComponent(name)}`);
-  const json = await unwrap<unknown>(resp);
-  const validated = validateCue(json);
-  if (!validated.ok) {
-    throw new Error(
-      `Cue file is invalid:\n${formatValidationErrors(validated.errors)}`,
-    );
-  }
-  return validated.cue;
-}
-
-export async function saveCue(name: string, cue: Cue): Promise<TestSummary> {
+export async function saveTrace(
+  name: string,
+  trace: Trace,
+): Promise<TestSummary> {
   const resp = await fetch(`/api/studio/tests/${encodeURIComponent(name)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(cue),
+    body: JSON.stringify(serializeTrace(trace)),
   });
-  const summary = await unwrap<BackendSummary>(resp);
-  return toSummary(summary);
+  return toSummary(await unwrap<BackendSummary>(resp));
 }
 
 export async function deleteTest(name: string): Promise<void> {

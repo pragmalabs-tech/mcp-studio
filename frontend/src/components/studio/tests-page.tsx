@@ -25,24 +25,17 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { listTests, getTest, deleteTest } from "@/lib/tests/api";
-import type { Recorded, Test, TestSummary } from "@/lib/recorder/schema";
-import { KIND, OBSERVATION_KINDS } from "@/lib/recorder/kinds";
-import { KIND_COLOR } from "@/lib/engine/kind-colors";
-import { summarize } from "@/lib/recorder/summarize";
+import { listTests, getTrace, deleteTest } from "@/lib/tests/api";
+import type { TestSummary } from "@/lib/recorder/schema";
 import { useStudioStore } from "@/lib/studio/store";
-import { createEngine } from "@/lib/engine/engine";
+import { run as runEngine } from "@/lib/core/engine";
+import { diff } from "@/lib/core/differ";
+import { allVolatilePaths } from "@/lib/core/registry";
+import { buildRuntimeDrivers } from "@/lib/core/runtime";
 import { createBridgeClient } from "@/lib/engine/bridge-client";
-import { chromeDriver } from "@/lib/engine/drivers/chrome";
-import { mcpDriver } from "@/lib/engine/drivers/mcp";
-import { widgetDriver } from "@/lib/engine/drivers/widget";
-import { cueDriver } from "@/lib/engine/drivers/cue";
-import { runtime } from "@/lib/engine/runtime";
 import { TestPreconditionDialog } from "@/components/studio/test-precondition-dialog";
-import { TestResultModal } from "@/components/studio/test-result-modal";
-import { createArtifactCollector } from "@/lib/engine/artifacts";
-import { buildReport, type ReplayReport } from "@/lib/engine/report";
-import { makeEngineStore } from "@/lib/engine/make-store";
+import { TraceModal } from "@/lib/core/views/trace-modal";
+import type { Action, Step, Trace, Verdict } from "@/lib/core/types";
 
 interface Props {
   open: boolean;
@@ -81,42 +74,35 @@ function ActionCountLabel({
   );
 }
 
-function relMsLabel(ms: number): string {
-  if (ms < 1000) return `${ms.toFixed(0).padStart(4, " ")}ms`;
-  return `${(ms / 1000).toFixed(2).padStart(6, " ")}s`;
-}
-
-/** True if `entry` is something the Player observes rather than drives.
- *  Drives the "Inputs only" filter. Widget-source mcp.request counts as
- *  an observation because the widget itself fires it as a side effect. */
-export function isObservation(entry: Recorded): boolean {
-  if (OBSERVATION_KINDS.has(entry.kind)) return true;
-  if (entry.kind === KIND.MCP_REQUEST && entry.source === "widget") return true;
+/** True if `action` is a server/widget-source effect rather than a
+ *  user-driven step. Used by the "Inputs only" filter. */
+export function isObservation(action: Action): boolean {
+  if (action.source === "server" || action.source === "widget") return true;
   return false;
 }
 
 function ActionList({
-  timeline,
+  steps,
   hideObservations,
 }: {
-  timeline: Recorded[];
+  steps: readonly Step[];
   hideObservations: boolean;
 }) {
   const visible = hideObservations
-    ? timeline.filter((e) => !isObservation(e))
-    : timeline;
+    ? steps.filter((s) => !isObservation(s.action))
+    : steps;
   if (visible.length === 0) {
     return (
       <p className="px-4 py-3 text-xs text-muted-foreground italic">
-        {timeline.length === 0
-          ? "Empty timeline."
-          : "All entries are observations — turn the filter off to see them."}
+        {steps.length === 0
+          ? "Empty trace."
+          : "All steps are observations — turn the filter off to see them."}
       </p>
     );
   }
   return (
     <div className="py-1">
-      {visible.map((entry, i) => (
+      {visible.map((step, i) => (
         <div
           key={i}
           className="px-4 py-1 text-[11px] font-mono flex items-center gap-2"
@@ -124,16 +110,11 @@ function ActionList({
           <span className="text-muted-foreground/60 w-8 shrink-0 text-right">
             {i + 1}
           </span>
-          <span className="text-muted-foreground w-14 shrink-0 text-right">
-            {relMsLabel(entry.relMs)}
-          </span>
-          <span
-            className={`${KIND_COLOR[entry.kind] ?? "text-muted-foreground"} w-36 shrink-0 font-semibold truncate`}
-          >
-            {entry.kind}
+          <span className="text-foreground w-40 shrink-0 font-semibold truncate">
+            {step.action.driver}.{step.action.kind}
           </span>
           <span className="text-muted-foreground truncate flex-1">
-            {summarize(entry)}
+            {step.action.source}
           </span>
         </div>
       ))}
@@ -147,13 +128,17 @@ export function TestsPage({ open, onOpenChange }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [busyName, setBusyName] = useState<string | null>(null);
   const [pendingRun, setPendingRun] = useState<{
-    test: Test;
+    test: Trace;
     mode: "auto" | "step";
   } | null>(null);
-  const [resultReport, setResultReport] = useState<ReplayReport | null>(null);
+  const [resultData, setResultData] = useState<{
+    recorded: Trace;
+    replayed: Trace;
+    verdict: Verdict;
+  } | null>(null);
   const [resultOpen, setResultOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [loadedTests, setLoadedTests] = useState<Record<string, Test>>({});
+  const [loadedTests, setLoadedTests] = useState<Record<string, Trace>>({});
   const [loadingName, setLoadingName] = useState<string | null>(null);
   const [hideObservations, setHideObservations] = useState(true);
   const [pendingDelete, setPendingDelete] = useState<TestSummary | null>(null);
@@ -180,10 +165,10 @@ export function TestsPage({ open, onOpenChange }: Props) {
   async function handleExport(name: string) {
     setBusyName(name);
     try {
-      const test = await getTest(name);
-      // Download the full Test wrapper, not just the Session, so the export
-      // round-trips through `saveTest` if shared with another user.
-      const blob = new Blob([JSON.stringify(test, null, 2)], {
+      const trace = await getTrace(name);
+      // Download the Trace JSON verbatim so the export round-trips
+      // through `saveTrace` if shared with another user.
+      const blob = new Blob([JSON.stringify(trace, null, 2)], {
         type: "application/json",
       });
       const url = URL.createObjectURL(blob);
@@ -230,52 +215,37 @@ export function TestsPage({ open, onOpenChange }: Props) {
     }
   }
 
-  function hasWidgetDom(test: Test): boolean {
-    return test.session.timeline.some((e) => e.kind.startsWith("widget.dom."));
+  function hasWidgetDom(trace: Trace): boolean {
+    return trace.steps.some(
+      (s) => s.action.driver === "widget" && s.action.kind.startsWith("dom."),
+    );
   }
 
-  async function startRun(test: Test, mode: "auto" | "step" = "auto") {
+  async function startRun(recorded: Trace, _mode: "auto" | "step" = "auto") {
     onOpenChange(false);
-    const studio = useStudioStore.getState();
-    const artifacts = createArtifactCollector();
-    const engine = createEngine({
-      store: makeEngineStore(),
-      iframe: () => useStudioStore.getState()._iframeRef,
-      bridge: createBridgeClient(() => useStudioStore.getState()._iframeRef),
-      drivers: [chromeDriver, mcpDriver, widgetDriver, cueDriver],
-      artifacts,
-      mode,
-    });
-    runtime.begin(
-      test.name,
-      test.description,
-      test.session.timeline.length,
-      mode,
-      {
-        abort: () => engine.abort(),
-        next: () => engine.next(),
-        setMode: (m) => engine.setMode(m),
-      },
-    );
+    const ctrl = new AbortController();
     try {
-      const result = await engine.run(test, (p) =>
-        runtime.step(p.index, p.current, p.step),
+      const bridge = createBridgeClient(
+        () => useStudioStore.getState()._iframeRef,
       );
-      runtime.finish(result);
-      const report = buildReport({
-        runResult: result,
-        artifacts: artifacts.finalize(),
-        preconditions: {
-          strictModeOk: !studio.strictMode,
-          iframeReady: !!useStudioStore.getState()._iframeRef,
-        },
+      // BridgeClient's dispatch signature differs slightly from our
+      // RuntimeBridge; adapt at the boundary.
+      const replayed = await runEngine(recorded, {
+        signal: ctrl.signal,
+        drivers: buildRuntimeDrivers({
+          dispatch: async (selectors, kind, _extra) => {
+            await bridge.dispatch(
+              { kind: kind as never, selectors } as never,
+              2_000,
+            );
+          },
+        }),
       });
-      setResultReport(report);
+      const verdict = diff(recorded, replayed, allVolatilePaths());
+      setResultData({ recorded, replayed, verdict });
       setResultOpen(true);
     } catch (e) {
       alert(`Test failed to run: ${(e as Error).message}`);
-    } finally {
-      runtime.clear();
     }
   }
 
@@ -291,8 +261,8 @@ export function TestsPage({ open, onOpenChange }: Props) {
     if (!loadedTests[name]) {
       setLoadingName(name);
       try {
-        const test = await getTest(name);
-        setLoadedTests((prev) => ({ ...prev, [name]: test }));
+        const trace = await getTrace(name);
+        setLoadedTests((prev) => ({ ...prev, [name]: trace }));
       } catch (e) {
         setError((e as Error).message);
         const undo = new Set(next);
@@ -307,13 +277,13 @@ export function TestsPage({ open, onOpenChange }: Props) {
   async function handleRun(name: string, mode: "auto" | "step" = "auto") {
     setBusyName(name);
     try {
-      const test = await getTest(name);
+      const trace = await getTrace(name);
       const studio = useStudioStore.getState();
-      if (studio.strictMode && hasWidgetDom(test)) {
-        setPendingRun({ test, mode });
+      if (studio.strictMode && hasWidgetDom(trace)) {
+        setPendingRun({ test: trace, mode });
         return;
       }
-      await startRun(test, mode);
+      await startRun(trace, mode);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -419,9 +389,10 @@ export function TestsPage({ open, onOpenChange }: Props) {
                             total={t.totalActions ?? 0}
                             visible={
                               loaded
-                                ? loaded.session.timeline.filter(
-                                    (e) =>
-                                      !hideObservations || !isObservation(e),
+                                ? loaded.steps.filter(
+                                    (s) =>
+                                      !hideObservations ||
+                                      !isObservation(s.action),
                                   ).length
                                 : null
                             }
@@ -486,7 +457,7 @@ export function TestsPage({ open, onOpenChange }: Props) {
                         )}
                         {!isLoading && loaded && (
                           <ActionList
-                            timeline={loaded.session.timeline}
+                            steps={loaded.steps}
                             hideObservations={hideObservations}
                           />
                         )}
@@ -548,12 +519,14 @@ export function TestsPage({ open, onOpenChange }: Props) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <TestResultModal
-        report={resultReport}
+      <TraceModal
+        recorded={resultData?.recorded ?? null}
+        replayed={resultData?.replayed ?? null}
+        verdict={resultData?.verdict ?? null}
         open={resultOpen}
         onOpenChange={(v) => {
           setResultOpen(v);
-          if (!v) setResultReport(null);
+          if (!v) setResultData(null);
         }}
       />
     </Dialog>

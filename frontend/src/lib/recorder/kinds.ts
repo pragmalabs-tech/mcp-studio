@@ -11,7 +11,7 @@ import type { ActionKind } from "./schema";
  * literal type so callers narrow correctly in switches.
  */
 export const KIND = {
-  // pure inputs (driven by chrome driver)
+  // pure inputs (driven by studio driver)
   SIDEBAR_SELECT: "sidebar.select",
   EDITOR_SET_ARGS: "editor.set_args",
   CONFIG_UPDATE: "config.update",
@@ -35,14 +35,6 @@ export const KIND = {
 
   // observations
   CSP_VIOLATION: "csp.violation",
-
-  // synthetic kinds emitted only by the Cue → IR translator. Not produced
-  // by the recorder; the cueDriver in lib/engine/drivers/cue.ts handles them.
-  CUE_ASSERT: "cue.assert",
-  CUE_WAIT: "cue.wait",
-  CUE_NOTIFY: "cue.notify",
-  CUE_EXPECT_INBOUND: "cue.expect_inbound",
-  CUE_WIDGET_OPEN: "cue.widget_open",
 } as const satisfies Record<string, ActionKind>;
 
 /** Every action kind, in stable declaration order. */

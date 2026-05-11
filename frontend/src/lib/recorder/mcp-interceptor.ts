@@ -43,44 +43,40 @@ export async function recordedMcpCall(
   params: Record<string, unknown> = {},
   source: Source = "user",
 ): Promise<unknown> {
-  const recording = recorder.mode === "recording";
-  if (recording) flushPending();
-  const id = recording ? nextId++ : 0;
-  if (recording) {
-    recorder.emit({ kind: "mcp.request", id, source, method, params });
-  }
+  // Always emit. The bus gates buffer persistence on its own state
+  // (`_mode === "recording" && !suspended`); listeners fire regardless,
+  // which is what the engine's replay observation pipeline depends on.
+  flushPending();
+  const id = nextId++;
+  recorder.emit({ kind: "mcp.request", id, source, method, params });
   const t0 =
     typeof performance !== "undefined" && performance.now
       ? performance.now()
       : Date.now();
   try {
     const result = await raw(method, params);
-    if (recording) {
-      const t1 =
-        typeof performance !== "undefined" && performance.now
-          ? performance.now()
-          : Date.now();
-      recorder.emit({
-        kind: "mcp.response",
-        requestId: id,
-        result,
-        durationMs: t1 - t0,
-      });
-    }
+    const t1 =
+      typeof performance !== "undefined" && performance.now
+        ? performance.now()
+        : Date.now();
+    recorder.emit({
+      kind: "mcp.response",
+      requestId: id,
+      result,
+      durationMs: t1 - t0,
+    });
     return result;
   } catch (err) {
-    if (recording) {
-      const t1 =
-        typeof performance !== "undefined" && performance.now
-          ? performance.now()
-          : Date.now();
-      recorder.emit({
-        kind: "mcp.response",
-        requestId: id,
-        error: serializeError(err),
-        durationMs: t1 - t0,
-      });
-    }
+    const t1 =
+      typeof performance !== "undefined" && performance.now
+        ? performance.now()
+        : Date.now();
+    recorder.emit({
+      kind: "mcp.response",
+      requestId: id,
+      error: serializeError(err),
+      durationMs: t1 - t0,
+    });
     throw err;
   }
 }

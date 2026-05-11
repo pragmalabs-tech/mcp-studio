@@ -32,6 +32,13 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
     onProtocolDetected,
   } = opts;
   let currentMock = { ...mock };
+  // Tracks whether `ui/initialize` (or `initialize`) round-tripped through
+  // this host. The widget bridge JS has no reliable way to set its own flag
+  // (the SDK that would set `window.__mcprBridgeHandshakeOk` doesn't exist
+  // in studio's mock environment), so the host is the source of truth.
+  // Used to override the (always-false) `handshakeOk` in render.complete
+  // forwards to the recorder bus.
+  let protocolHandshaked = false;
 
   // Claude only accepts "inline" | "fullscreen" | "pip" as displayMode
   function toClaudeDisplayMode(mode: string): string {
@@ -83,19 +90,29 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
     // so it appears in the timeline as an observation action.
     if (isBridgeMessage(msg)) {
       if ("op" in msg) {
-        if (msg.op === "render.complete" && recorder.mode === "recording") {
+        if (msg.op === "render.complete") {
+          // Always emit. The bus persists to the recorded timeline only
+          // while in recording mode; listeners fire regardless, which is
+          // how the engine's replay observation sees render.complete.
           recorder.emit({
             kind: "widget.render.complete",
             bodyChars: msg.bodyChars,
             hasRuntimeErrors: msg.hasRuntimeErrors,
-            handshakeOk: msg.handshakeOk,
+            // Host-authoritative handshake signal. `msg.handshakeOk` from
+            // the bridge JS is structurally always false in studio (the
+            // ext-apps SDK that would set the iframe global isn't present).
+            // OR with the host's own observation so the recorded timeline
+            // reflects whether `ui/initialize` actually round-tripped.
+            handshakeOk: protocolHandshaked || msg.handshakeOk,
             renderDurationMs: msg.renderDurationMs,
           });
         }
         // ack / snapshot.result handled elsewhere (BridgeClient).
         return;
       }
-      if (recorder.mode !== "recording") return;
+      // DOM capture events flow to the bus on every interaction. Bus
+      // persistence is gated on its mode; listeners fire regardless so
+      // replay observation can react to them.
       switch (msg.kind) {
         case "widget.dom.click":
           recorder.emit({
@@ -147,6 +164,7 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
       switch (method) {
         case "initialize":
         case "ui/initialize":
+          protocolHandshaked = true;
           onProtocolDetected?.();
           sendResponse(id, {
             protocolVersion: "2026-01-26",

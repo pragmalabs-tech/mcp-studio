@@ -12,8 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { recorder } from "@/lib/recorder/bus";
 import { slugify } from "@/lib/tests/format";
-import { saveCue } from "@/lib/tests/api";
-import { irToCue } from "@/lib/cue/from-ir";
+import { saveTrace } from "@/lib/tests/api";
+import { toTrace } from "@/lib/core/trace-io";
 import { useStudioStore } from "@/lib/studio/store";
 
 interface Props {
@@ -35,7 +35,6 @@ export function SaveTestModal({
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const activeProfileId = useStudioStore((s) => s.activeProfileId);
   const activeProfile = useStudioStore((s) =>
     s.profiles.find((p) => p.id === s.activeProfileId),
   );
@@ -66,13 +65,12 @@ export function SaveTestModal({
     setError(null);
     try {
       const session = recorder.serializeRange(startIndex, endIndex);
-      const cue = irToCue({
+      const trace = toTrace({
+        timeline: session.timeline,
         name: name.trim(),
         description: description.trim() || undefined,
-        profileId: activeProfileId || undefined,
-        timeline: session.timeline,
       });
-      await saveCue(slug, cue);
+      await saveTrace(slug, trace);
       onSaved(slug);
     } catch (e) {
       setError((e as Error).message);
