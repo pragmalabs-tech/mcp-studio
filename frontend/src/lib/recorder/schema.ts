@@ -160,6 +160,8 @@ export interface TestSummary {
   createdAt?: string;
   /** Number of `steps[]` declared in the Cue. */
   totalActions?: number;
+  /** Tags lifted from the file body for filter UX. */
+  tags?: string[];
   size: number;
   modifiedMs: number;
 }

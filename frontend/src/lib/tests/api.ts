@@ -15,6 +15,7 @@ interface BackendSummary {
   description?: string | null;
   created_at?: string | null;
   total_actions?: number | null;
+  tags?: string[] | null;
 }
 
 function toSummary(s: BackendSummary): TestSummary {
@@ -24,6 +25,7 @@ function toSummary(s: BackendSummary): TestSummary {
     description: s.description ?? undefined,
     createdAt: s.created_at ?? undefined,
     totalActions: s.total_actions ?? undefined,
+    tags: s.tags ?? undefined,
     size: s.size,
     modifiedMs: s.modified_ms,
   };

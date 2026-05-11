@@ -190,6 +190,9 @@ export interface Trace {
   /** Per-trace assertion rules, additive on top of built-in driver
    *  defaults. Optional — traces without it get only the defaults. */
   rules?: TraceRules;
+  /** Free-form labels for organizing/filtering. Lowercased, trimmed,
+   *  deduped on save. */
+  tags?: string[];
 }
 
 // ── Rules ────────────────────────────────────────────────────────────────

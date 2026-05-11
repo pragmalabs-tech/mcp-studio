@@ -80,6 +80,7 @@ A Cue file is a single JSON object:
 | `setup.requires.tools` | no | Tool names that must exist on the server. The Cue fails at precondition if missing. |
 | `setup.requires.resources` | no | Resource URIs that must exist on the server. Same precondition behavior. |
 | `fixtures` | no | Constants the Cue interpolates via `{{ name }}`. Strings, numbers, booleans, or nested objects. |
+| `tags` | no | String array of free-form labels. Lowercased, trimmed, deduped on save. Used by the studio UI to filter the catalog. Round-trips verbatim if absent. |
 | `steps` | yes | Ordered list of Step objects. Empty array is invalid. |
 
 Unknown top-level keys are a hard error (catches typos like `step` vs `steps`).
@@ -681,7 +682,7 @@ real demand arrives.
 - Standalone assertions: `assert.tool_called` (call-history queries),
   `assert.no_unexpected_errors`
 - Flow control: `flow.group`, `flow.skip_if`, conditional branches, loops
-- Cue envelope: `tags`, `retry`, `teardown`
+- Cue envelope: `retry`, `teardown`
 - Built-in interpolation functions: `now`, `uuid`, `random_int`
 - External `$ref` JSON Schemas in matchers
 - Visual snapshot comparison

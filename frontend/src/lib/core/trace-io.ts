@@ -28,6 +28,7 @@ export function toTrace(opts: {
   description?: string;
   id?: string;
   setup?: TraceSetup;
+  tags?: string[];
 }): Trace {
   const actions = opts.timeline.flatMap((r) => legacyToAction(r));
   pairResponseToolNames(actions);
@@ -44,6 +45,7 @@ export function toTrace(opts: {
       action,
       stateAfter: buildInitialState(),
     })),
+    tags: opts.tags,
   });
 }
 

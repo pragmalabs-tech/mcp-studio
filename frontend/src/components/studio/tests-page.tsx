@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import {
   CheckCircle2,
@@ -9,6 +9,7 @@ import {
   Loader2,
   Play,
   StepForward,
+  Tag as TagIcon,
   Trash2,
   XCircle,
   XIcon,
@@ -16,7 +17,15 @@ import {
   EyeOff,
   Eye,
 } from "lucide-react";
-import { Dialog, DialogOverlay, DialogPortal } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,8 +37,12 @@ import {
   AlertDialogMedia,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { TagInput } from "@/components/ui/tag-input";
 import { listTests, getTrace, deleteTest, saveTrace } from "@/lib/tests/api";
+import { collectTags, normalizeTags } from "@/lib/tests/tags";
 import type { TestSummary } from "@/lib/recorder/schema";
 import { useStudioStore } from "@/lib/studio/store";
 import { run as runEngine } from "@/lib/core/engine";
@@ -189,6 +202,81 @@ function RunHistoryList({
   );
 }
 
+function EditTagsDialog({
+  test,
+  suggestions,
+  onClose,
+  onSaved,
+}: {
+  test: TestSummary;
+  suggestions: readonly string[];
+  onClose: () => void;
+  onSaved: (next: string[]) => void;
+}) {
+  const [tags, setTags] = useState<string[]>(test.tags ?? []);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      const trace = await getTrace(test.name);
+      const next = normalizeTags(tags);
+      await saveTrace(test.name, {
+        ...trace,
+        tags: next.length > 0 ? next : undefined,
+      });
+      onSaved(next);
+      onClose();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={true} onOpenChange={(v) => !v && !saving && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit tags</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium text-muted-foreground">
+              {test.displayName ?? test.name}
+            </Label>
+            <TagInput
+              value={tags}
+              onChange={setTags}
+              suggestions={suggestions}
+              placeholder="e.g. smoke, auth"
+              autoFocus
+            />
+          </div>
+          {error && (
+            <p className="text-xs text-destructive font-mono">{error}</p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onClose}
+            disabled={saving}
+          >
+            Cancel
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function TestsPage({ open, onOpenChange }: Props) {
   const [tests, setTests] = useState<TestSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -217,6 +305,27 @@ export function TestsPage({ open, onOpenChange }: Props) {
   const [hideObservations, setHideObservations] = useState(true);
   const [pendingDelete, setPendingDelete] = useState<TestSummary | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
+  const [editingTagsFor, setEditingTagsFor] = useState<TestSummary | null>(
+    null,
+  );
+
+  const allTags = useMemo(() => collectTags(tests), [tests]);
+  const filteredTests = useMemo(() => {
+    if (activeTags.size === 0) return tests;
+    return tests.filter((t) =>
+      (t.tags ?? []).some((tag) => activeTags.has(tag)),
+    );
+  }, [tests, activeTags]);
+
+  const toggleTag = useCallback((tag: string) => {
+    setActiveTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag);
+      else next.add(tag);
+      return next;
+    });
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -432,7 +541,11 @@ export function TestsPage({ open, onOpenChange }: Props) {
             <DialogPrimitive.Title className="text-sm font-medium flex items-center gap-2">
               {showHistory ? "Run history" : "Tests"}
               <span className="text-xs font-normal text-muted-foreground">
-                {showHistory ? runHistory.length : tests.length}
+                {showHistory
+                  ? runHistory.length
+                  : activeTags.size > 0
+                    ? `${filteredTests.length} / ${tests.length}`
+                    : tests.length}
               </span>
             </DialogPrimitive.Title>
             <div className="flex items-center gap-1">
@@ -511,6 +624,37 @@ export function TestsPage({ open, onOpenChange }: Props) {
               {error}
             </div>
           )}
+          {!showHistory && allTags.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 px-4 py-2 border-b border-border/30 shrink-0">
+              <span className="text-[10px] text-muted-foreground font-medium">
+                Filter:
+              </span>
+              {allTags.map((tag) => {
+                const active = activeTags.has(tag);
+                return (
+                  <Badge
+                    key={tag}
+                    variant={active ? "default" : "outline"}
+                    className="cursor-pointer text-[10px] px-1.5 py-0"
+                    render={
+                      <button type="button" onClick={() => toggleTag(tag)} />
+                    }
+                  >
+                    {tag}
+                  </Badge>
+                );
+              })}
+              {activeTags.size > 0 && (
+                <button
+                  type="button"
+                  className="text-[10px] text-muted-foreground hover:text-foreground ml-1"
+                  onClick={() => setActiveTags(new Set())}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto min-h-0">
             {showHistory ? (
               <RunHistoryList runs={runHistory} onOpen={openRun} />
@@ -519,8 +663,12 @@ export function TestsPage({ open, onOpenChange }: Props) {
                 No tests saved yet. Open Action history (clock icon), use Mark
                 start / Mark end to slice the log, then Save.
               </p>
+            ) : !loading && filteredTests.length === 0 ? (
+              <p className="text-center text-muted-foreground text-xs py-12 px-6">
+                No tests match the active tag filter.
+              </p>
             ) : (
-              tests.map((t) => {
+              filteredTests.map((t) => {
                 const isOpen = expanded.has(t.name);
                 const loaded = loadedTests[t.name];
                 const isLoading = loadingName === t.name;
@@ -569,6 +717,32 @@ export function TestsPage({ open, onOpenChange }: Props) {
                               {t.description}
                             </p>
                           )}
+                          {t.tags && t.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {t.tags.map((tag) => (
+                                <Badge
+                                  key={tag}
+                                  variant={
+                                    activeTags.has(tag)
+                                      ? "default"
+                                      : "secondary"
+                                  }
+                                  className="text-[10px] px-1.5 py-0 cursor-pointer"
+                                  render={
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleTag(tag);
+                                      }}
+                                    />
+                                  }
+                                >
+                                  {tag}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                         </button>
                         <div className="flex items-center gap-1 shrink-0">
                           <Button
@@ -599,6 +773,15 @@ export function TestsPage({ open, onOpenChange }: Props) {
                             title="Download JSON"
                           >
                             <Download className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => setEditingTagsFor(t)}
+                            disabled={busyName === t.name}
+                            title="Edit tags"
+                          >
+                            <TagIcon className="h-3.5 w-3.5" />
                           </Button>
                           <Button
                             variant="ghost"
@@ -695,6 +878,22 @@ export function TestsPage({ open, onOpenChange }: Props) {
         }}
         onRulesChange={handleRulesChange}
       />
+      {editingTagsFor && (
+        <EditTagsDialog
+          test={editingTagsFor}
+          suggestions={allTags}
+          onClose={() => setEditingTagsFor(null)}
+          onSaved={(next) => {
+            setTests((prev) =>
+              prev.map((t) =>
+                t.name === editingTagsFor.name
+                  ? { ...t, tags: next.length > 0 ? next : undefined }
+                  : t,
+              ),
+            );
+          }}
+        />
+      )}
     </Dialog>
   );
 }

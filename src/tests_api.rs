@@ -25,6 +25,8 @@ pub struct TestSummary {
     pub created_at: Option<String>,
     /// Number of `steps[]` declared in the Cue.
     pub total_actions: Option<usize>,
+    /// Tags lifted from the Cue body for filter UX.
+    pub tags: Option<Vec<String>>,
 }
 
 fn lift_summary(name: &str, file: storage::JsonFile, value: &Value) -> TestSummary {
@@ -44,6 +46,11 @@ fn lift_summary(name: &str, file: storage::JsonFile, value: &Value) -> TestSumma
         .get("steps")
         .and_then(|t| t.as_array())
         .map(|a| a.len());
+    let tags = value.get("tags").and_then(|v| v.as_array()).map(|arr| {
+        arr.iter()
+            .filter_map(|t| t.as_str().map(|s| s.to_string()))
+            .collect()
+    });
     TestSummary {
         name: name.to_string(),
         size: file.size,
@@ -52,6 +59,7 @@ fn lift_summary(name: &str, file: storage::JsonFile, value: &Value) -> TestSumma
         description,
         created_at,
         total_actions,
+        tags,
     }
 }
 

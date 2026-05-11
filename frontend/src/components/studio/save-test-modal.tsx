@@ -10,9 +10,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { TagInput } from "@/components/ui/tag-input";
 import { recorder } from "@/lib/recorder/bus";
 import { slugify } from "@/lib/tests/format";
-import { saveTrace } from "@/lib/tests/api";
+import { listTests, saveTrace } from "@/lib/tests/api";
+import { collectTags } from "@/lib/tests/tags";
 import { toTrace } from "@/lib/core/trace-io";
 import { useStudioStore } from "@/lib/studio/store";
 
@@ -33,6 +35,8 @@ export function SaveTestModal({
 }: Props) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const activeProfile = useStudioStore((s) =>
@@ -43,7 +47,11 @@ export function SaveTestModal({
     if (open) {
       setName("");
       setDescription("");
+      setTags([]);
       setError(null);
+      listTests()
+        .then((t) => setSuggestions(collectTags(t)))
+        .catch(() => setSuggestions([]));
     }
   }, [open]);
 
@@ -69,6 +77,7 @@ export function SaveTestModal({
         timeline: session.timeline,
         name: name.trim(),
         description: description.trim() || undefined,
+        tags: tags.length > 0 ? tags : undefined,
       });
       await saveTrace(slug, trace);
       onSaved(slug);
@@ -115,6 +124,17 @@ export function SaveTestModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="text-sm min-h-[60px]"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium text-muted-foreground">
+              Tags (optional)
+            </Label>
+            <TagInput
+              value={tags}
+              onChange={setTags}
+              suggestions={suggestions}
+              placeholder="e.g. smoke, auth"
             />
           </div>
           <div className="rounded-md bg-muted/30 p-2 text-[10px] font-mono text-muted-foreground">
