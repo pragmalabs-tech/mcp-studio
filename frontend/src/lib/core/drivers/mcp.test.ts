@@ -112,10 +112,57 @@ describe("mcp driver", () => {
     });
   });
 
+  it("apply_response__drops_content_when_structuredContent_present", () => {
+    const result = {
+      structuredContent: { id: 1, name: "alpha" },
+      content: [{ type: "text", text: '{"id":1,"name":"alpha"}' }],
+      _meta: { duration: 5 },
+    };
+    const after = mcpDriver.apply(
+      emptyState(),
+      mcpAction("response", {
+        requestId: 1,
+        tool: "lookup",
+        durationMs: 1,
+        result,
+      }),
+    );
+    const stored = after.tools.lookup.lastResult as Record<string, unknown>;
+    expect(stored.structuredContent).toEqual({ id: 1, name: "alpha" });
+    expect(stored._meta).toEqual({ duration: 5 });
+    expect(stored.content).toBeUndefined();
+  });
+
+  it("apply_response__preserves_content_when_no_structuredContent", () => {
+    const result = {
+      content: [{ type: "text", text: "<html>hi</html>" }],
+    };
+    const after = mcpDriver.apply(
+      emptyState(),
+      mcpAction("response", {
+        requestId: 1,
+        tool: "widget",
+        durationMs: 1,
+        result,
+      }),
+    );
+    expect(after.tools.widget.lastResult).toEqual(result);
+  });
+
   it("volatilePaths__declares_id_and_timestamp_paths", () => {
     const paths = mcpDriver.volatilePaths();
     expect(paths).toContain("*.lastResult.id");
     expect(paths).toContain("*.lastResult.created_at");
-    expect(paths).toContain("*.lastResult.context.current_datetime");
+    expect(paths).toContain("*.lastResult.data.id");
+  });
+
+  it("matchPaths__declares_iso8601_context_datetime", () => {
+    const match = mcpDriver.matchPaths?.() ?? {};
+    expect(
+      match["*.lastResult.structuredContent.context.current_datetime"],
+    ).toBe("@iso8601");
+    expect(
+      match["*.lastResult.structuredContent.context.current_date_human"],
+    ).toBe("@any");
   });
 });

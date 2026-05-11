@@ -117,6 +117,41 @@ export function TracePlayer({
   );
 }
 
+type StepTone = "fail" | "warn" | "ok";
+
+function worstSeverity(drifts: readonly Drift[]): StepTone {
+  let tone: StepTone = "ok";
+  for (const d of drifts) {
+    // Suppressed-by-ignore drifts don't contribute color — they're
+    // already filtered out at the modal level, but be defensive in
+    // case a caller passes them through.
+    if (d.suppressedBy?.layer.endsWith(".ignore")) continue;
+    if (d.severity === "fail" && !d.suppressedBy) return "fail";
+    if (d.severity === "warn") tone = "warn";
+  }
+  return tone;
+}
+
+function toneFor(
+  severity: StepTone,
+  isCurrent: boolean,
+  isPast: boolean,
+): string {
+  if (severity === "fail") {
+    return isCurrent ? "bg-red-400" : "bg-red-500/50 hover:bg-red-500/80";
+  }
+  if (severity === "warn") {
+    return isCurrent
+      ? "bg-yellow-400"
+      : "bg-yellow-500/50 hover:bg-yellow-500/80";
+  }
+  // ok — keep the whole track in the green family so "not yet run"
+  // reads as "pending pass" rather than a distinct neutral state.
+  if (isCurrent) return "bg-emerald-400";
+  if (isPast) return "bg-emerald-500/40 hover:bg-emerald-500/70";
+  return "bg-emerald-500/15 hover:bg-emerald-500/35";
+}
+
 function Scrubber({
   steps,
   driftsByStep,
@@ -140,15 +175,16 @@ function Scrubber({
       aria-valuenow={selectedIdx + 1}
     >
       {steps.map((_, i) => {
-        const failed = (driftsByStep.get(i) ?? []).length > 0;
+        const severity = worstSeverity(driftsByStep.get(i) ?? []);
         const isCurrent = i === selectedIdx;
         const isPast = i < selectedIdx;
-        let tone = "bg-emerald-500/40 hover:bg-emerald-500/70";
-        if (failed) tone = "bg-red-500/50 hover:bg-red-500/80";
-        if (isCurrent) tone = failed ? "bg-red-400" : "bg-emerald-400";
-        if (!isCurrent && !isPast && !failed) {
-          tone = "bg-muted-foreground/20 hover:bg-muted-foreground/40";
-        }
+        const tone = toneFor(severity, isCurrent, isPast);
+        const titleSuffix =
+          severity === "fail"
+            ? " (fail)"
+            : severity === "warn"
+              ? " (warn)"
+              : "";
         return (
           <button
             key={i}
@@ -157,7 +193,7 @@ function Scrubber({
             className={`flex-1 transition-colors cursor-pointer ${
               isCurrent ? "h-5" : "h-2.5 hover:h-3.5"
             } rounded-sm ${tone}`}
-            title={`Step ${i + 1}${failed ? " (drifts)" : ""}`}
+            title={`Step ${i + 1}${titleSuffix}`}
             aria-label={`Jump to step ${i + 1}`}
           />
         );

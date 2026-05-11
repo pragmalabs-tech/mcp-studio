@@ -5,7 +5,7 @@
  * Adding a driver: import it, add it to DRIVERS, extend SLICE_KEYS.
  */
 
-import type { Action, Driver, DriverId, State } from "./types";
+import type { Action, Driver, DriverId, Matcher, State } from "./types";
 import { studioDriver } from "./drivers/studio";
 import { mcpDriver } from "./drivers/mcp";
 import { widgetDriver } from "./drivers/widget";
@@ -51,6 +51,20 @@ export function allVolatilePaths(): string[] {
   for (const d of DRIVERS) {
     const prefix = SLICE_KEYS[d.id];
     for (const p of d.volatilePaths()) out.push(`${prefix}.${p}`);
+  }
+  return out;
+}
+
+/** Aggregate driver-level shape matchers, slice-key-prefixed. Drivers
+ *  that don't implement `matchPaths` contribute nothing. */
+export function builtinMatch(): Record<string, Matcher> {
+  const out: Record<string, Matcher> = {};
+  for (const d of DRIVERS) {
+    if (!d.matchPaths) continue;
+    const prefix = SLICE_KEYS[d.id];
+    for (const [pattern, matcher] of Object.entries(d.matchPaths())) {
+      out[`${prefix}.${pattern}`] = matcher;
+    }
   }
   return out;
 }

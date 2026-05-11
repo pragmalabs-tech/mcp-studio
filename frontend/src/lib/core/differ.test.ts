@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { diff } from "./differ";
+import { emptyResolvedRules } from "./rules";
 import {
   studioAction,
   emptyState,
   makeState,
   makeTrace,
 } from "./__tests__/fixtures";
-import type { State, Trace } from "./types";
+import type { ResolvedRules, State, Trace } from "./types";
 
 function trace(states: State[]): Trace {
   return makeTrace({
@@ -17,26 +18,37 @@ function trace(states: State[]): Trace {
   });
 }
 
+const NO_RULES: ResolvedRules = emptyResolvedRules();
+
+function ignoreOnly(...patterns: string[]): ResolvedRules {
+  return {
+    ignore: patterns.map(
+      (pattern) => ({ pattern, layer: "trace.ignore" }) as const,
+    ),
+    match: [],
+  };
+}
+
 describe("diff", () => {
   it("identical_traces_produce_ok_verdict", () => {
     const t = trace([emptyState()]);
-    expect(diff(t, t, []).ok).toBe(true);
+    expect(diff(t, t, NO_RULES).ok).toBe(true);
   });
 
   it("empty_traces_produce_ok_verdict", () => {
-    expect(diff(trace([]), trace([]), []).ok).toBe(true);
+    expect(diff(trace([]), trace([]), NO_RULES).ok).toBe(true);
   });
 
   it("identity_short_circuit_skips_walk", () => {
     const shared = emptyState();
-    expect(diff(trace([shared]), trace([shared]), []).drifts).toEqual([]);
+    expect(diff(trace([shared]), trace([shared]), NO_RULES).drifts).toEqual([]);
   });
 
   it("value_drift_names_dot_path", () => {
     const verdict = diff(
       trace([makeState({ tools: { weather: { callCount: 1 } } })]),
       trace([makeState({ tools: { weather: { callCount: 0 } } })]),
-      [],
+      NO_RULES,
     );
     expect(verdict.ok).toBe(false);
     expect(verdict.drifts[0]).toMatchObject({
@@ -59,7 +71,7 @@ describe("diff", () => {
           tools: { weather: { callCount: 1, lastResult: { temp: 19 } } },
         }),
       ]),
-      [],
+      NO_RULES,
     );
     expect(verdict.drifts[0].path).toBe("tools.weather.lastResult.temp");
   });
@@ -81,7 +93,7 @@ describe("diff", () => {
         ],
       },
     });
-    expect(diff(trace([a]), trace([b]), []).drifts[0].path).toBe(
+    expect(diff(trace([a]), trace([b]), NO_RULES).drifts[0].path).toBe(
       "widgets.open[0].data.id",
     );
   });
@@ -90,7 +102,7 @@ describe("diff", () => {
     const verdict = diff(
       trace([makeState({ tools: { weather: { callCount: 1 } } })]),
       trace([makeState({ tools: {} })]),
-      [],
+      NO_RULES,
     );
     expect(verdict.drifts[0]).toMatchObject({
       path: "tools.weather",
@@ -102,7 +114,7 @@ describe("diff", () => {
     const verdict = diff(
       trace([makeState({ tools: {} })]),
       trace([makeState({ tools: { weather: { callCount: 1 } } })]),
-      [],
+      NO_RULES,
     );
     expect(verdict.drifts[0]).toMatchObject({
       path: "tools.weather",
@@ -122,7 +134,7 @@ describe("diff", () => {
         },
       },
     });
-    expect(diff(trace([exp]), trace([act]), []).drifts[0].reason).toBe(
+    expect(diff(trace([exp]), trace([act]), NO_RULES).drifts[0].reason).toBe(
       "type_differs",
     );
   });
@@ -131,7 +143,7 @@ describe("diff", () => {
     const verdict = diff(
       trace([emptyState(), emptyState()]),
       trace([emptyState()]),
-      [],
+      NO_RULES,
     );
     expect(verdict.drifts[0]).toMatchObject({
       stepIndex: 1,
@@ -143,7 +155,7 @@ describe("diff", () => {
     const verdict = diff(
       trace([emptyState()]),
       trace([emptyState(), emptyState()]),
-      [],
+      NO_RULES,
     );
     expect(verdict.drifts[0]).toMatchObject({
       stepIndex: 1,
@@ -151,29 +163,147 @@ describe("diff", () => {
     });
   });
 
-  it("volatile_path_suppresses_drift", () => {
+  it("ignore_pattern_suppresses_drift_but_keeps_it_in_list", () => {
     const exp = makeState({
       tools: { weather: { callCount: 1, lastResult: { id: "abc", temp: 22 } } },
     });
     const act = makeState({
       tools: { weather: { callCount: 1, lastResult: { id: "xyz", temp: 22 } } },
     });
-    expect(diff(trace([exp]), trace([act]), ["tools.*.lastResult.id"]).ok).toBe(
-      true,
+    const verdict = diff(
+      trace([exp]),
+      trace([act]),
+      ignoreOnly("tools.*.lastResult.id"),
     );
+    expect(verdict.ok).toBe(true);
+    expect(verdict.drifts).toHaveLength(1);
+    expect(verdict.drifts[0].suppressedBy).toEqual({
+      layer: "trace.ignore",
+      pattern: "tools.*.lastResult.id",
+    });
   });
 
-  it("volatile_path_does_not_suppress_sibling_drift", () => {
+  it("ignore_does_not_suppress_sibling_drift", () => {
     const exp = makeState({
       tools: { weather: { callCount: 1, lastResult: { id: "a", temp: 22 } } },
     });
     const act = makeState({
       tools: { weather: { callCount: 1, lastResult: { id: "b", temp: 99 } } },
     });
-    const verdict = diff(trace([exp]), trace([act]), ["tools.*.lastResult.id"]);
-    expect(verdict.drifts.map((x) => x.path)).toEqual([
+    const verdict = diff(
+      trace([exp]),
+      trace([act]),
+      ignoreOnly("tools.*.lastResult.id"),
+    );
+    const surfaced = verdict.drifts.filter((d) => !d.suppressedBy);
+    expect(surfaced.map((x) => x.path)).toEqual([
       "tools.weather.lastResult.temp",
     ]);
+  });
+
+  it("match_matcher_passing_downgrades_severity_to_warn", () => {
+    const exp = makeState({
+      tools: {
+        weather: {
+          callCount: 1,
+          lastResult: { ts: "2026-05-11T12:34:36Z", temp: 22 },
+        },
+      },
+    });
+    const act = makeState({
+      tools: {
+        weather: {
+          callCount: 1,
+          lastResult: { ts: "2026-05-11T12:35:09Z", temp: 22 },
+        },
+      },
+    });
+    const rules: ResolvedRules = {
+      ignore: [],
+      match: [
+        {
+          pattern: "tools.*.lastResult.ts",
+          matcher: "@iso8601",
+          layer: "trace.match",
+        },
+      ],
+    };
+    const verdict = diff(trace([exp]), trace([act]), rules);
+    expect(verdict.ok).toBe(true);
+    expect(verdict.drifts).toHaveLength(1);
+    expect(verdict.drifts[0].severity).toBe("warn");
+    expect(verdict.drifts[0].suppressedBy?.layer).toBe("trace.match");
+  });
+
+  it("classifier_attaches_classification_to_unsuppressed_iso_drift", () => {
+    const exp = makeState({
+      tools: {
+        weather: {
+          callCount: 1,
+          lastResult: { ts: "2026-05-11T12:34:36Z" },
+        },
+      },
+    });
+    const act = makeState({
+      tools: {
+        weather: {
+          callCount: 1,
+          lastResult: { ts: "2026-05-11T12:35:09Z" },
+        },
+      },
+    });
+    const verdict = diff(trace([exp]), trace([act]), NO_RULES);
+    expect(verdict.drifts[0].severity).toBe("fail");
+    expect(verdict.drifts[0].classification?.kind).toBe("iso8601");
+    expect(verdict.drifts[0].classification?.suggested).toEqual({
+      match: "@iso8601",
+    });
+  });
+
+  it("classifier_does_not_run_on_ignored_drift", () => {
+    const exp = makeState({
+      tools: {
+        weather: { callCount: 1, lastResult: { ts: "2026-05-11T12:34:36Z" } },
+      },
+    });
+    const act = makeState({
+      tools: {
+        weather: { callCount: 1, lastResult: { ts: "2026-05-11T12:35:09Z" } },
+      },
+    });
+    const verdict = diff(
+      trace([exp]),
+      trace([act]),
+      ignoreOnly("tools.*.lastResult.ts"),
+    );
+    expect(verdict.drifts[0].classification).toBeUndefined();
+    expect(verdict.drifts[0].suppressedBy?.layer).toBe("trace.ignore");
+  });
+
+  it("match_matcher_failing_surfaces_drift", () => {
+    const exp = makeState({
+      tools: {
+        weather: { callCount: 1, lastResult: { ts: "not-a-datetime" } },
+      },
+    });
+    const act = makeState({
+      tools: {
+        weather: { callCount: 1, lastResult: { ts: "also-not-a-datetime" } },
+      },
+    });
+    const rules: ResolvedRules = {
+      ignore: [],
+      match: [
+        {
+          pattern: "tools.*.lastResult.ts",
+          matcher: "@iso8601",
+          layer: "trace.match",
+        },
+      ],
+    };
+    const verdict = diff(trace([exp]), trace([act]), rules);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.drifts[0].suppressedBy).toBeUndefined();
   });
 
   it("does_not_re_report_drift_on_later_steps_when_value_unchanged", () => {
@@ -187,7 +317,7 @@ describe("diff", () => {
       });
     const recorded = trace([driftAt0(5), driftAt0(5), driftAt0(5)]);
     const replayed = trace([driftAt0(17), driftAt0(17), driftAt0(17)]);
-    const verdict = diff(recorded, replayed, []);
+    const verdict = diff(recorded, replayed, NO_RULES);
     // Exactly one drift at step 0 — not three.
     expect(verdict.drifts.map((x) => [x.stepIndex, x.path])).toEqual([
       [0, "tools.weather.lastResult.temp"],
@@ -208,7 +338,7 @@ describe("diff", () => {
       makeState({ tools: { w: { callCount: 1, lastResult: { temp: 17 } } } }),
       makeState({ tools: { w: { callCount: 2, lastResult: { temp: 23 } } } }),
     ]);
-    const verdict = diff(recorded, replayed, []);
+    const verdict = diff(recorded, replayed, NO_RULES);
     expect(verdict.drifts.map((x) => [x.stepIndex, x.path])).toEqual([
       [0, "tools.w.lastResult.temp"],
       [2, "tools.w.lastResult.temp"],
@@ -225,7 +355,7 @@ describe("diff", () => {
         makeState({ tools: { a: { callCount: 9 } } }),
         makeState({ tools: { b: { callCount: 9 } } }),
       ]),
-      [],
+      NO_RULES,
     );
     expect(verdict.drifts.map((x) => [x.stepIndex, x.path])).toEqual([
       [0, "tools.a.callCount"],

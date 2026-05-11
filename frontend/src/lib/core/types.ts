@@ -187,6 +187,45 @@ export interface Trace {
   setup: TraceSetup;
   initialState: State;
   steps: Step[];
+  /** Per-trace assertion rules, additive on top of built-in driver
+   *  defaults. Optional — traces without it get only the defaults. */
+  rules?: TraceRules;
+}
+
+// ── Rules ────────────────────────────────────────────────────────────────
+// Per-trace rule additions on top of driver-level defaults. Rules suppress
+// or reshape what would otherwise be a drift:
+//   ignore — drop the disagreement entirely.
+//   match  — replace exact-equality with a shape/format assertion.
+
+export type Matcher =
+  | "@any" // any value, both sides present
+  | "@iso8601" // ISO-8601 datetime string
+  | "@uuid" // UUID (any version)
+  | "@epoch" // integer >= 1e9 (seconds or ms)
+  | { regex: string };
+
+export interface TraceRules {
+  /** Additive path globs whose value differences are suppressed. */
+  ignore?: string[];
+  /** Path glob → matcher. Path glob uses the same `*` / `[*]` semantics
+   *  as `matchesAnyPattern`. */
+  match?: Record<string, Matcher>;
+}
+
+/** Resolved layered rules ready for the differ. Built by `resolveRules()` */
+export interface ResolvedRules {
+  ignore: ReadonlyArray<{
+    pattern: string;
+    layer: "builtin.ignore" | "trace.ignore";
+  }>;
+  /** Ordered so trace entries come AFTER builtin entries; the LAST
+   *  matching pattern wins. */
+  match: ReadonlyArray<{
+    pattern: string;
+    matcher: Matcher;
+    layer: "builtin.match" | "trace.match";
+  }>;
 }
 
 // ── Verdict ──────────────────────────────────────────────────────────────
@@ -203,7 +242,41 @@ export interface Drift {
   actual: unknown;
   reason: DriftReason;
   severity: DriftSeverity;
+  /** When set, the drift was suppressed by a rule and should not count
+   *  against `Verdict.ok`. UI may still surface these in a "suppressed"
+   *  view for explainability. */
+  suppressedBy?: {
+    layer: "builtin.ignore" | "builtin.match" | "trace.ignore" | "trace.match";
+    pattern: string;
+  };
+  /** Heuristic guess at what kind of value differed. Set only by the
+   *  auto-classifier on fail drifts where both sides share a known
+   *  shape (datetime, UUID, secret, etc.). Drives the UI's suggestion
+   *  banner. Suggesting a rule does NOT change verdict/severity. */
+  classification?: Classification;
 }
+
+export type ClassificationKind =
+  | "iso8601"
+  | "uuid"
+  | "epoch"
+  | "jwt"
+  | "aws_key"
+  | "stripe_key"
+  | "high_entropy";
+
+export interface Classification {
+  kind: ClassificationKind;
+  /** True if the value should be considered secret — the UI masks it
+   *  and the default suggestion is `ignore`, never `match`. */
+  sensitive: boolean;
+  /** Concrete rule the UI offers to add. `match` for shape-stable
+   *  values (datetime, UUID, epoch); `ignore` for high-entropy /
+   *  secret-shaped values where shape-asserting would still leak. */
+  suggested: SuggestedRule;
+}
+
+export type SuggestedRule = { match: Matcher } | { ignore: true };
 
 export type DriftReason =
   | "missing"
@@ -228,6 +301,10 @@ export interface Driver<A extends Action = Action> {
   initialSlice(): unknown;
   apply(state: State, action: A): State;
   volatilePaths(): readonly string[];
+  /** Optional shape-matcher defaults for paths owned by this driver.
+   *  Keyed by path glob relative to the driver's slice key (the registry
+   *  prefixes them just like `volatilePaths`). */
+  matchPaths?(): Readonly<Record<string, Matcher>>;
   dispatch?(action: A, ctx: DispatchCtx): Promise<void>;
   attach?(emit: (action: Action) => void, ctx: AttachCtx): () => void;
 }

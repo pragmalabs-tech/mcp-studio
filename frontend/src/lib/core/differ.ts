@@ -1,15 +1,37 @@
 /**
- * Pairwise diff of two Traces' Step.stateAfter values, ignoring volatile
- * paths. Produces a Verdict with structured Drifts named by dot-path.
+ * Pairwise diff of two Traces' Step.stateAfter values. Walks each step's
+ * stateAfter pair and emits one Drift per disagreeing leaf, named by
+ * dot-path. Rules suppress or reshape what would otherwise count:
+ *   match  — replaces exact-equality with a shape/format assertion.
+ *            A passing matcher emits `severity: "warn"` (yellow in the
+ *            UI) with `suppressedBy: *.match` for explainability; a
+ *            failing matcher emits an unsuppressed fail drift.
+ *   ignore — silently drops the disagreement (`suppressedBy: *.ignore`).
+ *
+ * Fail drifts (no rule matched) are run through the auto-classifier to
+ * attach a `classification` hint when both sides share a known shape
+ * (datetime/UUID/secret/...). The classifier never auto-applies the
+ * suggestion; UI surfaces it as a banner with an "Apply" affordance.
+ *
+ * `Verdict.ok` is `true` iff every fail drift carries `suppressedBy`.
+ * Suppressed drifts are returned so the UI can explain what was let
+ * through; `warn` drifts also pass.
  */
 
-import { matchesAnyPattern } from "./util/path-match";
-import type { Drift, DriftReason, Trace, Verdict } from "./types";
+import { classify } from "./classify";
+import { checkMatcher, findIgnore, findMatch } from "./rules";
+import type {
+  Drift,
+  DriftReason,
+  ResolvedRules,
+  Trace,
+  Verdict,
+} from "./types";
 
 export function diff(
   recorded: Trace,
   replayed: Trace,
-  volatilePaths: readonly string[],
+  rules: ResolvedRules,
 ): Verdict {
   const drifts: Drift[] = [];
   const n = Math.max(recorded.steps.length, replayed.steps.length);
@@ -42,7 +64,7 @@ export function diff(
       prevRep,
       "",
       i,
-      volatilePaths,
+      rules,
       drifts,
     );
   }
@@ -50,7 +72,11 @@ export function diff(
   drifts.sort(
     (a, b) => a.stepIndex - b.stepIndex || a.path.localeCompare(b.path),
   );
-  return { ok: drifts.every((x) => x.severity !== "fail"), drifts };
+  return { ok: drifts.every(isSurfacedOk), drifts };
+}
+
+function isSurfacedOk(drift: Drift): boolean {
+  return drift.severity !== "fail" || drift.suppressedBy !== undefined;
 }
 
 function walk(
@@ -60,20 +86,41 @@ function walk(
   prevAct: unknown,
   path: string,
   stepIndex: number,
-  vol: readonly string[],
+  rules: ResolvedRules,
   out: Drift[],
 ): void {
-  if (matchesAnyPattern(path, vol)) return;
   // Identity short-circuit: this cell didn't move on either side since
   // the previous step. Whatever drift exists here was already reported
   // (or didn't exist at all). Don't re-report.
   if (exp === prevExp && act === prevAct) return;
   if (!sameShape(exp, act)) {
-    out.push(d(stepIndex, path, exp, act, "type_differs"));
+    out.push(applyRules(d(stepIndex, path, exp, act, "type_differs"), rules));
     return;
   }
   if (exp === null || typeof exp !== "object") {
-    if (exp !== act) out.push(d(stepIndex, path, exp, act, "value_differs"));
+    if (exp !== act) {
+      // Leaf: try match first (shape check; pass → warn+suppressedBy,
+      // fail → red drift); then fall through to ignore + classifier.
+      const matchEntry = findMatch(path, rules.match);
+      if (matchEntry) {
+        const passed =
+          checkMatcher(matchEntry.matcher, exp) &&
+          checkMatcher(matchEntry.matcher, act);
+        const drift = d(stepIndex, path, exp, act, "value_differs");
+        if (passed) {
+          drift.severity = "warn";
+          drift.suppressedBy = {
+            layer: matchEntry.layer,
+            pattern: matchEntry.pattern,
+          };
+        }
+        out.push(drift);
+        return;
+      }
+      out.push(
+        applyRules(d(stepIndex, path, exp, act, "value_differs"), rules),
+      );
+    }
     return;
   }
   if (Array.isArray(exp)) {
@@ -84,10 +131,15 @@ function walk(
     const len = Math.max(a.length, b.length);
     for (let i = 0; i < len; i++) {
       const cp = `${path}[${i}]`;
-      if (i >= a.length) out.push(d(stepIndex, cp, undefined, b[i], "extra"));
-      else if (i >= b.length)
-        out.push(d(stepIndex, cp, a[i], undefined, "missing"));
-      else walk(a[i], b[i], pa[i], pb[i], cp, stepIndex, vol, out);
+      if (i >= a.length) {
+        out.push(applyRules(d(stepIndex, cp, undefined, b[i], "extra"), rules));
+      } else if (i >= b.length) {
+        out.push(
+          applyRules(d(stepIndex, cp, a[i], undefined, "missing"), rules),
+        );
+      } else {
+        walk(a[i], b[i], pa[i], pb[i], cp, stepIndex, rules, out);
+      }
     }
     return;
   }
@@ -101,15 +153,31 @@ function walk(
     const inE = Object.prototype.hasOwnProperty.call(eo, k);
     const inA = Object.prototype.hasOwnProperty.call(ao, k);
     if (!inA) {
-      if (!matchesAnyPattern(cp, vol))
-        out.push(d(stepIndex, cp, eo[k], undefined, "missing"));
+      out.push(
+        applyRules(d(stepIndex, cp, eo[k], undefined, "missing"), rules),
+      );
     } else if (!inE) {
-      if (!matchesAnyPattern(cp, vol))
-        out.push(d(stepIndex, cp, undefined, ao[k], "extra"));
+      out.push(applyRules(d(stepIndex, cp, undefined, ao[k], "extra"), rules));
     } else {
-      walk(eo[k], ao[k], peo[k], pao[k], cp, stepIndex, vol, out);
+      walk(eo[k], ao[k], peo[k], pao[k], cp, stepIndex, rules, out);
     }
   }
+}
+
+/** Stamp `suppressedBy` from a matching `ignore` pattern; otherwise run
+ *  the auto-classifier on `value_differs` drifts so the UI can surface
+ *  a suggestion. Returns the same drift either way for chaining. */
+function applyRules(drift: Drift, rules: ResolvedRules): Drift {
+  const hit = findIgnore(drift.path, rules.ignore);
+  if (hit) {
+    drift.suppressedBy = { layer: hit.layer, pattern: hit.pattern };
+    return drift;
+  }
+  if (drift.reason === "value_differs") {
+    const c = classify(drift.expected, drift.actual);
+    if (c) drift.classification = c;
+  }
+  return drift;
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {

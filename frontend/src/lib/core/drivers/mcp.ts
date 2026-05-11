@@ -6,18 +6,26 @@
  * responses so transitions attribute results without heuristic matching.
  */
 
-import type { Driver, McpAction, State, ToolStats } from "../types";
+import type { Driver, Matcher, McpAction, State, ToolStats } from "../types";
 
 const VOLATILE = [
   "*.lastResult.id",
   "*.lastResult.created_at",
   "*.lastResult.updated_at",
-  "*.lastResult.context.current_datetime",
-  "*.lastResult.context.current_date_human",
   "*.lastResult.data.id",
   "*.lastResult.data.created_at",
   "*.lastResult.data.updated_at",
 ] as const;
+
+// Shape-asserted instead of silently dropped: the MCP server is
+// supposed to return ISO-8601 here; replacing equality with format
+// validation keeps the assertion meaningful across runs. The
+// `context` block lives inside `structuredContent` per MCP spec for
+// tools that emit structured results.
+const MATCH: Record<string, Matcher> = {
+  "*.lastResult.structuredContent.context.current_datetime": "@iso8601",
+  "*.lastResult.structuredContent.context.current_date_human": "@any",
+};
 
 function apply(state: State, action: McpAction): State {
   if (action.kind === "request") {
@@ -40,7 +48,7 @@ function apply(state: State, action: McpAction): State {
       ...tools,
       [name]: action.payload.error
         ? { ...prev, lastError: action.payload.error }
-        : { ...prev, lastResult: action.payload.result },
+        : { ...prev, lastResult: projectResult(action.payload.result) },
     };
   }
   return {
@@ -52,6 +60,20 @@ function apply(state: State, action: McpAction): State {
       errorCount: state.network.errorCount + (action.payload.error ? 1 : 0),
     },
   };
+}
+
+/** Project a tools/call result for the state scoreboard. When the
+ *  response carries `structuredContent` (the canonical typed form),
+ *  drop the redundant serialized `content[]` so the differ doesn't
+ *  report the same change twice (once on the parsed tree, once on the
+ *  serialized string). For widget / HTML responses without
+ *  `structuredContent`, `content[]` stays — that's the only payload. */
+function projectResult(result: unknown): unknown {
+  if (!result || typeof result !== "object") return result;
+  const r = result as Record<string, unknown>;
+  if (r.structuredContent === undefined) return result;
+  const { content: _content, ...rest } = r;
+  return rest;
 }
 
 function toolsCallName(method: string, params: unknown): string | null {
@@ -70,6 +92,7 @@ export const mcpDriver: Driver<McpAction> = {
   initialSlice: () => ({}) as State["tools"],
   apply,
   volatilePaths: () => VOLATILE,
+  matchPaths: () => MATCH,
 };
 
 // ── runtime ──────────────────────────────────────────────────────────────

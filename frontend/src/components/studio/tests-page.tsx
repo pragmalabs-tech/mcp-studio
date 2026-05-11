@@ -29,17 +29,23 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { listTests, getTrace, deleteTest } from "@/lib/tests/api";
+import { listTests, getTrace, deleteTest, saveTrace } from "@/lib/tests/api";
 import type { TestSummary } from "@/lib/recorder/schema";
 import { useStudioStore } from "@/lib/studio/store";
 import { run as runEngine } from "@/lib/core/engine";
 import { diff } from "@/lib/core/differ";
-import { allVolatilePaths } from "@/lib/core/registry";
+import { resolveRules } from "@/lib/core/rules";
 import { buildRuntimeDrivers } from "@/lib/core/runtime";
 import { createBridgeClient } from "@/lib/engine/bridge-client";
 import { TestPreconditionDialog } from "@/components/studio/test-precondition-dialog";
 import { TraceModal } from "@/lib/core/views/trace-modal";
-import type { Action, Step, Trace, Verdict } from "@/lib/core/types";
+import type {
+  Action,
+  Step,
+  Trace,
+  TraceRules,
+  Verdict,
+} from "@/lib/core/types";
 
 interface Props {
   open: boolean;
@@ -49,6 +55,9 @@ interface Props {
 interface RunRecord {
   id: string;
   testName: string;
+  /** Filesystem name to persist rule edits against. Optional for
+   *  records originating from sources that don't track it. */
+  testFsName?: string;
   ranAt: number;
   recorded: Trace;
   replayed: Trace;
@@ -187,9 +196,13 @@ export function TestsPage({ open, onOpenChange }: Props) {
   const [busyName, setBusyName] = useState<string | null>(null);
   const [pendingRun, setPendingRun] = useState<{
     test: Trace;
+    fsName: string;
     mode: "auto" | "step";
   } | null>(null);
   const [resultData, setResultData] = useState<{
+    /** Filesystem name of the saved test, used to persist rule edits.
+     *  Null when viewing a history entry whose fs-name we no longer track. */
+    testFsName: string | null;
     recorded: Trace;
     replayed: Trace;
     verdict: Verdict;
@@ -282,7 +295,11 @@ export function TestsPage({ open, onOpenChange }: Props) {
     );
   }
 
-  async function startRun(recorded: Trace, _mode: "auto" | "step" = "auto") {
+  async function startRun(
+    recorded: Trace,
+    testFsName: string,
+    _mode: "auto" | "step" = "auto",
+  ) {
     onOpenChange(false);
     const ctrl = new AbortController();
     try {
@@ -302,14 +319,15 @@ export function TestsPage({ open, onOpenChange }: Props) {
           },
         }),
       });
-      const verdict = diff(recorded, replayed, allVolatilePaths());
-      setResultData({ recorded, replayed, verdict });
+      const verdict = diff(recorded, replayed, resolveRules(recorded));
+      setResultData({ testFsName, recorded, replayed, verdict });
       setResultOpen(true);
       setRunHistory((prev) =>
         [
           {
             id: `run_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
             testName: recorded.name,
+            testFsName,
             ranAt: Date.now(),
             recorded,
             replayed,
@@ -325,11 +343,39 @@ export function TestsPage({ open, onOpenChange }: Props) {
 
   function openRun(run: RunRecord) {
     setResultData({
+      testFsName: run.testFsName ?? null,
       recorded: run.recorded,
       replayed: run.replayed,
       verdict: run.verdict,
     });
     setResultOpen(true);
+  }
+
+  /** Persist new rules on the recorded trace, recompute the verdict
+   *  against the existing replayed trace (no re-run), and refresh the
+   *  open viewer. Returns a promise so the UI can disable buttons. */
+  async function handleRulesChange(nextRules: TraceRules) {
+    if (!resultData) return;
+    const { testFsName, recorded, replayed } = resultData;
+    const nextRecorded: Trace = { ...recorded, rules: nextRules };
+    const nextVerdict = diff(
+      nextRecorded,
+      replayed,
+      resolveRules(nextRecorded),
+    );
+    setResultData({
+      testFsName,
+      recorded: nextRecorded,
+      replayed,
+      verdict: nextVerdict,
+    });
+    if (testFsName) {
+      try {
+        await saveTrace(testFsName, nextRecorded);
+      } catch (e) {
+        setError(`Failed to persist rules: ${(e as Error).message}`);
+      }
+    }
   }
 
   async function toggleExpanded(name: string) {
@@ -363,10 +409,10 @@ export function TestsPage({ open, onOpenChange }: Props) {
       const trace = await getTrace(name);
       const studio = useStudioStore.getState();
       if (studio.strictMode && hasWidgetDom(trace)) {
-        setPendingRun({ test: trace, mode });
+        setPendingRun({ test: trace, fsName: name, mode });
         return;
       }
-      await startRun(trace, mode);
+      await startRun(trace, name, mode);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -595,11 +641,11 @@ export function TestsPage({ open, onOpenChange }: Props) {
           testName={pendingRun.test.name}
           onCancel={() => setPendingRun(null)}
           onProceed={async () => {
-            const { test, mode } = pendingRun;
+            const { test, fsName, mode } = pendingRun;
             setPendingRun(null);
             useStudioStore.getState().setStrictMode(false);
             await new Promise((r) => setTimeout(r, 100));
-            await startRun(test, mode);
+            await startRun(test, fsName, mode);
           }}
         />
       )}
@@ -647,6 +693,7 @@ export function TestsPage({ open, onOpenChange }: Props) {
           setResultOpen(v);
           if (!v) setResultData(null);
         }}
+        onRulesChange={handleRulesChange}
       />
     </Dialog>
   );
