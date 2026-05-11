@@ -70,8 +70,7 @@ function ViolationEntry({ v }: { v: CspViolation }) {
           {v.snippet && (
             <pre className="mt-1.5 p-2 rounded bg-secondary/50 text-[10px] leading-relaxed overflow-x-auto">
               {v.snippet.lines.map((line, i) => {
-                const lineNo = v.lineNumber - v.snippet!.highlightOffset + i;
-                const isHit = i === v.snippet!.highlightOffset;
+                const isHit = i === v.snippet!.highlightIdx;
                 return (
                   <div
                     key={i}
@@ -83,9 +82,9 @@ function ViolationEntry({ v }: { v: CspViolation }) {
                   >
                     <span className="select-none text-muted-foreground/50 pr-2 inline-block w-10 text-right">
                       {isHit ? "→ " : "  "}
-                      {lineNo}
+                      {line.num}
                     </span>
-                    {line || " "}
+                    {line.text || " "}
                   </div>
                 );
               })}

@@ -1,12 +1,12 @@
 /**
  * Restricted browser APIs that are blocked or unwanted in widget sandboxes.
  *
- * Static-analysis data for `analyzeHtml` in `csp-checker.ts`. Each entry pairs
- * a regex with the warning copy, severity, and platform applicability used to
- * report the violation.
+ * Static-analysis data for `analyze()`. Each entry pairs a regex with the
+ * warning copy, severity, and platform applicability used to report the
+ * violation.
  */
 
-import type { ViolationPlatform, Severity } from "./csp-checker";
+import type { Severity, ViolationPlatform } from "./types";
 
 export interface RestrictedApi {
   pattern: RegExp;
@@ -56,18 +56,18 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     category: "sandbox (storage)",
     severity: "warning",
     description: "document.cookie is not available in sandboxed widget iframes",
-    fix: "Cookies are not available — use widget state API instead",
+    fix: "Cookies are not available - use widget state API instead",
     platforms: both,
   },
 
-  // Geolocation — getter = warning, method call = error
+  // Geolocation - getter = warning, method call = error
   {
     pattern: /\bnavigator\.geolocation\b(?!\s*[.=])/g,
     name: "navigator.geolocation",
     category: "sandbox (permission)",
     severity: "warning",
     description: "Geolocation API is not available in sandboxed widget iframes",
-    fix: "Accessing navigator.geolocation will not work — pass location via tool input if needed",
+    fix: "Accessing navigator.geolocation will not work - pass location via tool input if needed",
     platforms: both,
   },
   {
@@ -76,7 +76,7 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     category: "sandbox (permission)",
     severity: "error",
     description: "Geolocation is not available in sandboxed widget iframes",
-    fix: "Remove geolocation usage — pass location data through tool input if needed",
+    fix: "Remove geolocation usage - pass location data through tool input if needed",
     platforms: both,
   },
   {
@@ -89,7 +89,7 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     platforms: both,
   },
 
-  // Camera / Microphone — getter = warning, method call = error
+  // Camera / Microphone - getter = warning, method call = error
   {
     pattern: /\bnavigator\.mediaDevices\b(?!\s*\.)/g,
     name: "navigator.mediaDevices",
@@ -97,7 +97,7 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     severity: "warning",
     description:
       "MediaDevices API is not available in sandboxed widget iframes",
-    fix: "Accessing navigator.mediaDevices will not work — widgets cannot access camera or microphone",
+    fix: "Accessing navigator.mediaDevices will not work - widgets cannot access camera or microphone",
     platforms: both,
   },
   {
@@ -107,7 +107,7 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     severity: "error",
     description:
       "Camera/microphone access is not available in sandboxed widget iframes",
-    fix: "Remove getUserMedia — widgets cannot access camera or microphone",
+    fix: "Remove getUserMedia - widgets cannot access camera or microphone",
     platforms: both,
   },
   {
@@ -116,11 +116,11 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     category: "sandbox (permission)",
     severity: "error",
     description: "Screen capture is not available in sandboxed widget iframes",
-    fix: "Remove getDisplayMedia — widgets cannot capture screen",
+    fix: "Remove getDisplayMedia - widgets cannot capture screen",
     platforms: both,
   },
 
-  // Notifications — flag constructor calls and requestPermission
+  // Notifications - flag constructor calls and requestPermission
   {
     pattern: /\bnew\s+Notification\s*\(/g,
     name: "new Notification()",
@@ -128,7 +128,7 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     severity: "error",
     description:
       "Web Notifications are not available in sandboxed widget iframes",
-    fix: "Remove Notification usage — use the widget UI to display messages instead",
+    fix: "Remove Notification usage - use the widget UI to display messages instead",
     platforms: both,
   },
   {
@@ -142,7 +142,7 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     platforms: both,
   },
 
-  // Service Worker — flag register() call, not property read
+  // Service Worker - flag register() call, not property read
   {
     pattern: /\.serviceWorker\.register\s*\(/g,
     name: "serviceWorker.register()",
@@ -150,11 +150,11 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     severity: "error",
     description:
       "Service Worker registration is blocked in sandboxed widget iframes",
-    fix: "Remove service worker registration — widgets run in a single page context",
+    fix: "Remove service worker registration - widgets run in a single page context",
     platforms: both,
   },
 
-  // Clipboard — flag actual read/write calls
+  // Clipboard - flag actual read/write calls
   {
     pattern: /\.clipboard\.readText\s*\(/g,
     name: "clipboard.readText()",
@@ -176,7 +176,7 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     platforms: both,
   },
 
-  // Credentials / WebAuthn — flag method calls
+  // Credentials / WebAuthn - flag method calls
   {
     pattern: /\.credentials\.get\s*\(/g,
     name: "credentials.get()",
@@ -184,7 +184,7 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     severity: "error",
     description:
       "Credential Management API is not available in sandboxed widget iframes",
-    fix: "Remove credentials API — authentication should be handled by the host",
+    fix: "Remove credentials API - authentication should be handled by the host",
     platforms: both,
   },
   {
@@ -194,18 +194,18 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     severity: "error",
     description:
       "Credential Management API is not available in sandboxed widget iframes",
-    fix: "Remove credentials API — authentication should be handled by the host",
+    fix: "Remove credentials API - authentication should be handled by the host",
     platforms: both,
   },
 
-  // Device APIs — flag requestDevice/requestPort calls
+  // Device APIs - flag requestDevice/requestPort calls
   {
     pattern: /\.bluetooth\.requestDevice\s*\(/g,
     name: "bluetooth.requestDevice()",
     category: "sandbox (device)",
     severity: "error",
     description: "Web Bluetooth is not available in sandboxed widget iframes",
-    fix: "Remove Bluetooth usage — widgets cannot access hardware devices",
+    fix: "Remove Bluetooth usage - widgets cannot access hardware devices",
     platforms: both,
   },
   {
@@ -214,7 +214,7 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     category: "sandbox (device)",
     severity: "error",
     description: "WebUSB is not available in sandboxed widget iframes",
-    fix: "Remove USB usage — widgets cannot access hardware devices",
+    fix: "Remove USB usage - widgets cannot access hardware devices",
     platforms: both,
   },
   {
@@ -223,7 +223,7 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     category: "sandbox (device)",
     severity: "error",
     description: "Web Serial is not available in sandboxed widget iframes",
-    fix: "Remove serial port usage — widgets cannot access hardware devices",
+    fix: "Remove serial port usage - widgets cannot access hardware devices",
     platforms: both,
   },
   {
@@ -232,11 +232,11 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     category: "sandbox (device)",
     severity: "error",
     description: "WebHID is not available in sandboxed widget iframes",
-    fix: "Remove HID usage — widgets cannot access hardware devices",
+    fix: "Remove HID usage - widgets cannot access hardware devices",
     platforms: both,
   },
 
-  // Payment — flag constructor
+  // Payment - flag constructor
   {
     pattern: /\bnew\s+PaymentRequest\s*\(/g,
     name: "new PaymentRequest()",
@@ -244,11 +244,11 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     severity: "error",
     description:
       "Payment Request API is not available in sandboxed widget iframes",
-    fix: "Remove PaymentRequest — handle payments server-side through tool calls",
+    fix: "Remove PaymentRequest - handle payments server-side through tool calls",
     platforms: both,
   },
 
-  // Web Share — flag method call
+  // Web Share - flag method call
   {
     pattern: /\bnavigator\.share\s*\(/g,
     name: "navigator.share()",
@@ -256,18 +256,18 @@ export const RESTRICTED_APIS: RestrictedApi[] = [
     severity: "warning",
     description:
       "Web Share API may not be available in sandboxed widget iframes",
-    fix: "Remove navigator.share — use openExternal() or widget UI for sharing",
+    fix: "Remove navigator.share - use openExternal() or widget UI for sharing",
     platforms: both,
   },
 
-  // Navigation — flag setter, not reads
+  // Navigation - flag setter, not reads
   {
     pattern: /\bdocument\.domain\s*=/g,
     name: "document.domain (set)",
     category: "sandbox (navigation)",
     severity: "error",
     description: "Setting document.domain is blocked in sandboxed iframes",
-    fix: "Remove document.domain manipulation — use postMessage for cross-origin communication",
+    fix: "Remove document.domain manipulation - use postMessage for cross-origin communication",
     platforms: both,
   },
 ];

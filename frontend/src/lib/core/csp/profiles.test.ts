@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractCspDomains } from "./csp-profiles";
+import { extractCspDomains } from "./profiles";
 
 describe("extractCspDomains", () => {
   it("returns empty arrays when meta has no csp keys", () => {
@@ -46,8 +46,6 @@ describe("extractCspDomains", () => {
       },
       ui: {
         csp: {
-          // Intentional: even if upstream put "redirectDomains" under ui.csp
-          // it's not in the spec, so we ignore it.
           redirectDomains: ["should-be-ignored.example.com"],
         },
       },

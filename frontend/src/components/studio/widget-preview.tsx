@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStudioStore, type CspViolation } from "@/lib/studio/store";
 import { VIEWPORT_PRESETS } from "@/lib/studio/store";
-import { callTool } from "@/lib/studio/api";
+import { callTool, getBaseUrl } from "@/lib/studio/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { WidgetFrame } from "@/lib/core/views/widget-frame";
+import { createExtAppsMock } from "@/lib/studio/mock-claude";
+import { recorder } from "@/lib/recorder/bus";
+import RECORDER_BRIDGE_SOURCE from "@/widget-bridge/recorder-bridge.js?raw";
 
 /** SVG icons for chat chrome */
 const icons = {
@@ -415,10 +419,10 @@ function ChatChrome({
 
 function ViewportFrame({
   hidden,
-  refCallback,
+  children,
 }: {
   hidden: boolean;
-  refCallback: (el: HTMLIFrameElement | null) => void;
+  children: React.ReactNode;
 }) {
   const {
     viewportPreset,
@@ -490,12 +494,7 @@ function ViewportFrame({
           }}
         >
           <ChatChrome platform={platform} theme={theme} toolName={toolName}>
-            <iframe
-              ref={refCallback}
-              className="border-none block"
-              style={{ width: "100%", minHeight: "100px" }}
-              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-            />
+            {children}
           </ChatChrome>
         </div>
       </div>
@@ -685,18 +684,23 @@ export function WidgetPreview() {
     logAction,
     addPendingMessage,
     widgetSourceHtml,
+    widgetRawHtml,
+    currentMock,
+    platform,
+    strictMode,
     cspViolations,
+    addCspViolation,
+    setProtocolDetected,
   } = useStudioStore();
   const widgetName = resolveWidgetName();
   const [activeTab, setActiveTab] = useState<Tab>("widget");
 
-  // Auto-switch to widget tab when widget renders, json tab when no widget
   useEffect(() => {
     if (widgetName && lastResult) setActiveTab("widget");
     else if (!widgetName && jsonOutput) setActiveTab("json");
   }, [widgetName, lastResult, jsonOutput]);
 
-  // Counts for the HTML tab badge — only static violations have line numbers
+  // Counts for the HTML tab badge - only static violations have line numbers
   // we can render, so the tab badge mirrors the in-view highlights.
   const htmlIssueCount = useMemo(() => {
     let errors = 0;
@@ -712,26 +716,59 @@ export function WidgetPreview() {
     return { errors, warnings };
   }, [cspViolations]);
 
-  const refCallback = useCallback(
+  // Track the live iframe element via WidgetFrame's onIframeRef. The store
+  // also keeps the ref (`setIframeRef`) so `applyMock` can hot-update
+  // `iframe.contentWindow.openai` without forcing a full reload.
+  const [iframeEl, setIframeEl] = useState<HTMLIFrameElement | null>(null);
+  const handleIframeRef = useCallback(
     (el: HTMLIFrameElement | null) => {
+      setIframeEl(el);
       setIframeRef(el);
     },
     [setIframeRef],
   );
 
-  // Listen for iframe messages
+  // (Re)create extAppsMock whenever the iframe or mock changes. Tied to
+  // both because: iframe ref turns over when the WidgetFrame remounts, and
+  // each new mock needs a mock attached to the latest content window.
   useEffect(() => {
-    function handleMessage(event: MessageEvent) {
+    if (!iframeEl || !currentMock) return;
+    const mock = createExtAppsMock({
+      iframe: iframeEl,
+      mock: currentMock,
+      onAction: logAction,
+      onToolCall: async (name, args) => {
+        logAction("system", `Calling tool "${name}"...`);
+        return callTool(name, args, "widget");
+      },
+      onMessage: (content) =>
+        addPendingMessage(platform === "openai" ? "openai" : "claude", content),
+      hostName: platform === "openai" ? "chatgpt" : "mcpr-studio",
+      onProtocolDetected: () => setProtocolDetected("ext_apps"),
+    });
+    useStudioStore.setState({ _extAppsMock: mock });
+    return () => {
+      mock.destroy();
+      useStudioStore.setState({ _extAppsMock: null });
+    };
+  }, [
+    iframeEl,
+    currentMock,
+    platform,
+    logAction,
+    addPendingMessage,
+    setProtocolDetected,
+  ]);
+
+  const handlePostMessage = useCallback(
+    (event: MessageEvent) => {
       const data = event.data;
       if (!data) return;
-      if (data.type === "mcpr_resize" && data.height) {
-        const iframe = useStudioStore.getState()._iframeRef;
-        if (iframe) iframe.style.height = `${data.height}px`;
+      if (data.type === "mcpr_resize" && data.height && iframeEl) {
+        iframeEl.style.height = `${data.height}px`;
         return;
       }
-      // Sandbox violation reports from the runtime trap script
       if (data.type === "mcpr_sandbox_violation") {
-        const state = useStudioStore.getState();
         const categoryLabels: Record<string, string> = {
           storage: "sandbox (storage)",
           permission: "sandbox (permission)",
@@ -739,8 +776,7 @@ export function WidgetPreview() {
           worker: "sandbox (worker)",
           navigation: "sandbox (navigation)",
         };
-        const widgetName = state.resolveWidgetName();
-        state.addCspViolation({
+        addCspViolation({
           id: `sb_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           time: new Date().toTimeString().split(" ")[0],
           directive: categoryLabels[data.category] || "sandbox",
@@ -756,26 +792,20 @@ export function WidgetPreview() {
         });
         return;
       }
-      // Protocol detection from OpenAI legacy mock getters
       if (data.type === "mcpr_protocol_detect") {
-        useStudioStore.getState().setProtocolDetected(data.protocol);
+        setProtocolDetected(data.protocol);
         return;
       }
       if (data.type === "mcpr_action") {
         logAction(data.method, data.args);
-
-        // Open external URLs (OpenAI path)
         if (data.method === "openExternal" && data.args?.url) {
           window.open(data.args.url, "_blank", "noopener,noreferrer");
         }
-
-        // Actually call backend MCP server for callTool actions (OpenAI path)
         if (data.method === "callTool" && data.args?.name && data.callId) {
-          const iframe = useStudioStore.getState()._iframeRef;
           callTool(data.args.name, data.args.arguments || {})
             .then((result) => {
               logAction("callTool:result", { name: data.args.name, result });
-              iframe?.contentWindow?.postMessage(
+              iframeEl?.contentWindow?.postMessage(
                 { type: "mcpr_tool_result", callId: data.callId, result },
                 "*",
               );
@@ -785,7 +815,7 @@ export function WidgetPreview() {
                 name: data.args.name,
                 error: (err as Error).message,
               });
-              iframe?.contentWindow?.postMessage(
+              iframeEl?.contentWindow?.postMessage(
                 {
                   type: "mcpr_tool_result",
                   callId: data.callId,
@@ -795,23 +825,24 @@ export function WidgetPreview() {
               );
             });
         }
-
-        // Capture follow-up messages from widget (OpenAI path)
         if (data.method === "sendFollowUpMessage") {
           addPendingMessage("openai", data.args);
         }
       }
-    }
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [logAction, addPendingMessage]);
+    },
+    [
+      iframeEl,
+      widgetName,
+      addCspViolation,
+      setProtocolDetected,
+      logAction,
+      addPendingMessage,
+    ],
+  );
 
-  // Listen for CSP violations from the iframe
-  useEffect(() => {
-    function handleViolation(event: SecurityPolicyViolationEvent) {
-      const state = useStudioStore.getState();
-      const widgetName = state.resolveWidgetName();
-      state.addCspViolation({
+  const handleCspViolation = useCallback(
+    (event: SecurityPolicyViolationEvent) => {
+      addCspViolation({
         id: `rt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         time: new Date().toTimeString().split(" ")[0],
         directive: event.violatedDirective,
@@ -822,64 +853,9 @@ export function WidgetPreview() {
         source: "runtime",
         severity: "error",
       });
-    }
-
-    // The securitypolicyviolation event fires on the document when CSP blocks something.
-    // For srcdoc iframes, we try to listen on the iframe's document when accessible.
-    function attachToIframe() {
-      try {
-        const iframe = useStudioStore.getState()._iframeRef;
-        const doc = iframe?.contentDocument;
-        if (doc) {
-          doc.addEventListener(
-            "securitypolicyviolation",
-            handleViolation as EventListener,
-          );
-        }
-      } catch {
-        /* cross-origin — strict mode without allow-same-origin */
-      }
-    }
-
-    // Also listen on the main document (some violations bubble up)
-    document.addEventListener("securitypolicyviolation", handleViolation);
-
-    // Re-attach after iframe loads
-    const iframe = useStudioStore.getState()._iframeRef;
-    const onLoad = () => attachToIframe();
-    iframe?.addEventListener("load", onLoad);
-    attachToIframe();
-
-    return () => {
-      document.removeEventListener("securitypolicyviolation", handleViolation);
-      iframe?.removeEventListener("load", onLoad);
-      try {
-        iframe?.contentDocument?.removeEventListener(
-          "securitypolicyviolation",
-          handleViolation as EventListener,
-        );
-      } catch {
-        /* ignore */
-      }
-    };
-  }, []);
-
-  // Auto-resize fallback — adjusts iframe height to fit widget content within chat chrome
-  useEffect(() => {
-    const interval = setInterval(() => {
-      try {
-        const iframe = useStudioStore.getState()._iframeRef;
-        if (!iframe?.contentDocument) return;
-        const h = iframe.contentDocument.documentElement.scrollHeight;
-        if (h > 50 && Math.abs(iframe.offsetHeight - h) > 10) {
-          iframe.style.height = `${h}px`;
-        }
-      } catch {
-        /* cross-origin */
-      }
-    }, 500);
-    return () => clearInterval(interval);
-  }, []);
+    },
+    [addCspViolation, widgetName],
+  );
 
   const hasWidget = !!widgetName;
   const hasHtml = hasWidget && !!widgetSourceHtml;
@@ -976,13 +952,28 @@ export function WidgetPreview() {
         </div>
       </div>
 
-      {/* Widget iframe — always mounted but hidden when another tab is active.
-          Keeping it mounted preserves iframe state (scroll position, runtime
-          message handlers) across tab switches. */}
-      <ViewportFrame
-        hidden={showTabs && activeTab !== "widget"}
-        refCallback={refCallback}
-      />
+      {/* Widget iframe - always mounted but hidden when another tab is
+          active. Keeping it mounted preserves iframe state (scroll position,
+          runtime message handlers) across tab switches. */}
+      <ViewportFrame hidden={showTabs && activeTab !== "widget"}>
+        {widgetRawHtml && currentMock ? (
+          <WidgetFrame
+            html={widgetRawHtml}
+            mock={currentMock}
+            platform={platform}
+            strict={strictMode}
+            baseUrl={getBaseUrl()}
+            bridgeSource={
+              recorder.mode === "recording" ? RECORDER_BRIDGE_SOURCE : undefined
+            }
+            onIframeRef={handleIframeRef}
+            onPostMessage={handlePostMessage}
+            onCspViolation={handleCspViolation}
+            className="border-none block"
+            style={{ width: "100%", minHeight: "100px" }}
+          />
+        ) : null}
+      </ViewportFrame>
 
       {/* HTML source view */}
       {showTabs && activeTab === "html" && hasHtml && (

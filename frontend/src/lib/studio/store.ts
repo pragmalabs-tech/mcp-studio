@@ -25,24 +25,17 @@ import {
   type McpToolInfo,
   type McpResourceInfo,
 } from "./api";
-import {
-  buildOpenAIMockScript,
-  DEFAULT_MOCK,
-  type MockData,
-} from "./mock-openai";
-import { createClaudeMock, createExtAppsMock } from "./mock-claude";
-import {
-  buildCspMetaTag,
-  extractCspDomains,
-  getProfile,
-  buildSandboxTrapScript,
-} from "./csp-profiles";
-import {
-  analyzeHtml,
-  type CspIssue,
-  type Severity,
-  type ViolationPlatform,
-} from "./csp-checker";
+import { DEFAULT_MOCK, type MockData } from "./mock-openai";
+import { createClaudeMock } from "./mock-claude";
+import { extractCspDomains } from "@/lib/core/csp/profiles";
+import { analyze } from "@/lib/core/csp/analyze";
+import type {
+  CspFinding,
+  Severity,
+  Snippet,
+  ViolationPlatform,
+} from "@/lib/core/csp/types";
+import { stripTunnelUrls } from "@/lib/core/widget/inject";
 import type {
   OAuthDebugEvent,
   OAuthServerMetadata,
@@ -80,8 +73,6 @@ import {
   snapshotSetup,
   type RecordableState,
 } from "../recorder/instrumentation";
-import RECORDER_BRIDGE_SOURCE from "@/widget-bridge/recorder-bridge.js?raw";
-
 function generateRandomString(length: number): string {
   const array = new Uint8Array(length);
   crypto.getRandomValues(array);
@@ -177,58 +168,35 @@ export interface CspViolation {
   severity: Severity;
   /** Which platforms are affected */
   platforms?: ViolationPlatform[];
-  /**
-   * Source context for the failing line. 5 lines: N-2..N+2 (clamped at file
-   * boundaries). `highlightOffset` is the index of the failing line within
-   * `lines`. Set only for static issues with a known `lineNumber`.
-   */
-  snippet?: { lines: string[]; highlightOffset: number };
+  /** Source context for the failing line, inlined by the analyzer. */
+  snippet?: Snippet;
 }
 
 // ── Helpers ──
 
 /**
- * Extract the 5-line window centered on `line` (1-based). Clamps gracefully
- * at file boundaries so a hit on line 1 or the last line still renders. Returns
- * `undefined` when no line is known so the panel skips the snippet block.
- */
-function buildSnippet(
-  html: string,
-  line: number,
-): { lines: string[]; highlightOffset: number } | undefined {
-  if (line <= 0) return undefined;
-  const all = html.split("\n");
-  const start = Math.max(0, line - 3);
-  const end = Math.min(all.length, line + 2);
-  return {
-    lines: all.slice(start, end),
-    highlightOffset: line - 1 - start,
-  };
-}
-
-/**
- * Convert a static-analysis `CspIssue` into the panel-shaped `CspViolation`,
- * stamping in the bookkeeping fields the issue doesn't carry. Runtime sandbox
- * violations build their own `CspViolation` directly (different input shape,
- * no `CspIssue` to convert from), so this helper is static-path only.
+ * Convert a static-analysis `CspFinding` into the panel-shaped
+ * `CspViolation`, stamping in the bookkeeping fields the finding doesn't
+ * carry. Runtime sandbox violations build their own `CspViolation`
+ * directly (different input shape, no finding to convert from).
  */
 function toStaticViolation(
-  issue: CspIssue,
-  opts: { sourceFile: string; snippet?: CspViolation["snippet"] },
+  finding: CspFinding,
+  opts: { sourceFile: string },
 ): CspViolation {
   return {
     id: `static_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     time: new Date().toTimeString().split(" ")[0],
-    directive: issue.directive,
-    blockedUri: issue.blocked,
+    directive: finding.directive,
+    blockedUri: finding.blocked,
     sourceFile: opts.sourceFile,
-    lineNumber: issue.line || 0,
+    lineNumber: finding.line || 0,
     columnNumber: 0,
     source: "static",
-    fix: issue.fix,
-    severity: issue.severity,
-    platforms: issue.platforms,
-    snippet: opts.snippet,
+    fix: finding.fix,
+    severity: finding.severity,
+    platforms: finding.platforms,
+    snippet: finding.snippet,
   };
 }
 
@@ -551,9 +519,18 @@ interface StudioState {
   strictMode: boolean;
   cspViolations: CspViolation[];
 
-  // Raw widget HTML source (with tunnel URLs stripped to relative paths) —
+  // Raw widget HTML source (with tunnel URLs stripped to relative paths) -
   // matches what the static analyzer scanned, used by the HTML preview tab.
   widgetSourceHtml: string | null;
+
+  // Raw widget HTML with tunnel URLs intact - fed to WidgetFrame, which
+  // rewrites tunnels to the local proxy at render time so sandboxed iframe
+  // asset requests resolve.
+  widgetRawHtml: string | null;
+  // Last mock used to render. WidgetFrame re-renders srcdoc when this
+  // changes; applyMock hot-updates window.openai in place without changing
+  // this field, so the iframe is not reloaded.
+  currentMock: MockData | null;
 
   // Protocol detection
   detectedProtocols: { legacyOpenAI: boolean; extApps: boolean } | null;
@@ -838,6 +815,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   strictMode: false,
   cspViolations: [],
   widgetSourceHtml: null,
+  widgetRawHtml: null,
+  currentMock: null,
 
   // Protocol detection
   detectedProtocols: null,
@@ -1269,6 +1248,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       jsonOutput: null,
       lastResult: null,
       _extAppsMock: null,
+      widgetRawHtml: null,
+      currentMock: null,
     });
 
     // Set editor value based on selection type
@@ -1519,31 +1500,24 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   // ── Widget rendering ──
 
   renderWidget: async (mock, overrideWidgetName) => {
-    const {
-      _iframeRef: iframe,
-      platform,
-      strictMode,
-      logAction,
-      addCspViolation,
-    } = get();
+    const { addCspViolation } = get();
     const name = overrideWidgetName || get().resolveWidgetName();
-    if (!name || !iframe) return;
+    if (!name) return;
 
-    // Reset inline height from previous render so auto-resize starts fresh
-    iframe.style.height = "";
-
-    // Cleanup previous claude mock
+    // The iframe element itself is owned by `<WidgetFrame>`; this routine
+    // only loads HTML, runs static analysis, and publishes the state that
+    // WidgetFrame reacts to. extAppsMock is wired in WidgetPreview as an
+    // effect on (iframe ref, currentMock).
     get()._extAppsMock?.destroy();
     set({
       _extAppsMock: null,
       cspViolations: [],
       detectedProtocols: null,
       widgetSourceHtml: null,
+      widgetRawHtml: null,
+      currentMock: null,
     });
 
-    // Both platforms embed HTML via srcdoc (not iframe.src), matching how
-    // ChatGPT and Claude actually host widgets in production.
-    // Fetch widget HTML via MCP resources/read (ui:// resource).
     const { resources } = get();
     const resUri = resources.find(
       (r) =>
@@ -1555,148 +1529,41 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const result = (await readResource(resUri)) as {
       contents?: { text?: string }[];
     };
-    let html = result?.contents?.[0]?.text ?? "";
-    if (!html) return;
+    const rawHtml = result?.contents?.[0]?.text ?? "";
+    if (!rawHtml) return;
 
-    // The backend rewrites asset URLs to the tunnel domain (e.g. https://xxx.tunnel.mcpr.app/assets/...).
-    // For srcdoc, the iframe origin is localhost, so those cross-origin requests fail (CORS).
-    // Rewrite them back to the local proxy which can serve the same assets without CORS issues.
-    const baseUrl = getBaseUrl();
-    // Strip tunnel/proxy URLs back to relative paths for static analysis.
-    // This restores the original paths (e.g. "/assets/main.js") so the analyzer
-    // sees what the developer actually wrote, not the rewritten URLs.
-    const originalHtml = html.replace(
-      /https?:\/\/[a-z0-9]+\.tunnel\.mcpr\.app/gi,
-      "",
+    // Stripped version is what the static analyzer scans and what the HTML
+    // preview tab shows. Raw version (with tunnel URLs intact) is fed to
+    // WidgetFrame, which rewrites tunnels via renderHtml's baseUrl option.
+    const originalHtml = stripTunnelUrls(rawHtml);
+    const cspDomains = extractCspDomains(
+      (mock._meta || {}) as Record<string, unknown>,
     );
-    html = html.replace(/https?:\/\/[a-z0-9]+\.tunnel\.mcpr\.app/gi, baseUrl);
-
-    // Extract CSP domains from mock metadata
-    const meta = (mock._meta || {}) as Record<string, unknown>;
-    const cspDomains = extractCspDomains(meta);
-
-    // Expose the source the analyzer scanned so the HTML preview tab can
-    // render the exact same content with violation lines highlighted.
-    set({ widgetSourceHtml: originalHtml });
-
-    // Run static analysis on the original HTML (with tunnel URLs stripped to
-    // relative paths) so violations show what the developer actually wrote.
-    const staticIssues = analyzeHtml(originalHtml, cspDomains);
-    for (const issue of staticIssues) {
-      addCspViolation(
-        toStaticViolation(issue, {
-          sourceFile: resUri,
-          snippet: buildSnippet(originalHtml, issue.line || 0),
-        }),
-      );
+    const { findings } = analyze(originalHtml, cspDomains);
+    for (const finding of findings) {
+      addCspViolation(toStaticViolation(finding, { sourceFile: resUri }));
     }
 
-    // Strict mode: inject CSP meta tag and tighten sandbox
-    if (strictMode) {
-      const cspTag = buildCspMetaTag(platform, cspDomains);
-      html = html.replace(/<head([^>]*)>/i, `<head$1>${cspTag}`);
-      const profile = getProfile(platform);
-      iframe.sandbox.value = profile.sandbox;
-
-      // Inject sandbox trap for both platforms — detects access to storage,
-      // geolocation, camera/mic, notifications, service workers, clipboard,
-      // device APIs, and other restricted APIs at runtime
-      const trap = buildSandboxTrapScript();
-      html = html.replace(/<head([^>]*)>/i, `<head$1>${trap}`);
-
-      logAction("system", `Strict mode: CSP enforced (${platform} profile)`);
-    } else {
-      iframe.sandbox.value =
-        "allow-scripts allow-same-origin allow-popups allow-forms";
-    }
-
-    // Recorder bridge: inject when CSP is relaxed (the bridge cannot run under
-    // strict CSP). Recording is always-on; widget DOM events simply degrade
-    // when strict mode is enabled while chrome + MCP events keep flowing.
-    if (recorder.mode === "recording" && !strictMode) {
-      const bridgeTag = `<script>${RECORDER_BRIDGE_SOURCE}</script>`;
-      html = html.replace(/<head([^>]*)>/i, `<head$1>${bridgeTag}`);
-    }
-
-    // Static protocol detection from widget HTML source + metadata
-    if (/window\.openai\b/.test(html)) {
+    if (/window\.openai\b/.test(rawHtml)) {
       get().setProtocolDetected("legacy_openai");
     }
+    // ui:// + mcp-app MIME is the definitive ext-apps marker.
+    get().setProtocolDetected("ext_apps");
 
-    // ext-apps detection:
-    // 1. Resource MIME type "text/html;profile=mcp-app" (definitive)
-    // 2. Tool/resource _meta.ui present (ext-apps widget reference)
-    // 3. HTML contains ext-apps SDK or protocol strings
-    const isMcpApp = resources.some(
-      (r) =>
-        r.uri.startsWith("ui://") &&
-        r.uri.includes(name) &&
-        r.mimeType === "text/html;profile=mcp-app",
-    );
-    const hasUiMeta = !!(mock._meta as Record<string, unknown>)?.ui;
-    const htmlHasExtApps =
-      /ui\/initialize/.test(html) ||
-      /@modelcontextprotocol\/ext-apps/.test(html);
-
-    if (isMcpApp || hasUiMeta || htmlHasExtApps) {
-      get().setProtocolDetected("ext_apps");
-    }
-
-    // Shared: ext-apps JSON-RPC mock (used by both platforms — ChatGPT now supports it too)
-    const onToolCall = async (name: string, args: Record<string, unknown>) => {
-      logAction("system", `Calling tool "${name}"…`);
-      return callTool(name, args, "widget");
-    };
-    const onMessage = (content: unknown) => {
-      get().addPendingMessage(
-        platform === "openai" ? "openai" : "claude",
-        content,
-      );
-    };
-    const extAppsMock = createExtAppsMock({
-      iframe,
-      mock,
-      onAction: logAction,
-      onToolCall,
-      onMessage,
-      hostName: platform === "openai" ? "chatgpt" : "mcpr-studio",
-      onProtocolDetected: () => get().setProtocolDetected("ext_apps"),
+    set({
+      widgetSourceHtml: originalHtml,
+      widgetRawHtml: rawHtml,
+      currentMock: mock,
     });
-    set({ _extAppsMock: extAppsMock });
 
-    // Recorder: emit a render entry every time and refresh the widget snapshot
-    // so the most recent HTML is the one exported.
     if (recorder.mode === "recording") {
-      const htmlHash = simpleHash(originalHtml);
       recorder.emit({
         kind: "widget.render",
         name,
-        htmlHash,
+        htmlHash: simpleHash(originalHtml),
         initialMock: mock,
       });
       recorder.setWidget({ name, html: originalHtml, initialMock: mock });
-    }
-
-    if (platform === "openai") {
-      // Legacy: also inject window.openai global (detection getters included)
-      const mockScript = buildOpenAIMockScript(mock);
-      const injected = html.replace(/<head([^>]*)>/i, `<head$1>${mockScript}`);
-      iframe.srcdoc = injected;
-    } else {
-      // Claude: inject link-click interceptor that routes <a> clicks through ui/open-link
-      const linkInterceptScript = `<script>
-document.addEventListener('click', function(e) {
-  var target = e.target;
-  while (target && target.tagName !== 'A') target = target.parentElement;
-  if (target && target.href && target.href !== '#' && !target.href.startsWith('javascript:')) {
-    e.preventDefault();
-    var id = '__link_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-    window.parent.postMessage({ jsonrpc: '2.0', id: id, method: 'ui/open-link', params: { url: target.href } }, '*');
-  }
-}, true);
-</script>`;
-      html = html.replace(/<head([^>]*)>/i, `<head$1>${linkInterceptScript}`);
-      iframe.srcdoc = html;
     }
   },
 

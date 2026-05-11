@@ -1,172 +1,5 @@
 /**
- * CSP profile definitions for ChatGPT and Claude widget sandboxes.
- *
- * When strict mode is ON, we inject a <meta http-equiv="Content-Security-Policy">
- * tag into the widget HTML that mirrors what the real platform enforces.
- * If a widget works under strict mode it will work in production.
- */
-
-export interface CspProfile {
-  name: string;
-  /** Build a full CSP header string given the widget's declared domains. */
-  build(domains: CspDomains): string;
-  /** Sandbox attribute value for the iframe. */
-  sandbox: string;
-}
-
-export interface CspDomains {
-  connectDomains: string[];
-  resourceDomains: string[];
-  /** MCP Apps spec only — emitted under `_meta.ui.csp.baseUriDomains`. */
-  baseUriDomains: string[];
-  /** OpenAI Apps SDK only — emitted under `_meta.openai/widgetCSP.redirect_domains`. */
-  redirectDomains: string[];
-}
-
-/** Shared helper — dedup and join domains for a directive. */
-function dirs(base: string[], extra: string[]): string {
-  const all = [...new Set([...base, ...extra])];
-  return all.length > 0 ? " " + all.join(" ") : "";
-}
-
-/**
- * ChatGPT CSP profile.
- *
- * OpenAI hosts widgets in a sandboxed iframe with a restrictive CSP.
- * - No eval, no dynamic script loading from arbitrary origins
- * - connect-src restricted to declared connect_domains
- * - img/font/style/media restricted to declared resource_domains
- * - Inline scripts and styles are allowed (srcdoc requires it)
- */
-export const chatgptProfile: CspProfile = {
-  name: "ChatGPT",
-  sandbox: "allow-scripts allow-same-origin allow-popups allow-forms",
-  build({ connectDomains, resourceDomains }: CspDomains): string {
-    const connect = dirs(connectDomains, []);
-    const resource = dirs(resourceDomains, []);
-    return [
-      "default-src 'none'",
-      `script-src 'unsafe-inline'${resource}`,
-      `style-src 'unsafe-inline'${resource}`,
-      `img-src data: blob:${resource}`,
-      `font-src data:${resource}`,
-      `connect-src${connect}`,
-      `media-src blob:${resource}`,
-      "worker-src blob:",
-      "child-src blob:",
-      "object-src 'none'",
-      "frame-src 'none'",
-      "base-uri 'none'",
-      "form-action 'none'",
-    ].join("; ");
-  },
-};
-
-/**
- * Claude CSP profile.
- *
- * Claude hosts MCP Apps via `srcdoc` iframe with `allow-scripts`. Inline
- * scripts run (the standard MCP Apps postMessage bridge ships inline);
- * `script-src` is not restricted to a claude.ai-only allow-list. The
- * directives Claude actually enforces tightly are `frame-src` and
- * `connect-src` (per issue #40 in claude-ai-mcp).
- */
-export const claudeProfile: CspProfile = {
-  name: "Claude",
-  sandbox: "allow-scripts allow-same-origin allow-popups allow-forms",
-  build({ connectDomains, resourceDomains }: CspDomains): string {
-    const connect = dirs(connectDomains, []);
-    const resource = dirs(resourceDomains, []);
-    return [
-      "default-src 'none'",
-      `script-src 'unsafe-inline'${resource}`,
-      `style-src 'unsafe-inline'${resource}`,
-      `img-src data: blob:${resource}`,
-      `font-src data:${resource}`,
-      `connect-src${connect}`,
-      `media-src blob:${resource}`,
-      "worker-src blob:",
-      "child-src blob:",
-      "object-src 'none'",
-      "frame-src 'none'",
-      "base-uri 'none'",
-      "form-action 'none'",
-    ].join("; ");
-  },
-};
-
-export function getProfile(platform: "openai" | "claude"): CspProfile {
-  return platform === "openai" ? chatgptProfile : claudeProfile;
-}
-
-/**
- * Extract CSP domains from widget metadata (supports both OpenAI and Claude formats).
- */
-export function extractCspDomains(meta: Record<string, unknown>): CspDomains {
-  const result: CspDomains = {
-    connectDomains: [],
-    resourceDomains: [],
-    baseUriDomains: [],
-    redirectDomains: [],
-  };
-
-  const pushStrings = (target: string[], arr: unknown) => {
-    if (!Array.isArray(arr)) return;
-    target.push(...arr.filter((d): d is string => typeof d === "string"));
-  };
-
-  // OpenAI format: meta["openai/widgetCSP"].{connect,resource,redirect}_domains
-  const widgetCSP = meta["openai/widgetCSP"] as
-    | Record<string, unknown>
-    | undefined;
-  if (widgetCSP) {
-    pushStrings(result.connectDomains, widgetCSP.connect_domains);
-    pushStrings(result.resourceDomains, widgetCSP.resource_domains);
-    pushStrings(result.redirectDomains, widgetCSP.redirect_domains);
-  }
-
-  // MCP Apps / Claude format: meta.ui.csp.{connect,resource,baseUri}Domains
-  const ui = meta.ui as Record<string, unknown> | undefined;
-  const csp = ui?.csp as Record<string, unknown> | undefined;
-  if (csp) {
-    pushStrings(result.connectDomains, csp.connectDomains);
-    pushStrings(result.resourceDomains, csp.resourceDomains);
-    pushStrings(result.baseUriDomains, csp.baseUriDomains);
-  }
-
-  // Deduplicate
-  result.connectDomains = [...new Set(result.connectDomains)];
-  result.resourceDomains = [...new Set(result.resourceDomains)];
-  result.baseUriDomains = [...new Set(result.baseUriDomains)];
-  result.redirectDomains = [...new Set(result.redirectDomains)];
-
-  return result;
-}
-
-/**
- * Build CSP meta tag HTML string for injection into widget <head>.
- */
-export function buildCspMetaTag(
-  platform: "openai" | "claude",
-  domains: CspDomains,
-): string {
-  const profile = getProfile(platform);
-  const csp = profile.build(domains);
-  return `<meta http-equiv="Content-Security-Policy" content="${csp}">`;
-}
-
-/**
- * Build a full CSP string (without the meta tag wrapper).
- */
-export function buildCspString(
-  platform: "openai" | "claude",
-  domains: CspDomains,
-): string {
-  return getProfile(platform).build(domains);
-}
-
-/**
- * Build a <script> that traps restricted API access at runtime.
+ * Sandbox-trap script for strict-mode widget iframes.
  *
  * Sandboxed widget iframes should not access storage, geolocation,
  * camera/mic, notifications, service workers, clipboard, credentials,
@@ -175,15 +8,14 @@ export function buildCspString(
  *
  * Without allow-same-origin (ChatGPT) storage APIs throw SecurityError.
  * Even with allow-same-origin (Claude) these APIs are not intended for
- * widget use — the platforms could revoke access at any time.
+ * widget use - the platforms could revoke access at any time.
  *
- * This script intercepts access attempts and reports them via postMessage
- * so the studio can surface them in the CSP Check panel — even when the
- * code lives in bundled JS that static analysis can't inspect.
- *
- * Injected in strict mode for both platforms.
+ * The trap intercepts access attempts and reports them via postMessage so
+ * the studio can surface them in the CSP Check panel, even when the code
+ * lives in bundled JS that static analysis cannot inspect.
  */
-export function buildSandboxTrapScript(): string {
+
+export function buildSandboxTrap(): string {
   return `<script>
 (function() {
   var reported = {};
@@ -248,7 +80,6 @@ export function buildSandboxTrapScript(): string {
   // Getter (property read)  -> warning  (code touched it, be aware)
   // Setter / method call    -> error    (this will fail in production)
 
-  // Trap a method call on an object -> error
   function trapMethod(obj, prop, label, category) {
     try {
       if (typeof obj[prop] !== 'function') return;
@@ -260,7 +91,6 @@ export function buildSandboxTrapScript(): string {
     } catch(e) {}
   }
 
-  // Trap property getter on navigator -> warning
   function trapNavGetter(prop, label, category) {
     try {
       var desc = Object.getOwnPropertyDescriptor(Navigator.prototype, prop)
@@ -283,12 +113,10 @@ export function buildSandboxTrapScript(): string {
   }
 
   // Trap getter + all methods on a navigator sub-object.
-  // Getter = warning, method calls = error.
   // Important: grab the object reference BEFORE installing the getter trap,
   // otherwise our own read triggers the warning.
   function trapSubApi(parentProp, getterLabel, methods, category) {
     try {
-      // Read the object FIRST (before getter trap is installed)
       var obj = navigator[parentProp];
       if (obj) {
         methods.forEach(function(m) {
@@ -296,24 +124,20 @@ export function buildSandboxTrapScript(): string {
         });
       }
     } catch(e) {}
-    // Now install the getter trap
     trapNavGetter(parentProp, getterLabel, category);
   }
 
-  // Geolocation
   trapSubApi('geolocation', 'navigator.geolocation', [
     { method: 'getCurrentPosition', label: 'geolocation.getCurrentPosition()' },
     { method: 'watchPosition', label: 'geolocation.watchPosition()' },
   ], 'permission');
 
-  // Camera / Microphone
   trapSubApi('mediaDevices', 'navigator.mediaDevices', [
     { method: 'getUserMedia', label: 'mediaDevices.getUserMedia()' },
     { method: 'getDisplayMedia', label: 'mediaDevices.getDisplayMedia()' },
     { method: 'enumerateDevices', label: 'mediaDevices.enumerateDevices()' },
   ], 'permission');
 
-  // Notifications — constructor = error, requestPermission = error, .permission getter = warning
   if (typeof Notification !== 'undefined') {
     var OrigNotif = Notification;
     window.Notification = function() {
@@ -330,13 +154,11 @@ export function buildSandboxTrapScript(): string {
     };
   }
 
-  // Service Worker
   trapSubApi('serviceWorker', 'navigator.serviceWorker', [
     { method: 'register', label: 'serviceWorker.register()' },
     { method: 'getRegistrations', label: 'serviceWorker.getRegistrations()' },
   ], 'worker');
 
-  // Clipboard
   trapSubApi('clipboard', 'navigator.clipboard', [
     { method: 'readText', label: 'clipboard.readText()' },
     { method: 'writeText', label: 'clipboard.writeText()' },
@@ -344,42 +166,35 @@ export function buildSandboxTrapScript(): string {
     { method: 'write', label: 'clipboard.write()' },
   ], 'permission');
 
-  // Credentials
   trapSubApi('credentials', 'navigator.credentials', [
     { method: 'get', label: 'credentials.get()' },
     { method: 'create', label: 'credentials.create()' },
     { method: 'store', label: 'credentials.store()' },
   ], 'permission');
 
-  // Bluetooth
   trapSubApi('bluetooth', 'navigator.bluetooth', [
     { method: 'requestDevice', label: 'bluetooth.requestDevice()' },
     { method: 'getAvailability', label: 'bluetooth.getAvailability()' },
   ], 'device');
 
-  // USB
   trapSubApi('usb', 'navigator.usb', [
     { method: 'requestDevice', label: 'usb.requestDevice()' },
     { method: 'getDevices', label: 'usb.getDevices()' },
   ], 'device');
 
-  // Serial
   trapSubApi('serial', 'navigator.serial', [
     { method: 'requestPort', label: 'serial.requestPort()' },
     { method: 'getPorts', label: 'serial.getPorts()' },
   ], 'device');
 
-  // HID
   trapSubApi('hid', 'navigator.hid', [
     { method: 'requestDevice', label: 'hid.requestDevice()' },
     { method: 'getDevices', label: 'hid.getDevices()' },
   ], 'device');
 
-  // Web Share — method calls = error
   trapMethod(navigator, 'share', 'navigator.share()', 'permission');
   trapMethod(navigator, 'canShare', 'navigator.canShare()', 'permission');
 
-  // Payment Request — constructor = error
   if (typeof PaymentRequest !== 'undefined') {
     var OrigPR = PaymentRequest;
     window.PaymentRequest = function() {
@@ -389,14 +204,12 @@ export function buildSandboxTrapScript(): string {
     window.PaymentRequest.prototype = OrigPR.prototype;
   }
 
-  // window.open — warning (sandbox allow-popups may permit it)
   var origOpen = window.open;
   window.open = function() {
     report('window.open()', 'navigation', null, 'warning');
     return origOpen.apply(window, arguments);
   };
 
-  // document.domain — getter = warning, setter = error
   try {
     var domainDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'domain');
     if (domainDesc && domainDesc.set) {

@@ -1,55 +1,31 @@
 /**
- * Static analysis scanner for common CSP violations in widget HTML.
+ * Static-analysis CSP scanner for widget HTML.
  *
  * Runs before rendering to catch issues that would be blocked by
- * ChatGPT/Claude CSP policies. Each check returns actionable fix suggestions.
+ * ChatGPT/Claude CSP policies. Each finding carries an actionable fix
+ * and a 5-line source snippet so consumers (live panel, replay viewer,
+ * content dialog) can render it without a second pass over the HTML.
  */
 
-import type { CspDomains } from "./csp-profiles";
-import { RESTRICTED_APIS } from "./csp-restricted-apis";
+import { RESTRICTED_APIS } from "./restricted-apis";
+import type {
+  CspDomains,
+  CspFinding,
+  CspReport,
+  Snippet,
+  ViolationPlatform,
+} from "./types";
 
-export type Severity = "error" | "warning";
-/**
- * Platform names shown to the user in violation messages. Distinct from the
- * internal platform identifier used elsewhere in studio (`"openai" |
- * "claude"`); these are the display labels.
- */
-export type ViolationPlatform = "ChatGPT" | "Claude";
+const BOTH_PLATFORMS: ViolationPlatform[] = ["ChatGPT", "Claude"];
 
-export interface CspIssue {
-  severity: Severity;
-  /** Which directive would block this */
-  directive: string;
-  /** What was detected */
-  description: string;
-  /** The problematic URL or code snippet */
-  blocked: string;
-  /** How to fix it */
-  fix: string;
-  /** Affects which platforms */
-  platforms: ViolationPlatform[];
-  /** Source line number (approximate, 1-based) */
-  line?: number;
-}
-
-/** Extract the origin (scheme + host) from a URL string. */
 function extractOrigin(url: string): string | null {
   try {
-    const u = new URL(url);
-    return u.origin;
+    return new URL(url).origin;
   } catch {
     return null;
   }
 }
 
-/**
- * Parse a CSP source-expression entry into a comparable form.
- *
- * Accepts both schemed and bare hosts:
- *   - "https://api.example.com"  -> { scheme: "https", host: "api.example.com" }
- *   - "api.example.com"          -> { host: "api.example.com" }
- *   - "*.example.com"            -> { host: "*.example.com", isWildcard: true }
- */
 function normalizeDomain(d: string): {
   host: string;
   scheme?: string;
@@ -75,7 +51,6 @@ function hostMatches(
   isWildcard: boolean,
 ): boolean {
   if (isWildcard) {
-    // "*.example.com" -> requires at least one label before ".example.com"
     const suffix = declaredHost.slice(1).toLowerCase();
     const lower = urlHost.toLowerCase();
     return lower.endsWith(suffix) && lower.length > suffix.length;
@@ -86,9 +61,10 @@ function hostMatches(
 /**
  * Check whether `url` matches any entry in the declared CSP source list.
  *
- * Matches by host (case-insensitive). Schemed entries also enforce scheme;
- * bare-host entries match any scheme (mirrors the CSP source-expression
- * grammar where the scheme is optional). `*.host` wildcards are supported.
+ * Matches by host (case-insensitive). Schemed entries also enforce
+ * scheme; bare-host entries match any scheme (mirrors the CSP
+ * source-expression grammar where the scheme is optional). `*.host`
+ * wildcards are supported.
  */
 export function isAllowed(url: string, domains: string[]): boolean {
   let parsed: URL;
@@ -107,9 +83,21 @@ export function isAllowed(url: string, domains: string[]): boolean {
   });
 }
 
-/** Find approximate line number for a match index in source text. */
 function lineOf(html: string, index: number): number {
   return html.slice(0, index).split("\n").length;
+}
+
+/** Build a 5-line snippet centered on `line` (1-based). */
+function buildSnippet(html: string, line: number): Snippet | undefined {
+  if (line <= 0) return undefined;
+  const all = html.split("\n");
+  const start = Math.max(0, line - 3);
+  const end = Math.min(all.length, line + 2);
+  const slice = all.slice(start, end);
+  return {
+    lines: slice.map((text, i) => ({ num: start + i + 1, text })),
+    highlightIdx: line - 1 - start,
+  };
 }
 
 /**
@@ -117,13 +105,8 @@ function lineOf(html: string, index: number): number {
  *
  * Bundles often probe for eval availability with `try { new Function("") }
  * catch { ... }` (e.g. Zod's `allowsEval`). Under strict CSP the throw is
- * caught and the bundle falls back to a non-eval path, so flagging these as
- * errors is a false positive. We still surface them as warnings so the widget
- * author knows the construct is present.
- *
- * Window-based — does not parse JS, so deeply nested or unusual layouts may
- * misclassify. The cost of a misclassification is downgrading error→warning
- * (or vice versa), not silencing the finding.
+ * caught and the bundle falls back to a non-eval path, so flagging these
+ * as errors is a false positive. We still surface them as warnings.
  */
 function isGuardedByTryCatch(html: string, matchIndex: number): boolean {
   const WINDOW = 300;
@@ -132,16 +115,6 @@ function isGuardedByTryCatch(html: string, matchIndex: number): boolean {
   return /\btry\s*\{/.test(before) && /\}\s*catch\b/.test(after);
 }
 
-/**
- * Build the recommended fix for a domain-style violation.
- *
- * The server-side path (declaring CSP on the resource `_meta` directly)
- * works without any extra tooling, so it leads. mcpr is mentioned as an
- * optional centralized rewrite path - useful when you can't or don't want
- * to edit the upstream code, but it requires running mcpr in front of the
- * MCP server. baseUri is MCP-only and redirect is OpenAI-only, so the
- * upstream pointer reflects which shape carries it.
- */
 function fixForDomain(
   directive: "connect" | "resource" | "baseUri" | "redirect",
   url: string,
@@ -175,54 +148,60 @@ function fixForDomain(
   ].join("\n");
 }
 
-export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
-  const issues: CspIssue[] = [];
-  const both: ("ChatGPT" | "Claude")[] = ["ChatGPT", "Claude"];
+/**
+ * Scan widget HTML and produce a structured CSP report.
+ *
+ * Pure - no DOM, no fetch. Safe to call from any layer (live store,
+ * replay viewer, content dialog).
+ */
+export function analyze(html: string, domains: CspDomains): CspReport {
+  const findings: CspFinding[] = [];
+  const push = (
+    f: Omit<CspFinding, "snippet"> & { snippet?: Snippet },
+  ): void => {
+    findings.push({
+      ...f,
+      snippet: f.snippet ?? buildSnippet(html, f.line),
+    });
+  };
+
+  let m: RegExpExecArray | null;
 
   // 1a. External script tags: <script src="https://...">
   const scriptSrcRe = /<script[^>]+src\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi;
-  let m: RegExpExecArray | null;
   while ((m = scriptSrcRe.exec(html)) !== null) {
     const url = m[1];
     if (!isAllowed(url, domains.resourceDomains)) {
-      issues.push({
+      push({
         severity: "warning",
         directive: "script-src",
         description: "External script not in resource_domains",
         blocked: url,
         fix: fixForDomain("resource", url),
-        platforms: both,
+        platforms: BOTH_PLATFORMS,
         line: lineOf(html, m.index),
       });
     }
   }
 
-  // 1b. Relative/absolute path script tags: <script src="/..."> or <script src="./...">
-  // These break in sandboxed iframes because paths resolve against the sandbox origin, not your server.
+  // 1b. Relative/absolute path script tags.
   const scriptRelRe = /<script[^>]+src\s*=\s*["'](\.{0,2}\/[^"'\s>]+)/gi;
   while ((m = scriptRelRe.exec(html)) !== null) {
-    const path = m[1];
-    issues.push({
+    push({
       severity: "error",
       directive: "script-src",
       description:
-        "Relative path will not resolve in sandboxed iframe — bundle scripts inline or use absolute URLs",
-      blocked: path,
-      fix: "Option 1: Bundle inline using a build tool (e.g. vite-plugin-singlefile). Option 2: Serve via mcpr proxy — it auto-rewrites paths and handles CSP",
-      platforms: both,
+        "Relative path will not resolve in sandboxed iframe - bundle scripts inline or use absolute URLs",
+      blocked: m[1],
+      fix: "Option 1: Bundle inline using a build tool (e.g. vite-plugin-singlefile). Option 2: Serve via mcpr proxy - it auto-rewrites paths and handles CSP",
+      platforms: BOTH_PLATFORMS,
       line: lineOf(html, m.index),
     });
   }
 
   // 1c. Inline <script>...</script> blocks intentionally NOT flagged.
-  // Both ChatGPT and Claude render widgets in `srcdoc` iframes with
-  // `allow-scripts`; inline scripts are how the standard postMessage bridge
-  // ships in MCP Apps templates. Earlier versions of this scanner reported
-  // them as Claude-blocked based on a stale model of Claude's effective CSP
-  // (see issue #40 in claude-ai-mcp). Real Claude restricts `frame-src` and
-  // `connect-src`, not `script-src`. Removed to avoid false positives.
 
-  // 2a. External stylesheets: <link href="https://..." rel="stylesheet">
+  // 2a. External stylesheets.
   const linkRe = /<link[^>]+href\s*=\s*["']?(https?:\/\/[^"'\s>]+)[^>]*>/gi;
   while ((m = linkRe.exec(html)) !== null) {
     const tag = m[0];
@@ -231,71 +210,68 @@ export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
       /rel\s*=\s*["']?stylesheet/i.test(tag) &&
       !isAllowed(url, domains.resourceDomains)
     ) {
-      issues.push({
+      push({
         severity: "warning",
         directive: "style-src",
         description: "External stylesheet not in resource_domains",
         blocked: url,
         fix: fixForDomain("resource", url),
-        platforms: both,
+        platforms: BOTH_PLATFORMS,
         line: lineOf(html, m.index),
       });
     }
   }
 
-  // 2b. Relative/absolute path stylesheets: <link href="/..." rel="stylesheet">
+  // 2b. Relative/absolute path stylesheets.
   const linkRelRe = /<link[^>]+href\s*=\s*["'](\.{0,2}\/[^"'\s>]+)[^>]*>/gi;
   while ((m = linkRelRe.exec(html)) !== null) {
     const tag = m[0];
-    const path = m[1];
     if (/rel\s*=\s*["']?stylesheet/i.test(tag)) {
-      issues.push({
+      push({
         severity: "error",
         directive: "style-src",
         description:
-          "Relative path will not resolve in sandboxed iframe — bundle styles inline or use absolute URLs",
-        blocked: path,
-        fix: "Option 1: Bundle inline using a build tool (e.g. vite-plugin-singlefile). Option 2: Serve via mcpr proxy — it auto-rewrites paths and handles CSP",
-        platforms: both,
+          "Relative path will not resolve in sandboxed iframe - bundle styles inline or use absolute URLs",
+        blocked: m[1],
+        fix: "Option 1: Bundle inline using a build tool (e.g. vite-plugin-singlefile). Option 2: Serve via mcpr proxy - it auto-rewrites paths and handles CSP",
+        platforms: BOTH_PLATFORMS,
         line: lineOf(html, m.index),
       });
     }
   }
 
-  // 3. External images: <img src="https://...">
+  // 3. External images.
   const imgRe = /<img[^>]+src\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi;
   while ((m = imgRe.exec(html)) !== null) {
     const url = m[1];
     if (!isAllowed(url, domains.resourceDomains)) {
-      issues.push({
+      push({
         severity: "warning",
         directive: "img-src",
         description: "External image not in resource_domains",
         blocked: url,
         fix: fixForDomain("resource", url),
-        platforms: both,
+        platforms: BOTH_PLATFORMS,
         line: lineOf(html, m.index),
       });
     }
   }
 
-  // 4. eval() / new Function() usage. Calls wrapped in try/catch are downgraded
-  // to warnings: the throw under strict CSP is swallowed and the surrounding
-  // code falls back to a non-eval path (common in feature-detection probes).
+  // 4. eval() / new Function() usage.
   const evalRe = /\beval\s*\(/g;
   while ((m = evalRe.exec(html)) !== null) {
     const guarded = isGuardedByTryCatch(html, m.index);
-    issues.push({
+    push({
       severity: guarded ? "warning" : "error",
       directive: "script-src",
       description: guarded
-        ? "eval() found inside try/catch — appears to be a feature probe; will throw under strict CSP and the catch handles it"
-        : "eval() is blocked — 'unsafe-eval' is not allowed",
+        ? "eval() found inside try/catch - appears to be a feature probe; will throw under strict CSP and the catch handles it"
+        : "eval() is blocked - 'unsafe-eval' is not allowed",
       blocked: "eval(...)",
       fix: guarded
         ? "Likely safe: the catch swallows the CSP throw. Verify the fallback path works without eval, or remove the probe"
         : "Replace eval() with JSON.parse() or a safe alternative",
-      platforms: both,
+      platforms: BOTH_PLATFORMS,
       line: lineOf(html, m.index),
     });
   }
@@ -303,87 +279,85 @@ export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
   const newFuncRe = /new\s+Function\s*\(/g;
   while ((m = newFuncRe.exec(html)) !== null) {
     const guarded = isGuardedByTryCatch(html, m.index);
-    issues.push({
+    push({
       severity: guarded ? "warning" : "error",
       directive: "script-src",
       description: guarded
-        ? "new Function() found inside try/catch — appears to be a feature probe; will throw under strict CSP and the catch handles it"
-        : "new Function() is blocked — 'unsafe-eval' is not allowed",
+        ? "new Function() found inside try/catch - appears to be a feature probe; will throw under strict CSP and the catch handles it"
+        : "new Function() is blocked - 'unsafe-eval' is not allowed",
       blocked: "new Function(...)",
       fix: guarded
         ? "Likely safe: the catch swallows the CSP throw. Verify the fallback path works without eval, or remove the probe"
         : "Rewrite to avoid dynamic code generation",
-      platforms: both,
+      platforms: BOTH_PLATFORMS,
       line: lineOf(html, m.index),
     });
   }
 
-  // 5. fetch / XMLHttpRequest to external URLs (heuristic — look in inline scripts)
+  // 5. fetch / XMLHttpRequest.
   const fetchRe =
     /(?:fetch|XMLHttpRequest)\s*\(\s*["'`](https?:\/\/[^"'`\s]+)/gi;
   while ((m = fetchRe.exec(html)) !== null) {
     const url = m[1];
     if (!isAllowed(url, domains.connectDomains)) {
-      issues.push({
+      push({
         severity: "error",
         directive: "connect-src",
         description: "Network request to unlisted domain",
         blocked: url,
         fix: fixForDomain("connect", url),
-        platforms: both,
+        platforms: BOTH_PLATFORMS,
         line: lineOf(html, m.index),
       });
     }
   }
 
-  // 6. External fonts via @import or url() in <style> blocks
+  // 6. External fonts via @import or url().
   const fontUrlRe = /url\s*\(\s*["']?(https?:\/\/[^"')\s]+)/gi;
   while ((m = fontUrlRe.exec(html)) !== null) {
     const url = m[1];
     if (!isAllowed(url, domains.resourceDomains)) {
-      issues.push({
+      push({
         severity: "warning",
         directive: "font-src / style-src",
         description: "External resource URL not in resource_domains",
         blocked: url,
         fix: fixForDomain("resource", url),
-        platforms: both,
+        platforms: BOTH_PLATFORMS,
         line: lineOf(html, m.index),
       });
     }
   }
 
-  // 7. <iframe> usage (frame-src 'none' blocks this)
+  // 7. <iframe> usage.
   const iframeRe = /<iframe[\s>]/gi;
   while ((m = iframeRe.exec(html)) !== null) {
-    issues.push({
+    push({
       severity: "error",
       directive: "frame-src",
       description: "Nested iframes are blocked (frame-src 'none')",
       blocked: "<iframe>",
-      fix: "Remove nested iframes — render content directly in the widget",
-      platforms: both,
+      fix: "Remove nested iframes - render content directly in the widget",
+      platforms: BOTH_PLATFORMS,
       line: lineOf(html, m.index),
     });
   }
 
-  // 8. <object> / <embed> usage
+  // 8. <object> / <embed>.
   const objectRe = /<(?:object|embed)[\s>]/gi;
   while ((m = objectRe.exec(html)) !== null) {
-    issues.push({
+    push({
       severity: "error",
       directive: "object-src",
       description: "Plugin embeds are blocked (object-src 'none')",
       blocked: m[0].trim(),
       fix: "Remove <object>/<embed> elements",
-      platforms: both,
+      platforms: BOTH_PLATFORMS,
       line: lineOf(html, m.index),
     });
   }
 
-  // 9a. <base href="..."> targets must be in baseUriDomains (MCP spec).
-  // Relative hrefs change resolution but don't violate base-uri; only
-  // absolute URLs need allow-listing.
+  // 9a. <base href> against baseUriDomains.
   const baseHrefRe = /<base[^>]+href\s*=\s*["']?([^"'\s>]+)/gi;
   while ((m = baseHrefRe.exec(html)) !== null) {
     const target = m[1];
@@ -391,20 +365,19 @@ export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
       /^https?:\/\//i.test(target) &&
       !isAllowed(target, domains.baseUriDomains)
     ) {
-      issues.push({
+      push({
         severity: "warning",
         directive: "base-uri",
         description: "<base href> target not in baseUriDomains",
         blocked: target,
         fix: fixForDomain("baseUri", target),
-        platforms: both,
+        platforms: BOTH_PLATFORMS,
         line: lineOf(html, m.index),
       });
     }
   }
 
-  // 9b. window.openai.openExternal(...) targets must be in redirectDomains
-  // (OpenAI Apps SDK). Without an entry, ChatGPT shows a safe-link warning.
+  // 9b. openai.openExternal targets against redirectDomains.
   const openExternalRe = /\bopenai\.openExternal\s*\(\s*["'`]([^"'`]+)/gi;
   while ((m = openExternalRe.exec(html)) !== null) {
     const target = m[1];
@@ -412,7 +385,7 @@ export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
       /^https?:\/\//i.test(target) &&
       !isAllowed(target, domains.redirectDomains)
     ) {
-      issues.push({
+      push({
         severity: "warning",
         directive: "redirect",
         description:
@@ -425,9 +398,7 @@ export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
     }
   }
 
-  // 10. Restricted API usage — storage, permissions, device access, navigation
-  //    These are blocked or unwanted in sandboxed widget iframes on both
-  //    platforms. Pattern data lives in `csp-restricted-apis.ts`.
+  // 10. Restricted API usage.
   for (const api of RESTRICTED_APIS) {
     api.pattern.lastIndex = 0;
     while ((m = api.pattern.exec(html)) !== null) {
@@ -435,7 +406,7 @@ export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
       const ctx = html.slice(Math.max(0, m.index - 30), m.index);
       if (/\/\/\s*$/.test(ctx) || /\*\s*$/.test(ctx)) continue;
 
-      issues.push({
+      push({
         severity: api.severity,
         directive: api.category,
         description: api.description,
@@ -447,5 +418,5 @@ export function analyzeHtml(html: string, domains: CspDomains): CspIssue[] {
     }
   }
 
-  return issues;
+  return { findings, domains };
 }

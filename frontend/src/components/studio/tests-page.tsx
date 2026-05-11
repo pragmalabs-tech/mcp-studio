@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import {
+  CheckCircle2,
   ChevronRight,
   Download,
+  FlaskConical,
+  History as HistoryIcon,
   Loader2,
   Play,
   StepForward,
   Trash2,
+  XCircle,
   XIcon,
   RefreshCw,
   EyeOff,
@@ -40,6 +44,15 @@ import type { Action, Step, Trace, Verdict } from "@/lib/core/types";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+interface RunRecord {
+  id: string;
+  testName: string;
+  ranAt: number;
+  recorded: Trace;
+  replayed: Trace;
+  verdict: Verdict;
 }
 
 function formatTime(ms: number): string {
@@ -122,6 +135,51 @@ function ActionList({
   );
 }
 
+function RunHistoryList({
+  runs,
+  onOpen,
+}: {
+  runs: readonly RunRecord[];
+  onOpen(run: RunRecord): void;
+}) {
+  if (runs.length === 0) {
+    return (
+      <p className="text-center text-muted-foreground text-xs py-12 px-6">
+        No runs yet this session. Run a test to log it here.
+      </p>
+    );
+  }
+  return (
+    <ul className="divide-y divide-border/30">
+      {runs.map((r) => {
+        const ok = r.verdict.ok;
+        return (
+          <li
+            key={r.id}
+            className="px-4 py-3 hover:bg-secondary/20 cursor-pointer flex items-center gap-3"
+            onClick={() => onOpen(r)}
+          >
+            {ok ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            ) : (
+              <XCircle className="h-4 w-4 text-red-400 shrink-0" />
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium truncate">{r.testName}</div>
+              <div className="text-[11px] text-muted-foreground font-mono mt-0.5">
+                {new Date(r.ranAt).toLocaleTimeString()} ·{" "}
+                {r.verdict.drifts.length} drifts · {r.replayed.steps.length}{" "}
+                steps
+              </div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground/60 shrink-0" />
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export function TestsPage({ open, onOpenChange }: Props) {
   const [tests, setTests] = useState<TestSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -137,6 +195,9 @@ export function TestsPage({ open, onOpenChange }: Props) {
     verdict: Verdict;
   } | null>(null);
   const [resultOpen, setResultOpen] = useState(false);
+  // In-memory log of replays for this session. Resets on page reload.
+  const [runHistory, setRunHistory] = useState<RunRecord[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loadedTests, setLoadedTests] = useState<Record<string, Trace>>({});
   const [loadingName, setLoadingName] = useState<string | null>(null);
@@ -244,9 +305,31 @@ export function TestsPage({ open, onOpenChange }: Props) {
       const verdict = diff(recorded, replayed, allVolatilePaths());
       setResultData({ recorded, replayed, verdict });
       setResultOpen(true);
+      setRunHistory((prev) =>
+        [
+          {
+            id: `run_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            testName: recorded.name,
+            ranAt: Date.now(),
+            recorded,
+            replayed,
+            verdict,
+          },
+          ...prev,
+        ].slice(0, 50),
+      );
     } catch (e) {
       alert(`Test failed to run: ${(e as Error).message}`);
     }
+  }
+
+  function openRun(run: RunRecord) {
+    setResultData({
+      recorded: run.recorded,
+      replayed: run.replayed,
+      verdict: run.verdict,
+    });
+    setResultOpen(true);
   }
 
   async function toggleExpanded(name: string) {
@@ -301,40 +384,74 @@ export function TestsPage({ open, onOpenChange }: Props) {
         >
           <div className="flex items-center justify-between px-4 py-3 border-b shrink-0 gap-2">
             <DialogPrimitive.Title className="text-sm font-medium flex items-center gap-2">
-              Tests
+              {showHistory ? "Run history" : "Tests"}
               <span className="text-xs font-normal text-muted-foreground">
-                {tests.length}
+                {showHistory ? runHistory.length : tests.length}
               </span>
             </DialogPrimitive.Title>
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setHideObservations((v) => !v)}
+                onClick={() => setShowHistory((v) => !v)}
                 title={
-                  hideObservations
-                    ? "Showing inputs only — click to also show observations (responses, render-completes, etc.)"
-                    : "Showing all actions — click to hide observations"
+                  showHistory
+                    ? "Back to tests"
+                    : "Show this session's replay runs"
                 }
               >
-                {hideObservations ? (
-                  <EyeOff className="h-3.5 w-3.5 mr-1.5" />
+                {showHistory ? (
+                  <>
+                    <FlaskConical className="h-3.5 w-3.5 mr-1.5" />
+                    Tests
+                    <span className="ml-1 text-muted-foreground">
+                      ({tests.length})
+                    </span>
+                  </>
                 ) : (
-                  <Eye className="h-3.5 w-3.5 mr-1.5" />
+                  <>
+                    <HistoryIcon className="h-3.5 w-3.5 mr-1.5" />
+                    History
+                    {runHistory.length > 0 && (
+                      <span className="ml-1 text-muted-foreground">
+                        ({runHistory.length})
+                      </span>
+                    )}
+                  </>
                 )}
-                {hideObservations ? "Inputs only" : "All actions"}
               </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={refresh}
-                title="Refresh"
-                disabled={loading}
-              >
-                <RefreshCw
-                  className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-                />
-              </Button>
+              {!showHistory && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setHideObservations((v) => !v)}
+                  title={
+                    hideObservations
+                      ? "Showing inputs only - click to also show observations"
+                      : "Showing all actions - click to hide observations"
+                  }
+                >
+                  {hideObservations ? (
+                    <EyeOff className="h-3.5 w-3.5 mr-1.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5 mr-1.5" />
+                  )}
+                  {hideObservations ? "Inputs only" : "All actions"}
+                </Button>
+              )}
+              {!showHistory && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={refresh}
+                  title="Refresh"
+                  disabled={loading}
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+                  />
+                </Button>
+              )}
               <DialogPrimitive.Close
                 render={<Button variant="ghost" size="icon-sm" />}
               >
@@ -349,7 +466,9 @@ export function TestsPage({ open, onOpenChange }: Props) {
             </div>
           )}
           <div className="flex-1 overflow-y-auto min-h-0">
-            {!loading && tests.length === 0 ? (
+            {showHistory ? (
+              <RunHistoryList runs={runHistory} onOpen={openRun} />
+            ) : !loading && tests.length === 0 ? (
               <p className="text-center text-muted-foreground text-xs py-12 px-6">
                 No tests saved yet. Open Action history (clock icon), use Mark
                 start / Mark end to slice the log, then Save.
