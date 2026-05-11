@@ -313,9 +313,26 @@ export function saveOAuthTokensForProxy(
 
 // ── MCP JSON-RPC ──
 
+// Session lifecycle is a single state machine. All callers go through
+// `ensureSession()`, which serializes concurrent handshakes. `notifications/
+// initialized` is sent with the session id captured by this handshake, not
+// read from module state, so a reset mid-flight can't mis-route it.
+type SessionState =
+  | { kind: "idle" }
+  | { kind: "connecting"; promise: Promise<string> }
+  | { kind: "connected"; sessionId: string };
+
 let rpcId = 0;
-let sessionId: string | null = null;
-let initPromise: Promise<void> | null = null;
+let session: SessionState = { kind: "idle" };
+
+function currentSessionId(): string | null {
+  return session.kind === "connected" ? session.sessionId : null;
+}
+
+/** True only when a session is established and ready for non-init RPCs. */
+function isConnected(): boolean {
+  return session.kind === "connected";
+}
 
 /**
  * Returns the fetch URL for MCP requests. Always routes through the local
@@ -326,14 +343,15 @@ function getMcpFetchUrl(): string {
   return `/api/mcp-proxy?url=${encodeURIComponent(getBaseUrl())}`;
 }
 
-function buildHeaders(): Record<string, string> {
+function buildHeaders(overrideSessionId?: string): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json, text/event-stream",
   };
   const token = getActiveToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  if (sessionId) headers["mcp-session-id"] = sessionId;
+  const sid = overrideSessionId ?? currentSessionId();
+  if (sid) headers["mcp-session-id"] = sid;
   Object.assign(headers, getCustomHeaders());
   return headers;
 }
@@ -341,10 +359,11 @@ function buildHeaders(): Record<string, string> {
 async function rawMcpPost(
   method: string,
   params: Record<string, unknown> = {},
+  overrideSessionId?: string,
 ): Promise<Response> {
   return fetch(getMcpFetchUrl(), {
     method: "POST",
-    headers: buildHeaders(),
+    headers: buildHeaders(overrideSessionId),
     body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
   });
 }
@@ -392,69 +411,82 @@ async function parseResponse(resp: Response): Promise<Record<string, unknown>> {
   }
 }
 
-async function ensureSession(): Promise<void> {
-  if (sessionId) return;
-  if (initPromise) return initPromise;
+async function doHandshake(): Promise<string> {
+  const resp = await rawMcpPost("initialize", {
+    protocolVersion: "2025-03-26",
+    capabilities: {},
+    clientInfo: { name: "mcpr-studio", version: "1.0.0" },
+  });
 
-  initPromise = (async () => {
-    const resp = await rawMcpPost("initialize", {
-      protocolVersion: "2025-03-26",
-      capabilities: {},
-      clientInfo: { name: "mcpr-studio", version: "1.0.0" },
-    });
+  const data = await parseResponse(resp);
+  if (data.error)
+    throw new Error(
+      (data.error as { message?: string }).message ||
+        JSON.stringify(data.error),
+    );
 
-    // Capture session ID from response header or JSON body
-    const sid = resp.headers.get("mcp-session-id");
-    if (sid) sessionId = sid;
+  let sid = resp.headers.get("mcp-session-id");
+  // Some servers return session ID in the JSON-RPC response body
+  // (e.g. as _meta.sessionId) when CORS doesn't expose the header
+  if (!sid) {
+    const meta = (data.result as Record<string, unknown>)?._meta as
+      | Record<string, unknown>
+      | undefined;
+    const bodySid = meta?.sessionId as string | undefined;
+    if (bodySid) sid = bodySid;
+  }
+  if (!sid) {
+    throw new Error(
+      "Server did not return Mcp-Session-Id (header or _meta.sessionId)",
+    );
+  }
 
-    const data = await parseResponse(resp);
-    if (data.error)
-      throw new Error(
-        (data.error as { message?: string }).message ||
-          JSON.stringify(data.error),
-      );
+  // Send notifications/initialized using THIS handshake's session id, not
+  // whatever happens to be in module state when this fetch runs. Concurrent
+  // resets or a parallel handshake mustn't be able to mis-route it.
+  await fetch(getMcpFetchUrl(), {
+    method: "POST",
+    headers: buildHeaders(sid),
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      method: "notifications/initialized",
+    }),
+  });
 
-    // Some servers return session ID in the JSON-RPC response body
-    // (e.g. as _meta.sessionId) when CORS doesn't expose the header
-    if (!sessionId) {
-      const meta = (data.result as Record<string, unknown>)?._meta as
-        | Record<string, unknown>
-        | undefined;
-      const bodySid = meta?.sessionId as string | undefined;
-      if (bodySid) sessionId = bodySid;
-    }
+  return sid;
+}
 
-    if (!sessionId) {
-      console.warn(
-        "[mcpr-studio] No mcp-session-id in response headers. " +
-          "Cross-origin requests are routed through the backend proxy to handle this.",
-      );
-    }
+/** Returns a session id, performing the handshake if necessary. Concurrent
+ *  callers share one in-flight handshake. */
+async function ensureSession(): Promise<string> {
+  if (session.kind === "connected") return session.sessionId;
+  if (session.kind === "connecting") return session.promise;
 
-    await fetch(getMcpFetchUrl(), {
-      method: "POST",
-      headers: buildHeaders(),
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "notifications/initialized",
-      }),
-    });
-  })();
-
+  const promise = doHandshake();
+  session = { kind: "connecting", promise };
   try {
-    await initPromise;
-  } finally {
-    initPromise = null;
+    const sid = await promise;
+    // Only commit if we're still the in-flight handshake. If someone reset
+    // us mid-flight, drop the result rather than clobber a newer state.
+    if (session.kind === "connecting" && session.promise === promise) {
+      session = { kind: "connected", sessionId: sid };
+    }
+    return sid;
+  } catch (e) {
+    if (session.kind === "connecting" && session.promise === promise) {
+      session = { kind: "idle" };
+    }
+    throw e;
   }
 }
 
-/** Reset MCP session (e.g. after token change) */
-export function resetSession() {
-  sessionId = null;
-  initPromise = null;
+/** Drop any cached session. An in-flight handshake will detect the reset and
+ *  discard its result rather than clobber a newer state. */
+export function resetSession(): void {
+  session = { kind: "idle" };
 }
 
-/** Explicitly initialize the MCP session (resets first if needed). */
+/** Force a fresh handshake. Used by Retry and after token changes. */
 export async function mcpInitialize(): Promise<void> {
   resetSession();
   await ensureSession();
@@ -467,23 +499,25 @@ export type McpHealth =
   | "unauthorized";
 
 /**
- * Live MCP server probe. Reuses the cached session (calling
- * `ensureSession()` if needed) so the request is a real, valid
- * `tools/list` and the upstream server doesn't log 400s every tick.
- * Does not throw - callers treat the return as a status enum.
+ * Live MCP server probe. Observes session state instead of driving it: if
+ * no session is established yet, reports "checking" and lets `loadAll` own
+ * the handshake. This prevents the probe's `id: -1` `tools/list` from
+ * racing with `initialize`+`notifications/initialized` on reload and
+ * poisoning the rmcp session.
  *
  * Categories:
+ *   - no session yet    -> checking (loadAll will handshake)
  *   - 401 / 403         -> unauthorized (token issue)
  *   - 5xx / fetch throw -> disconnected (server / gateway down)
  *   - everything else   -> connected
- *
- * After the first successful probe the session is cached, so every
- * follow-up probe is a single round-trip with no init overhead.
  */
 export async function probeMcpHealth(signal?: AbortSignal): Promise<McpHealth> {
+  if (!isConnected()) {
+    reportHealth("checking");
+    return "checking";
+  }
   let status: McpHealth;
   try {
-    await ensureSession();
     const resp = await fetch(getMcpFetchUrl(), {
       method: "POST",
       headers: buildHeaders(),

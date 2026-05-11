@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 
 use axum::extract::{Request, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -73,8 +73,12 @@ impl TunnelState {
             .map_err(|e| format!("failed to read local addr: {e}"))?
             .port();
 
+        let upstream_origin = origin_of(&mcp_url).map(Arc::new);
+        let public_url_slot: Arc<OnceLock<String>> = Arc::new(OnceLock::new());
         let app_state = ForwarderState {
             mcp_url: Arc::new(mcp_url),
+            upstream_origin,
+            public_url: public_url_slot.clone(),
             action_log: action_log_tx,
         };
         let app = axum::Router::new().fallback(forward).with_state(app_state);
@@ -90,6 +94,11 @@ impl TunnelState {
             mcp_tunnel_client::start_tunnel_client(local_port, relay_url, token, subdomain, cb)
                 .await
                 .map_err(|e| format!("tunnel client failed: {e}"))?;
+
+        // Publish the public URL to the forwarder so it can rewrite
+        // localhost references in OAuth metadata. Best-effort: if it's
+        // already set we don't care.
+        let _ = public_url_slot.set(public_url.clone());
 
         let info = TunnelInfo {
             url: public_url,
@@ -118,7 +127,54 @@ impl mcp_tunnel_client::TunnelStatusCallback for TunnelStatusCb {
 #[derive(Clone)]
 struct ForwarderState {
     mcp_url: Arc<String>,
+    /// Origin (scheme://host[:port]) of `mcp_url`, computed once at start.
+    /// `None` only if `mcp_url` failed to parse — in that case rewriting is
+    /// skipped and everything passes through unchanged.
+    upstream_origin: Option<Arc<String>>,
+    /// Public tunnel URL, set once `start_tunnel_client` returns. Until
+    /// then it's `None` and OAuth-metadata rewriting is a no-op.
+    public_url: Arc<OnceLock<String>>,
     action_log: action_log::Sender,
+}
+
+/// Extracts `scheme://host[:port]` from a URL string. Used to compute the
+/// upstream origin once at tunnel start and the public origin once the
+/// tunnel connects, so we can rewrite self-referential URLs in OAuth
+/// metadata responses.
+fn origin_of(url: &str) -> Option<String> {
+    let scheme_end = url.find("://")?;
+    let host_start = scheme_end + 3;
+    let host_end = url[host_start..]
+        .find('/')
+        .map(|i| host_start + i)
+        .unwrap_or(url.len());
+    Some(url[..host_end].to_string())
+}
+
+/// True for the four well-known OAuth metadata paths whose JSON bodies
+/// contain URLs pointing back at the upstream origin. We rewrite only
+/// these endpoints; other responses pass through untouched.
+fn is_oauth_metadata_path(path_and_query: &str) -> bool {
+    let path = path_and_query.split('?').next().unwrap_or(path_and_query);
+    matches!(
+        path,
+        "/.well-known/oauth-protected-resource"
+            | "/.well-known/oauth-authorization-server"
+            | "/mcp/.well-known/oauth-protected-resource"
+            | "/mcp/.well-known/oauth-authorization-server"
+    )
+}
+
+/// True for paths that should be routed to the upstream origin instead of
+/// the configured mcp_url. These are paths that, by RFC convention, live at
+/// the origin root: RFC 8615 well-known URIs and the OAuth endpoint
+/// convention (`/oauth/register`, `/oauth/authorize`, `/oauth/token`, etc.).
+/// Without this, an `mcp_url` of `http://host/mcp` would bury OAuth
+/// endpoints under `/mcp/oauth/...`, where no spec-compliant server serves
+/// them.
+fn is_origin_routed_path(path_and_query: &str) -> bool {
+    let path = path_and_query.split('?').next().unwrap_or(path_and_query);
+    path.starts_with("/.well-known/") || path.starts_with("/oauth/")
 }
 
 fn http_client() -> &'static reqwest::Client {
@@ -178,10 +234,21 @@ async fn forward(State(state): State<ForwarderState>, req: Request) -> Response 
         body_preview: req_preview,
     });
 
-    // Path joining: incoming `/` maps to mcp_url verbatim (no trailing slash).
-    // Anything else appends to mcp_url (with trailing slash stripped first).
+    // Path joining:
+    //   - `/` maps to mcp_url verbatim (no trailing slash).
+    //   - `/.well-known/*` and `/oauth/*` go to the upstream origin (no path
+    //     prefix) because those endpoints live at the origin root by RFC
+    //     convention, not under the resource sub-path.
+    //   - Everything else appends to mcp_url (with trailing slash stripped).
     let upstream_url = if path_and_query == "/" {
         state.mcp_url.trim_end_matches('/').to_string()
+    } else if is_origin_routed_path(&path_and_query) {
+        let base = state
+            .upstream_origin
+            .as_deref()
+            .map(String::as_str)
+            .unwrap_or_else(|| state.mcp_url.trim_end_matches('/'));
+        format!("{}{}", base.trim_end_matches('/'), path_and_query)
     } else {
         format!("{}{}", state.mcp_url.trim_end_matches('/'), path_and_query)
     };
@@ -211,7 +278,25 @@ async fn forward(State(state): State<ForwarderState>, req: Request) -> Response 
     };
 
     let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
-    let resp_headers_map = forwarding::sanitize_response_headers(resp.headers());
+    let mut resp_headers_map = forwarding::sanitize_response_headers(resp.headers());
+
+    // Rewrite `WWW-Authenticate` so OAuth clients fetching the resource-
+    // metadata URL hit the tunnel host instead of `localhost`. Header rewrite
+    // runs on every response — it's an OAuth-specific header and safe to
+    // touch unconditionally.
+    let public_origin = state.public_url.get().and_then(|u| origin_of(u));
+    if let (Some(upstream), Some(public)) = (
+        state.upstream_origin.as_deref().map(String::as_str),
+        public_origin.as_deref(),
+    ) && upstream != public
+        && let Some(v) = resp_headers_map.get("www-authenticate")
+        && let Ok(s) = v.to_str()
+        && s.contains(upstream)
+        && let Ok(new_v) = HeaderValue::from_str(&s.replace(upstream, public))
+    {
+        resp_headers_map.insert("www-authenticate", new_v);
+    }
+
     let resp_headers_log: Vec<(String, String)> = resp_headers_map
         .iter()
         .filter_map(|(k, v)| {
@@ -294,6 +379,34 @@ async fn forward(State(state): State<ForwarderState>, req: Request) -> Response 
                 return error_response(StatusCode::BAD_GATEWAY, format!("read upstream body: {e}"));
             }
         };
+
+        // Rewrite localhost references in OAuth metadata bodies so a remote
+        // client (e.g. Claude) reaches the registration / discovery endpoints
+        // via the tunnel host instead of the upstream's private origin.
+        // Scope is intentionally narrow: only the four well-known OAuth paths.
+        let body_bytes = if is_oauth_metadata_path(&path_and_query)
+            && let (Some(upstream), Some(public)) = (
+                state.upstream_origin.as_deref().map(String::as_str),
+                public_origin.as_deref(),
+            )
+            && upstream != public
+            && let Ok(s) = std::str::from_utf8(&body_bytes)
+            && s.contains(upstream)
+        {
+            let rewritten = s.replace(upstream, public);
+            tracing::info!(
+                id = %id,
+                path = %path_and_query,
+                "tunnel: rewrote OAuth metadata {upstream} -> {public}",
+            );
+            // Body length changed; drop any stale Content-Length so axum
+            // can recompute it from the new body.
+            resp_headers_map.remove("content-length");
+            bytes::Bytes::from(rewritten)
+        } else {
+            body_bytes
+        };
+
         let preview = forwarding::preview_text(&body_bytes);
         tracing::info!(
             id = %id,

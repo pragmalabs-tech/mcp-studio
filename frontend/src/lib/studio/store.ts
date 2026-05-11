@@ -834,9 +834,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       mcpError: null,
     });
 
-    // Step 1: Initialize MCP session
+    // Step 1: Initialize MCP session. `mcpInitialize` resets internally —
+    // a second `resetSession()` here would clobber the in-flight handshake
+    // it just kicked off and race with any health-probe caller.
     try {
-      resetSession();
       await mcpInitialize();
     } catch (e) {
       const msg = (e as Error).message || "Session initialization failed";
