@@ -9,8 +9,40 @@
  * Posts BridgeMessage payloads (kind: "widget.dom.*") to window.parent.
  */
 (function install() {
-  if (window.__mcprRecorderInstalled) return;
+  // Debug helper gated on window.__mcprDebug. Off by default so the
+  // production console stays clean. Enable per-session in DevTools by
+  // setting `window.__mcprDebug = true` in the iframe context (the
+  // logs are also piped to the parent window so they show up there).
+  function dbg() {
+    if (!window.__mcprDebug) return;
+    var args = Array.prototype.slice.call(arguments);
+    try {
+      console.log.apply(console, args);
+    } catch (e) {}
+    try {
+      window.parent.postMessage(
+        {
+          type: "__mcpr_debug",
+          args: args.map(function (a) {
+            if (a == null || typeof a !== "object") return a;
+            try {
+              return JSON.parse(JSON.stringify(a));
+            } catch (e) {
+              return String(a);
+            }
+          }),
+        },
+        "*",
+      );
+    } catch (e) {}
+  }
+  window.__mcprDbg = dbg;
+  if (window.__mcprRecorderInstalled) {
+    dbg("[bridge] already installed");
+    return;
+  }
   window.__mcprRecorderInstalled = true;
+  dbg("[bridge] install", new Date().toISOString());
 
   var TEXT_BEARING = {
     button: 1,
@@ -123,6 +155,26 @@
     return typeof v === "string" ? v : undefined;
   }
 
+  // Selector for elements where a click is meaningful even when no DOM
+  // mutation follows (the click typically dispatches a host postMessage,
+  // e.g. window.openai.sendFollowUpMessage). Without this, clicks on
+  // "Continue Learning" type buttons would be silently dropped because
+  // digest() shows no change.
+  var INTERACTIVE_SELECTOR =
+    "button, a[href], input, select, textarea, " +
+    '[role="button"], [role="link"], [role="checkbox"], ' +
+    '[role="radio"], [role="menuitem"], [role="tab"], ' +
+    '[tabindex]:not([tabindex="-1"])';
+
+  function isInteractiveTarget(el) {
+    if (!el || typeof el.closest !== "function") return false;
+    try {
+      return !!el.closest(INTERACTIVE_SELECTOR);
+    } catch (e) {
+      return false;
+    }
+  }
+
   function post(payload) {
     try {
       payload.__recorder = true;
@@ -205,6 +257,20 @@
     }
 
     if (type === "click") {
+      if (isInteractiveTarget(target)) {
+        // Post synchronously so the click is recorded BEFORE any host
+        // intent that the click triggers (sendFollowUpMessage, etc.).
+        // settle() would wait two RAFs and the intent's postMessage
+        // arrives at the host first, inverting trace order.
+        post({
+          kind: "widget.dom.click",
+          selectors: selectors,
+          mutated: false,
+        });
+        return;
+      }
+      // Non-interactive target: wait to see if the DOM mutated. Drops
+      // stray clicks on background that did nothing.
       settle(function () {
         var mutated = digest(document.body) !== before;
         if (!mutated) return;
@@ -254,6 +320,24 @@
     return String(value).replace(/(["\\])/g, "\\$1");
   }
 
+  function resolveWithRetry(chain, timeoutMs, cb) {
+    var deadline = Date.now() + timeoutMs;
+    function tryOnce() {
+      var el = resolveSelectorChain(document, chain);
+      if (el) {
+        cb(el);
+        return;
+      }
+      if (Date.now() >= deadline) {
+        cb(null);
+        return;
+      }
+      // ~16ms (one frame) between attempts; total ~30 attempts in 500ms.
+      setTimeout(tryOnce, 16);
+    }
+    tryOnce();
+  }
+
   function resolveSelectorChain(root, chain) {
     if (!chain) return null;
     if (chain.testid) {
@@ -295,18 +379,64 @@
   }
 
   function dispatchSynthetic(el, action) {
-    var kind = action.kind;
-    if (kind === "widget.dom.click") {
-      el.dispatchEvent(
-        new MouseEvent("click", {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-        }),
+    // The engine sends action.kind unprefixed ("dom.click"); accept both
+    // the prefixed and unprefixed form so we match regardless of caller.
+    var kind = String(action.kind || "").replace(/^widget\./, "");
+    if (kind === "dom.click") {
+      // Mirror what `userEvent.click()` (testing-library) does: fire the
+      // full pointer + mouse sequence rather than just `click`. Many
+      // React/Radix/headless-UI handlers wire up to pointerdown or
+      // mousedown rather than click, so a bare click event is missed.
+      var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+      var x = rect ? rect.left + rect.width / 2 : 0;
+      var y = rect ? rect.top + rect.height / 2 : 0;
+      var common = {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+        button: 0,
+        buttons: 0,
+        clientX: x,
+        clientY: y,
+      };
+      function fire(EvCtor, type, init) {
+        var e = new EvCtor(type, init);
+        try {
+          Object.defineProperty(e, "isTrusted", {
+            value: true,
+            configurable: true,
+          });
+        } catch (err) {
+          /* ignore */
+        }
+        el.dispatchEvent(e);
+        return e;
+      }
+      var PE = window.PointerEvent || window.MouseEvent;
+      fire(PE, "pointerover", Object.assign({ pointerType: "mouse" }, common));
+      fire(window.MouseEvent, "mouseover", common);
+      fire(
+        PE,
+        "pointerdown",
+        Object.assign({ pointerType: "mouse", buttons: 1 }, common),
       );
+      fire(
+        window.MouseEvent,
+        "mousedown",
+        Object.assign({}, common, { buttons: 1 }),
+      );
+      try {
+        if (typeof el.focus === "function") el.focus();
+      } catch (e) {
+        /* ignore */
+      }
+      fire(PE, "pointerup", Object.assign({ pointerType: "mouse" }, common));
+      fire(window.MouseEvent, "mouseup", common);
+      fire(window.MouseEvent, "click", common);
       return;
     }
-    if (kind === "widget.dom.input" || kind === "widget.dom.change") {
+    if (kind === "dom.input" || kind === "dom.change") {
       try {
         el.focus();
         var setter = Object.getOwnPropertyDescriptor(
@@ -321,13 +451,13 @@
         } catch (e2) {}
       }
       el.dispatchEvent(
-        new Event(kind === "widget.dom.input" ? "input" : "change", {
+        new Event(kind === "dom.input" ? "input" : "change", {
           bubbles: true,
         }),
       );
       return;
     }
-    if (kind === "widget.dom.submit") {
+    if (kind === "dom.submit") {
       // Prefer dispatching submit on the form; falls back to the element
       var form = el.tagName === "FORM" ? el : el.closest && el.closest("form");
       if (form) {
@@ -341,7 +471,7 @@
       }
       return;
     }
-    if (kind === "widget.dom.keydown") {
+    if (kind === "dom.keydown") {
       var mods = action.mods || 0;
       el.dispatchEvent(
         new KeyboardEvent("keydown", {
@@ -370,23 +500,53 @@
     if (!m || m.__recorder !== true) return;
 
     if (m.op === "dispatch") {
-      var el = resolveSelectorChain(document, m.action && m.action.selectors);
-      if (!el) {
-        ack(m.id, { ok: false, reason: "selector-miss" });
-        return;
-      }
-      var before = digest(document.body);
-      try {
-        dispatchSynthetic(el, m.action);
-      } catch (err) {
-        ack(m.id, {
-          ok: false,
-          reason: "dispatch-error: " + (err && err.message),
+      var dispatchKind = String((m.action && m.action.kind) || "").replace(
+        /^widget\./,
+        "",
+      );
+      // Selector resolution retries for 2s. Most misses are transient —
+      // React just committed a mock update and the target element will
+      // exist within a frame or two. Bailing fast (the old 500ms) made
+      // replay flaky on heavier widgets.
+      resolveWithRetry(m.action && m.action.selectors, 2000, function (el) {
+        if (!el) {
+          window.__mcprDbg(
+            "[bridge] selector miss",
+            JSON.stringify(m.action.selectors),
+          );
+          ack(m.id, { ok: false, reason: "selector-miss" });
+          return;
+        }
+        if (dispatchKind === "dom.click") {
+          try {
+            dispatchSynthetic(el, m.action);
+          } catch (err) {
+            window.__mcprDbg("[bridge] dispatch threw", String(err));
+            ack(m.id, {
+              ok: false,
+              reason: "dispatch-error: " + (err && err.message),
+            });
+            return;
+          }
+          settle(function () {
+            ack(m.id, { ok: true, mutated: false });
+          });
+          return;
+        }
+        // Non-click dispatches: same code as before, no special debug.
+        var before = digest(document.body);
+        try {
+          dispatchSynthetic(el, m.action);
+        } catch (err) {
+          ack(m.id, {
+            ok: false,
+            reason: "dispatch-error: " + (err && err.message),
+          });
+          return;
+        }
+        settle(function () {
+          ack(m.id, { ok: true, mutated: digest(document.body) !== before });
         });
-        return;
-      }
-      settle(function () {
-        ack(m.id, { ok: true, mutated: digest(document.body) !== before });
       });
       return;
     }

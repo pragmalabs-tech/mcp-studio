@@ -13,7 +13,12 @@ describe("registry", () => {
     const b = buildInitialState();
     expect(a.studio).toBeDefined();
     expect(a.tools).toEqual({});
-    expect(a.widgets).toEqual({ renderCount: 0, open: [] });
+    expect(a.widgets).toEqual({
+      renderCount: 0,
+      open: [],
+      intents: [],
+      activeRender: null,
+    });
     expect(a.network).toEqual({
       requestCount: 0,
       responseCount: 0,

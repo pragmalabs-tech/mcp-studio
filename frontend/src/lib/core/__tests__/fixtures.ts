@@ -27,8 +27,10 @@ export function emptyState(): State {
 }
 
 /** Build a State by overriding individual slices. Useful for "given the
- *  state already has tools.X with callCount: 2…" set-ups. */
-export function makeState(overrides: Partial<State> = {}): State {
+ *  state already has tools.X with callCount: 2…" set-ups. Sub-slices are
+ *  shallow-merged with the empty default, so tests don't have to spell
+ *  out every required field on a slice they're not exercising. */
+export function makeState(overrides: StateOverrides = {}): State {
   const base = emptyState();
   return {
     studio: overrides.studio
@@ -42,6 +44,13 @@ export function makeState(overrides: Partial<State> = {}): State {
       ? { ...base.network, ...overrides.network }
       : base.network,
   };
+}
+
+interface StateOverrides {
+  studio?: Partial<State["studio"]>;
+  tools?: State["tools"];
+  widgets?: Partial<State["widgets"]>;
+  network?: Partial<State["network"]>;
 }
 
 // ── Action builders ────────────────────────────────────────────────────────
@@ -75,6 +84,7 @@ export function widgetAction<K extends WidgetAction["kind"]>(
 function inferWidgetSource(kind: WidgetAction["kind"]): WidgetAction["source"] {
   if (kind === "opened") return "engine";
   if (kind === "runtime_error") return "widget";
+  if (kind === "intent") return "widget";
   return "user";
 }
 

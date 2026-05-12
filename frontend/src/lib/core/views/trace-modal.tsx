@@ -268,6 +268,16 @@ export function TraceModal({
                     onSelectDrift={(driftIdx) => selectDrift(i, driftIdx)}
                   />
                 ))}
+                {recorded.steps.slice(replayed.steps.length).map((step, j) => {
+                  const i = replayed.steps.length + j;
+                  return (
+                    <MissingStepRow
+                      key={`missing-${i}`}
+                      index={i}
+                      step={step}
+                    />
+                  );
+                })}
                 {replayed.steps.length === 0 && (
                   <p className="text-xs text-muted-foreground italic">
                     no steps captured
@@ -375,6 +385,35 @@ function CountsLine({ counts }: { counts: Counts }) {
         <span className="text-yellow-300">⚠ {counts.warn} warn</span>
       )}
     </span>
+  );
+}
+
+function MissingStepRow({ index, step }: { index: number; step: Step }) {
+  return (
+    <div className="text-xs font-mono rounded-sm overflow-hidden bg-red-500/5 ring-1 ring-red-500/30">
+      <div className="flex items-stretch">
+        <div className="w-1 bg-red-400 shrink-0" />
+        <div className="flex-1 px-2 py-1.5 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-red-300 text-[10px] uppercase tracking-wider font-semibold shrink-0">
+              missing
+            </span>
+            <span className="text-muted-foreground/60 shrink-0">
+              {index + 1}
+            </span>
+            <span className="text-foreground truncate">
+              {actionLabel(step.action)}
+            </span>
+          </div>
+          <div className="text-muted-foreground/70 truncate mt-0.5 pl-12 text-[11px]">
+            {actionSummary(step.action) || "(no detail)"}
+          </div>
+          <div className="text-red-300/70 text-[10px] mt-0.5 pl-12">
+            recorded but not produced by replay
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

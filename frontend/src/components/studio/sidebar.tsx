@@ -38,14 +38,23 @@ export function Sidebar() {
     loadAll();
   }, []);
 
-  const q = filter.toLowerCase();
+  // Normalize both query and candidate to alphanumeric-lowercase so the
+  // search matches across snake_case, kebab-case, camelCase, and the
+  // human "get course" rendering of `get_course` interchangeably.
+  const q = filter.toLowerCase().replace(/[^a-z0-9]/g, "");
   const filteredTools = useMemo(
     () =>
       q
         ? tools.filter(
             (t) =>
-              t.name.toLowerCase().includes(q) ||
-              t.description?.toLowerCase().includes(q),
+              t.name
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, "")
+                .includes(q) ||
+              t.description
+                ?.toLowerCase()
+                .replace(/[^a-z0-9]/g, "")
+                .includes(q),
           )
         : tools,
     [tools, q],
@@ -55,8 +64,14 @@ export function Sidebar() {
       q
         ? resources.filter(
             (r) =>
-              r.name?.toLowerCase().includes(q) ||
-              r.uri.toLowerCase().includes(q),
+              r.name
+                ?.toLowerCase()
+                .replace(/[^a-z0-9]/g, "")
+                .includes(q) ||
+              r.uri
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, "")
+                .includes(q),
           )
         : resources,
     [resources, q],

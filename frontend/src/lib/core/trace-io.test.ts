@@ -80,13 +80,17 @@ describe("trace-io", () => {
     const trace = loadTrace(legacy);
     expect(trace.schemaVersion).toBe(SCHEMA_VERSION);
     expect(trace.name).toBe("Old recording");
-    // 4 known kinds preserved + unknowns dropped → 4 steps.
-    expect(trace.steps).toHaveLength(4);
+    // 5 known kinds preserved (incl. widget.intent); csp.violation dropped.
+    expect(trace.steps).toHaveLength(5);
     // The mcp.response gets `tool` synthesized from the matching request
     // and then folded — so we should see `tools.weather.lastResult`.
     const last = trace.steps[trace.steps.length - 1];
     expect(last.stateAfter.tools.weather.lastResult).toEqual({ temp: 22 });
     expect(last.stateAfter.tools.weather.callCount).toBe(1);
+    // widget.intent is the last step; it folds into widgets.intents.
+    expect(last.stateAfter.widgets.intents).toEqual([
+      { name: "ui/setSomething", params: {} },
+    ]);
   });
 
   it("loadTrace__throws_on_unrecognised_shape", () => {
@@ -120,6 +124,49 @@ describe("trace-io", () => {
     const last = reloaded.steps[1].stateAfter;
     expect(last.tools.get_weather.callCount).toBe(1);
     expect(last.tools.get_weather.lastResult).toEqual({ temp: 22 });
+  });
+
+  it("loadTrace__migrates_widget_render_to_action_with_mock", () => {
+    const legacy = {
+      id: "render-test",
+      name: "render flow",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      session: {
+        timeline: [
+          {
+            kind: "widget.render",
+            name: "goal_detail",
+            htmlHash: "abc123",
+            initialMock: {
+              toolInput: { course_id: "c1" },
+              toolOutput: { lessons: [] },
+              _meta: { "openai/widgetAccessible": true },
+              widgetState: null,
+            },
+          },
+        ],
+      },
+    };
+    const trace = loadTrace(legacy);
+    expect(trace.steps).toHaveLength(1);
+    const step = trace.steps[0];
+    expect(step.action).toMatchObject({
+      driver: "widget",
+      kind: "render",
+      source: "user",
+      payload: {
+        widgetName: "goal_detail",
+        mock: {
+          toolInput: { course_id: "c1" },
+          toolOutput: { lessons: [] },
+          meta: { "openai/widgetAccessible": true },
+          widgetState: null,
+        },
+      },
+    });
+    expect(step.stateAfter.widgets.activeRender?.widgetName).toBe(
+      "goal_detail",
+    );
   });
 
   it("toTrace__synthesizes_tool_names_on_responses", () => {

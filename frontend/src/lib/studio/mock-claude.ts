@@ -190,6 +190,11 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
 
         case "ui/message":
           onAction("sendMessage", params);
+          recorder.emit({
+            kind: "widget.intent",
+            name: "ui/message",
+            params,
+          });
           if (onMessage) onMessage(params);
           sendResponse(id, {});
           break;
@@ -245,12 +250,22 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
         case "ui/update-model-context":
         case "ui/updateModelContext":
           onAction("updateModelContext", params);
+          recorder.emit({
+            kind: "widget.intent",
+            name: "ui/update-model-context",
+            params,
+          });
           sendResponse(id, {});
           break;
 
         case "ui/open-link":
         case "ui/openLink":
           onAction("openLink", params);
+          recorder.emit({
+            kind: "widget.intent",
+            name: "ui/open-link",
+            params,
+          });
           {
             const url = (params as { url?: string }).url;
             if (url) window.open(url, "_blank", "noopener,noreferrer");
@@ -261,6 +276,11 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
         case "ui/request-display-mode":
         case "ui/requestDisplayMode":
           onAction("requestDisplayMode", params);
+          recorder.emit({
+            kind: "widget.intent",
+            name: "ui/request-display-mode",
+            params,
+          });
           sendResponse(id, {
             mode: (params as { mode?: string }).mode || "inline",
           });
@@ -290,6 +310,11 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
     // Notification from widget
     else if (msg.method) {
       onAction("ext-apps:notify", { method: msg.method, params: msg.params });
+      recorder.emit({
+        kind: "widget.intent",
+        name: String(msg.method),
+        params: msg.params,
+      });
     }
   }
 

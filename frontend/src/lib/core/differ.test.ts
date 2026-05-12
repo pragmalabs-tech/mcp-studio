@@ -456,6 +456,108 @@ describe("diff shape mode", () => {
     expect(verdict.drifts).toEqual([]);
   });
 
+  it("widget render: wrong widgetName produces value_differs drift", () => {
+    const exp = makeState({
+      widgets: {
+        activeRender: {
+          widgetName: "goal_detail",
+          mock: {
+            toolInput: {},
+            toolOutput: {},
+            meta: {},
+            widgetState: null,
+          },
+        },
+      },
+    });
+    const act = makeState({
+      widgets: {
+        activeRender: {
+          widgetName: "wrong_widget",
+          mock: {
+            toolInput: {},
+            toolOutput: {},
+            meta: {},
+            widgetState: null,
+          },
+        },
+      },
+    });
+    const verdict = diff(trace([exp]), trace([act]), NO_RULES);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.drifts[0]).toMatchObject({
+      path: "widgets.activeRender.widgetName",
+      reason: "value_differs",
+    });
+  });
+
+  it("widget render: shape mode on the step suppresses mock value drifts", () => {
+    const exp = makeState({
+      widgets: {
+        activeRender: {
+          widgetName: "goal_detail",
+          mock: {
+            toolInput: {},
+            toolOutput: { id: "uuid-A" },
+            meta: {},
+            widgetState: null,
+          },
+        },
+      },
+    });
+    const act = makeState({
+      widgets: {
+        activeRender: {
+          widgetName: "goal_detail",
+          mock: {
+            toolInput: {},
+            toolOutput: { id: "uuid-B" },
+            meta: {},
+            widgetState: null,
+          },
+        },
+      },
+    });
+    const recorded = trace([exp]);
+    recorded.steps[0] = { ...recorded.steps[0], compare: "shape" };
+    const verdict = diff(recorded, trace([act]), NO_RULES);
+    expect(verdict.ok).toBe(true);
+    expect(verdict.drifts).toEqual([]);
+  });
+
+  it("widget intent: extra intent on replay surfaces as drift", () => {
+    const exp = makeState({
+      widgets: { intents: [{ name: "ui/message", params: { text: "a" } }] },
+    });
+    const act = makeState({
+      widgets: {
+        intents: [
+          { name: "ui/message", params: { text: "a" } },
+          { name: "ui/open-link", params: { url: "https://x" } },
+        ],
+      },
+    });
+    const verdict = diff(trace([exp]), trace([act]), NO_RULES);
+    expect(verdict.ok).toBe(false);
+    const surfaced = verdict.drifts.filter((d) => !d.suppressedBy);
+    expect(surfaced.map((d) => d.path)).toContain("widgets.intents[1]");
+  });
+
+  it("widget intent: name change surfaces as value_differs", () => {
+    const exp = makeState({
+      widgets: { intents: [{ name: "ui/message", params: {} }] },
+    });
+    const act = makeState({
+      widgets: { intents: [{ name: "sendFollowUpMessage", params: {} }] },
+    });
+    const verdict = diff(trace([exp]), trace([act]), NO_RULES);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.drifts[0]).toMatchObject({
+      path: "widgets.intents[0].name",
+      reason: "value_differs",
+    });
+  });
+
   it("only the step with compare:shape switches mode", () => {
     // Step 0 is shape-only, step 1 is exact. Both have value drifts.
     // Step 1 uses fresh primitive values so the identity short-circuit

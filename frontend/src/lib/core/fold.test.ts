@@ -118,4 +118,58 @@ describe("fold", () => {
     const folded = foldTrace(trace);
     expect(folded.steps[0].compare).toBe("shape");
   });
+
+  it("foldTrace__widget_render_writes_active_render_state_cell", () => {
+    const trace = makeTrace({
+      steps: [
+        {
+          action: widgetAction("render", {
+            widgetName: "goal_detail",
+            mock: {
+              toolInput: { course_id: "c1" },
+              toolOutput: { name: "Kubernetes 101" },
+              meta: {},
+              widgetState: null,
+            },
+          }),
+          stateAfter: emptyState(),
+        },
+      ],
+    });
+    const folded = foldTrace(trace);
+    expect(folded.steps[0].stateAfter.widgets.activeRender).toEqual({
+      widgetName: "goal_detail",
+      mock: {
+        toolInput: { course_id: "c1" },
+        toolOutput: { name: "Kubernetes 101" },
+        meta: {},
+        widgetState: null,
+      },
+    });
+  });
+
+  it("foldTrace__widget_intent_appends_to_intents_state_cell", () => {
+    const trace = makeTrace({
+      steps: [
+        {
+          action: widgetAction("intent", {
+            name: "ui/message",
+            params: { text: "Continue Learning" },
+          }),
+          stateAfter: emptyState(),
+        },
+        {
+          action: widgetAction("intent", {
+            name: "sendFollowUpMessage",
+            params: { text: "more" },
+          }),
+          stateAfter: emptyState(),
+        },
+      ],
+    });
+    const folded = foldTrace(trace);
+    expect(
+      folded.steps[1].stateAfter.widgets.intents.map((i) => i.name),
+    ).toEqual(["ui/message", "sendFollowUpMessage"]);
+  });
 });

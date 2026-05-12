@@ -26,6 +26,7 @@ import {
   type McpResourceInfo,
 } from "./api";
 import { DEFAULT_MOCK, type MockData } from "./mock-openai";
+import type { WidgetMock } from "@/lib/core/types";
 import { createClaudeMock } from "./mock-claude";
 import { extractCspDomains } from "@/lib/core/csp/profiles";
 import { analyze } from "@/lib/core/csp/analyze";
@@ -603,6 +604,12 @@ interface StudioState {
   // Widget rendering
   resolveWidgetName: (responseMeta?: Record<string, unknown>) => string | null;
   renderWidget: (mock: MockData, overrideWidgetName?: string) => Promise<void>;
+  /** Pure setter: updates currentMock and emits the widget.render
+   *  Recorded action. Called by both store.execute() (recording path)
+   *  and the engine via runtime widgetDispatch.applyMock (replay path).
+   *  HTML side-effects (widgetSourceHtml) are derived from the recorder
+   *  bus, not from this method — see the bus subscriber at module init. */
+  applyWidgetMock: (widgetName: string, mock: WidgetMock) => Promise<void>;
   loadWidget: () => Promise<void>;
   applyMock: () => void;
   resetEditor: () => void;
@@ -1505,10 +1512,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const name = overrideWidgetName || get().resolveWidgetName();
     if (!name) return;
 
-    // The iframe element itself is owned by `<WidgetFrame>`; this routine
-    // only loads HTML, runs static analysis, and publishes the state that
-    // WidgetFrame reacts to. extAppsMock is wired in WidgetPreview as an
-    // effect on (iframe ref, currentMock).
+    // Reset prior view state. The iframe element itself is owned by
+    // `<WidgetFrame>`; this routine clears the slot then loads HTML
+    // and applies the mock. extAppsMock is wired in WidgetPreview as
+    // an effect on (iframe ref, currentMock).
     get()._extAppsMock?.destroy();
     set({
       _extAppsMock: null,
@@ -1527,44 +1534,66 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         r.mimeType === "text/html;profile=mcp-app",
     )?.uri;
     if (!resUri) return;
-    const result = (await readResource(resUri)) as {
-      contents?: { text?: string }[];
-    };
-    const rawHtml = result?.contents?.[0]?.text ?? "";
+    // Fire the resource read. The bus subscriber at module init
+    // populates widgetSourceHtml/widgetRawHtml from the response.
+    await readResource(resUri);
+    const rawHtml = get().widgetRawHtml ?? "";
     if (!rawHtml) return;
 
-    // Stripped version is what the static analyzer scans and what the HTML
-    // preview tab shows. Raw version (with tunnel URLs intact) is fed to
-    // WidgetFrame, which rewrites tunnels via renderHtml's baseUrl option.
-    const originalHtml = stripTunnelUrls(rawHtml);
+    // CSP analysis uses the tool-call meta (not the widget HTML response
+    // meta), so we still run it here where we have the mock context.
     const cspDomains = extractCspDomains(
       (mock._meta || {}) as Record<string, unknown>,
     );
-    const { findings } = analyze(originalHtml, cspDomains);
+    const { findings } = analyze(get().widgetSourceHtml ?? rawHtml, cspDomains);
     for (const finding of findings) {
       addCspViolation(toStaticViolation(finding, { sourceFile: resUri }));
     }
 
-    if (/window\.openai\b/.test(rawHtml)) {
+    // Apply the mock as a real action. This is the symmetry point with
+    // replay: the engine calls this same method via runtime.applyMock.
+    await get().applyWidgetMock(name, {
+      toolInput: mock.toolInput,
+      toolOutput: mock.toolOutput,
+      meta: (mock._meta || {}) as Record<string, unknown>,
+      widgetState: mock.widgetState ?? null,
+    });
+  },
+
+  applyWidgetMock: async (widgetName, mock) => {
+    const fullMock: MockData = {
+      toolInput: mock.toolInput,
+      toolOutput: mock.toolOutput,
+      _meta: mock.meta,
+      widgetState: mock.widgetState ?? null,
+      theme: get().theme,
+      locale: get().locale,
+      displayMode: get().displayMode,
+    };
+    get()._extAppsMock?.destroy();
+    set({
+      _extAppsMock: null,
+      currentMock: fullMock,
+    });
+    // Re-detect protocol from the cached HTML (the bus subscriber set
+    // widgetRawHtml when the resources/read response arrived).
+    const html = get().widgetRawHtml ?? "";
+    if (/window\.openai\b/.test(html)) {
       get().setProtocolDetected("legacy_openai");
     }
-    // ui:// + mcp-app MIME is the definitive ext-apps marker.
     get().setProtocolDetected("ext_apps");
-
-    set({
-      widgetSourceHtml: originalHtml,
-      widgetRawHtml: rawHtml,
-      currentMock: mock,
-    });
-
     if (recorder.mode === "recording") {
       recorder.emit({
         kind: "widget.render",
-        name,
-        htmlHash: simpleHash(originalHtml),
-        initialMock: mock,
+        name: widgetName,
+        htmlHash: simpleHash(get().widgetSourceHtml ?? ""),
+        initialMock: fullMock,
       });
-      recorder.setWidget({ name, html: originalHtml, initialMock: mock });
+      recorder.setWidget({
+        name: widgetName,
+        html: get().widgetSourceHtml ?? "",
+        initialMock: fullMock,
+      });
     }
   },
 
@@ -1756,6 +1785,36 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 // Always-on recorder: subscribe instrumentation and start a session as soon as
 // the store module loads. Browser-only — guard for SSR / unit tests.
 if (typeof window !== "undefined") {
+  // Pure derivation: when an mcp.response arrives for a resources/read of
+  // a ui:// URI (the widget HTML), copy the HTML into the studio store.
+  // Same input → same output, runs identically in record and replay so
+  // there's no asymmetry between the two paths.
+  const pendingUriById = new Map<number, string>();
+  recorder.onEmit((entry) => {
+    if (entry.kind === "mcp.request" && entry.method === "resources/read") {
+      const uri = (entry.params as { uri?: unknown } | null)?.uri;
+      if (typeof uri === "string" && uri.startsWith("ui://")) {
+        pendingUriById.set(Number(entry.id), uri);
+      }
+      return;
+    }
+    if (entry.kind === "mcp.response") {
+      const id = Number(entry.requestId);
+      const uri = pendingUriById.get(id);
+      if (!uri) return;
+      pendingUriById.delete(id);
+      const result = entry.result as
+        | { contents?: { text?: string }[] }
+        | undefined;
+      const rawHtml = result?.contents?.[0]?.text ?? "";
+      if (!rawHtml) return;
+      useStudioStore.setState({
+        widgetSourceHtml: stripTunnelUrls(rawHtml),
+        widgetRawHtml: rawHtml,
+      });
+    }
+  });
+
   attachInstrumentation({
     getState: () => useStudioStore.getState() as unknown as RecordableState,
     subscribe: (listener) =>

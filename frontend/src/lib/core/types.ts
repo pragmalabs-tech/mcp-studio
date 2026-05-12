@@ -111,7 +111,26 @@ export type WidgetAction =
         code: string;
         mods: number;
       };
+    }
+  | {
+      driver: "widget";
+      kind: "intent";
+      source: "widget";
+      payload: { name: string; params: unknown };
+    }
+  | {
+      driver: "widget";
+      kind: "render";
+      source: "user";
+      payload: { widgetName: string; mock: WidgetMock };
     };
+
+export interface WidgetMock {
+  toolInput: unknown;
+  toolOutput: unknown;
+  meta: Record<string, unknown>;
+  widgetState: unknown;
+}
 
 // ── State ────────────────────────────────────────────────────────────────
 // Scoreboard of facts a test would assert on. Studio shell mutations
@@ -150,6 +169,17 @@ export interface ToolStats {
 export interface WidgetsSlice {
   renderCount: number;
   open: OpenWidget[];
+  /** Append-only log of intents the widget posted to the host: follow-up
+   *  messages, setWidgetState calls, openExternal, etc. Tool calls are
+   *  NOT here (they live in `tools.{name}`); this is the higher-level
+   *  intent surface above the JSON-RPC layer. */
+  intents: WidgetIntent[];
+  /** The most recent (widgetName + mock) applied to the iframe via a
+   *  widget.render action. Single source of truth for what the widget
+   *  shows at any step. The differ asserts on it: name mismatch =
+   *  wrong widget rendered; mock mismatch = wrong data (handled with
+   *  per-step shape mode for env-volatile payloads). */
+  activeRender: { widgetName: string; mock: WidgetMock } | null;
 }
 
 export interface OpenWidget {
@@ -157,6 +187,12 @@ export interface OpenWidget {
   data: unknown;
   mounted: boolean;
   hasErrors: boolean;
+}
+
+export interface WidgetIntent {
+  /** Canonical intent name, e.g. `ui/message`, `sendFollowUpMessage`. */
+  name: string;
+  params: unknown;
 }
 
 export interface NetworkSlice {

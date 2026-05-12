@@ -53,6 +53,16 @@ function mcpSummary(a: Extract<Action, { driver: "mcp" }>): string {
 function widgetSummary(a: Extract<Action, { driver: "widget" }>): string {
   if (a.kind === "opened") return `opened ${a.payload.uri}`;
   if (a.kind === "runtime_error") return `error: ${a.payload.message}`;
+  if (a.kind === "intent") {
+    const args = previewValue(a.payload.params);
+    return args ? `${a.payload.name} ${args}` : a.payload.name;
+  }
+  if (a.kind === "render") {
+    const out = previewValue(a.payload.mock.toolOutput);
+    return out
+      ? `render ${a.payload.widgetName} ${out}`
+      : `render ${a.payload.widgetName}`;
+  }
   const sel = selectorLabel(a.payload.selectors);
   if (a.kind === "dom.click") return `click ${sel}`;
   if (a.kind === "dom.submit") return `submit ${sel}`;
@@ -136,6 +146,12 @@ export function actionExpectation(a: Action): string {
   }
   if (a.driver === "widget" && a.kind === "runtime_error") {
     return "expects widget runtime_error";
+  }
+  if (a.driver === "widget" && a.kind === "intent") {
+    return `expects widgets.intents += { name: "${a.payload.name}" }`;
+  }
+  if (a.driver === "widget" && a.kind === "render") {
+    return `expects widgets.activeRender = { widgetName: "${a.payload.widgetName}" }`;
   }
   if (a.driver === "widget" && a.kind.startsWith("dom.")) {
     return "(no state assertion)";

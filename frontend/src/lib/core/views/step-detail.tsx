@@ -139,17 +139,8 @@ export function StepDetail({
           </section>
         )}
 
-        {showJson && (
-          <section className={showWidget ? "border-b" : undefined}>
-            <SectionHeader title={jsonView!.label} right={jsonView!.subtitle} />
-            <pre className="p-4 text-xs font-mono whitespace-pre-wrap break-all bg-background text-foreground select-text">
-              {jsonView!.body}
-            </pre>
-          </section>
-        )}
-
         {showWidget && (
-          <section>
+          <section className={showJson ? "border-b" : undefined}>
             <SectionHeader title={widget!.uri} />
             <div className="flex">
               <div className="flex-1 min-w-0 min-h-[320px] bg-background">
@@ -167,6 +158,15 @@ export function StepDetail({
                 <CspFindingsList findings={widget!.findings} />
               </aside>
             </div>
+          </section>
+        )}
+
+        {showJson && (
+          <section>
+            <SectionHeader title={jsonView!.label} right={jsonView!.subtitle} />
+            <pre className="p-4 text-xs font-mono whitespace-pre-wrap break-all bg-background text-foreground select-text">
+              {jsonView!.body}
+            </pre>
           </section>
         )}
       </div>

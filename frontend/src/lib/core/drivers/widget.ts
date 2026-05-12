@@ -16,6 +16,9 @@ const VOLATILE = [
   "open[*].data.data.id",
   "open[*].data.data.created_at",
   "open[*].data.data.updated_at",
+  // Legacy openai shim assigns a random callId per outgoing request;
+  // it would otherwise drift on every replay.
+  "intents[*].params.callId",
 ] as const;
 
 function apply(state: State, action: WidgetAction): State {
@@ -23,6 +26,7 @@ function apply(state: State, action: WidgetAction): State {
     return {
       ...state,
       widgets: {
+        ...state.widgets,
         renderCount: state.widgets.renderCount + 1,
         open: [
           ...state.widgets.open,
@@ -50,13 +54,43 @@ function apply(state: State, action: WidgetAction): State {
       network: { ...state.network, errorCount: state.network.errorCount + 1 },
     };
   }
+  if (action.kind === "intent") {
+    return {
+      ...state,
+      widgets: {
+        ...state.widgets,
+        intents: [
+          ...state.widgets.intents,
+          { name: action.payload.name, params: action.payload.params },
+        ],
+      },
+    };
+  }
+  if (action.kind === "render") {
+    return {
+      ...state,
+      widgets: {
+        ...state.widgets,
+        activeRender: {
+          widgetName: action.payload.widgetName,
+          mock: action.payload.mock,
+        },
+      },
+    };
+  }
   // dom.* — pure observation, no state change
   return state;
 }
 
 export const widgetDriver: Driver<WidgetAction> = {
   id: "widget",
-  initialSlice: () => ({ renderCount: 0, open: [] }) as State["widgets"],
+  initialSlice: () =>
+    ({
+      renderCount: 0,
+      open: [],
+      intents: [],
+      activeRender: null,
+    }) as State["widgets"],
   apply,
   volatilePaths: () => VOLATILE,
 };
@@ -80,6 +114,10 @@ export interface WidgetRuntimeDeps {
       extra?: unknown,
     ): Promise<void>;
   };
+  /** Apply a fresh mock to the widget iframe. Called by the engine when
+   *  a widget.render action is dispatched. Mirrors what store.execute()
+   *  does during recording — pure setter, no I/O. */
+  applyMock(widgetName: string, mock: unknown): Promise<void>;
   onBusEmit(handler: (entry: BusEntry) => void): () => void;
 }
 
@@ -92,6 +130,11 @@ export function widgetDispatch(
       return;
     }
     if (action.kind === "runtime_error") return; // observed, not driven
+    if (action.kind === "intent") return; // observed, not driven
+    if (action.kind === "render") {
+      await deps.applyMock(action.payload.widgetName, action.payload.mock);
+      return;
+    }
     // dom.* — translate kind to bridge selector chain dispatch.
     await deps.bridge.dispatch(
       action.payload.selectors,
@@ -115,26 +158,27 @@ export function widgetAttach(deps: WidgetRuntimeDeps) {
         }
         return;
       }
-      // DOM events surfaced from the iframe bridge.
-      if (
-        entry.kind === "widget.dom.click" ||
-        entry.kind === "widget.dom.input" ||
-        entry.kind === "widget.dom.change" ||
-        entry.kind === "widget.dom.submit" ||
-        entry.kind === "widget.dom.keydown"
-      ) {
+      // Widget→host intent (sendFollowUpMessage, ui/message, etc.)
+      // surfaces as a state-folding action so the differ can assert on
+      // the intent name + params.
+      if (entry.kind === "widget.intent") {
         emit({
           driver: "widget",
-          kind: entry.kind.slice("widget.".length) as
-            | "dom.click"
-            | "dom.input"
-            | "dom.change"
-            | "dom.submit"
-            | "dom.keydown",
-          source: "user",
-          payload: entry as never,
+          kind: "intent",
+          source: "widget",
+          payload: {
+            name: typeof entry.name === "string" ? entry.name : "(unknown)",
+            params: entry.params,
+          },
         });
+        return;
       }
+      // DOM events from the iframe bridge are NOT echoed back to
+      // ambient. The engine drives them via dispatch (user-source
+      // actions). If the bridge's capture-phase listener fires on the
+      // engine's own synthetic click, echoing it would put a duplicate
+      // dom.click in ambient that could be wrongly consumed by a later
+      // step's await.
     });
   };
 }

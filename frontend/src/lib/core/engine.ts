@@ -67,8 +67,17 @@ export async function run(trace: Trace, deps: EngineDeps): Promise<Trace> {
         continue;
       }
 
-      // widget/server: await ambient arrival or timeout.
-      const matched = await waitFor(ambient, deps.awaitMs ?? 2000, deps.signal);
+      // widget/server: await ambient arrival or timeout. Match by
+      // (driver, kind) so leftover ambient entries don't get consumed
+      // in place of the expected step. 4s default — covers React
+      // commit + iframe postMessage RTT + widget intent emission.
+      const matched = await waitForKind(
+        ambient,
+        expected.action.driver,
+        expected.action.kind,
+        deps.awaitMs ?? 4000,
+        deps.signal,
+      );
       if (matched) {
         state = applyAction(state, matched);
         steps.push({
@@ -86,18 +95,27 @@ export async function run(trace: Trace, deps: EngineDeps): Promise<Trace> {
   return { ...trace, steps, capturedAt: new Date().toISOString() };
 }
 
-/** Resolve when `ambient` has at least one entry, or after `ms` elapses,
- *  or when `signal` aborts. Pops + returns the first ambient action on
- *  success, `null` on timeout/abort. */
-function waitFor(
+/** Resolve when `ambient` contains an entry matching (driver, kind), or
+ *  after `ms` elapses, or when `signal` aborts. Removes + returns the
+ *  matching entry on success, `null` on timeout/abort. Non-matching
+ *  entries stay in `ambient` so they remain available to future steps. */
+function waitForKind(
   ambient: Action[],
+  driver: string,
+  kind: string,
   ms: number,
   signal: AbortSignal,
 ): Promise<Action | null> {
   return new Promise((resolve) => {
     const start = Date.now();
     const tick = () => {
-      if (ambient.length > 0) return resolve(ambient.shift()!);
+      const idx = ambient.findIndex(
+        (a) => a.driver === driver && a.kind === kind,
+      );
+      if (idx >= 0) {
+        const [m] = ambient.splice(idx, 1);
+        return resolve(m);
+      }
       if (signal.aborted) return resolve(null);
       if (Date.now() - start >= ms) return resolve(null);
       setTimeout(tick, 10);

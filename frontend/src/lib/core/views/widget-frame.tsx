@@ -53,11 +53,49 @@ export function WidgetFrame(props: WidgetFrameProps) {
   } = props;
   const ref = useRef<HTMLIFrameElement | null>(null);
 
+  // The initial mock is baked into srcdoc on first mount (so the widget
+  // sees its data on load). After that, mock changes flow via the
+  // postMessage effect below — same iframe, same bridge, no reload.
+  // Removing `mock` from this dep list is what gives us a stable iframe.
   const srcdoc = useMemo(
     () =>
       renderHtml({ html, mock, platform, strict, baseUrl, bridgeSource }).html,
-    [html, mock, platform, strict, baseUrl, bridgeSource],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [html, platform, strict, baseUrl, bridgeSource],
   );
+
+  // Track the latest mock in a ref so the iframe's onLoad handler can
+  // read it even when the closure captured a stale value.
+  const mockRef = useRef(mock);
+  useEffect(() => {
+    mockRef.current = mock;
+  }, [mock]);
+
+  // Push every mock update into the live iframe via postMessage. Always
+  // — no first-time skip. If we skipped the first update, the srcdoc's
+  // baked-in mock (captured at iframe-mount time) might be stale (e.g.
+  // null at first mount because the engine hasn't dispatched the render
+  // action yet), and the widget would never see real data.
+  // Mock-openai's inbound listener mutates the tool data in place and
+  // dispatches openai:set_globals so the widget can re-render without
+  // an iframe reload.
+  useEffect(() => {
+    const win = ref.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: "mcpr_set_mock", mock }, "*");
+  }, [mock]);
+
+  // After the iframe loads, also send the current mock. This covers the
+  // race where the effect above fires before the iframe's message
+  // listener is registered (scripts inside srcdoc haven't run yet);
+  // postMessages dispatched before listener-registration are lost. By
+  // re-posting on load, we guarantee the widget gets the latest mock at
+  // least once after its bridge / openai shim are ready.
+  const handleIframeLoad = useCallback(() => {
+    const win = ref.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: "mcpr_set_mock", mock: mockRef.current }, "*");
+  }, []);
 
   const sandbox = strict ? getProfile(platform).sandbox : RELAXED_SANDBOX;
 
@@ -146,6 +184,7 @@ export function WidgetFrame(props: WidgetFrameProps) {
       className={className}
       style={style}
       title="widget"
+      onLoad={handleIframeLoad}
     />
   );
 }

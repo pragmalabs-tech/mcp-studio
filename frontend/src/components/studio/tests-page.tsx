@@ -117,8 +117,12 @@ function ActionCountLabel({
 }
 
 /** True if `action` is a server/widget-source effect rather than a
- *  user-driven step. Used by the "Inputs only" filter. */
+ *  user-driven step. Used by the "Inputs only" filter. Widget intents
+ *  (sendFollowUpMessage, ui/message, …) are user-meaningful actions the
+ *  widget made on behalf of the user, so they're shown as inputs even
+ *  though they technically originate from the widget. */
 export function isObservation(action: Action): boolean {
+  if (action.driver === "widget" && action.kind === "intent") return false;
   if (action.source === "server" || action.source === "widget") return true;
   return false;
 }
@@ -526,6 +530,9 @@ export function TestsPage({ open, onOpenChange }: Props) {
               { kind: kind as never, selectors } as never,
               2_000,
             );
+          },
+          awaitRenderComplete: async (timeoutMs) => {
+            await bridge.awaitRenderComplete(timeoutMs);
           },
         }),
       });

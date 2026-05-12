@@ -228,10 +228,48 @@ function legacyToAction(raw: unknown): Action[] {
       },
     ];
   }
+  if (kind === "widget.intent") {
+    return [
+      {
+        driver: "widget",
+        kind: "intent",
+        source: "widget",
+        payload: {
+          name: typeof r.name === "string" ? r.name : "(unknown)",
+          params: r.params,
+        },
+      },
+    ];
+  }
+  if (kind === "widget.render") {
+    const initial =
+      (r.initialMock as Record<string, unknown> | undefined) ??
+      (r.mock as Record<string, unknown> | undefined) ??
+      {};
+    return [
+      {
+        driver: "widget",
+        kind: "render",
+        source: "user",
+        payload: {
+          widgetName: typeof r.name === "string" ? r.name : "(unknown)",
+          mock: {
+            toolInput: initial.toolInput,
+            toolOutput: initial.toolOutput,
+            meta:
+              (initial._meta as Record<string, unknown> | undefined) ??
+              (initial.meta as Record<string, unknown> | undefined) ??
+              {},
+            widgetState: initial.widgetState,
+          },
+        },
+      },
+    ];
+  }
 
-  // Everything else is dropped (auth.update, csp.violation, widget.render.*,
-  // widget.intent, synthetic cue.* kinds — none have state effects in the
-  // new model). The differ will surface step_missing if any of them
+  // Everything else is dropped (auth.update, csp.violation,
+  // widget.render.complete, synthetic cue.* kinds — none have state effects
+  // in the new model). The differ will surface step_missing if any of them
   // genuinely mattered to the test.
   return [];
 }

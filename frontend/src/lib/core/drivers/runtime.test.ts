@@ -195,11 +195,16 @@ describe("widgetDispatch", () => {
 });
 
 describe("widgetAttach", () => {
-  it("translates widget.dom.click bus events to Actions", () => {
+  it("does NOT echo widget.dom.* bus events into ambient", () => {
+    // The engine drives DOM events itself via dispatch; echoing them
+    // back from the bridge's capture-phase listener would put a
+    // duplicate dom.click in ambient that a later step's await would
+    // wrongly consume.
     let busHandler: (e: BusEntry) => void = () => undefined;
     const attach = widgetAttach({
       mount: async () => undefined,
       bridge: { dispatch: async () => undefined },
+      applyMock: async () => undefined,
       onBusEmit: (h) => {
         busHandler = h;
         return () => undefined;
@@ -211,11 +216,7 @@ describe("widgetAttach", () => {
       kind: "widget.dom.click",
       selectors: { testid: "submit" },
     });
-    expect(emitted[0]).toMatchObject({
-      driver: "widget",
-      kind: "dom.click",
-      source: "user",
-    });
+    expect(emitted).toEqual([]);
   });
 
   it("emits runtime_error when render.complete reports errors", () => {

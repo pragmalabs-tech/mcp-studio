@@ -88,6 +88,21 @@ window.openai = {
   }
 };
 
+// Inbound update channel: parent posts mcpr_set_mock to update the
+// widget's tool data in place without reloading the iframe. Mutates the
+// underlying state and dispatches openai:set_globals so React widgets
+// can re-render. This is the canonical update path during both record
+// (re-execute) and replay (engine-driven mock changes).
+window.addEventListener('message', function(ev) {
+  if (!ev.data || ev.data.type !== 'mcpr_set_mock') return;
+  var m = ev.data.mock || {};
+  if ('toolInput' in m) __toolInput = m.toolInput;
+  if ('toolOutput' in m) __toolOutput = m.toolOutput;
+  if ('widgetState' in m) __widgetState = m.widgetState;
+  if ('_meta' in m) window.openai.toolResponseMetadata = m._meta;
+  window.dispatchEvent(new CustomEvent('openai:set_globals', { detail: m }));
+});
+
 // Intercept <a> link clicks and route through openExternal API
 document.addEventListener('click', function(e) {
   var target = e.target;

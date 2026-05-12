@@ -6,6 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { WidgetFrame } from "@/lib/core/views/widget-frame";
 import { createExtAppsMock } from "@/lib/studio/mock-claude";
 import { recorder } from "@/lib/recorder/bus";
+import { dbg } from "@/lib/recorder/debug";
 import RECORDER_BRIDGE_SOURCE from "@/widget-bridge/recorder-bridge.js?raw";
 
 /** SVG icons for chat chrome */
@@ -764,6 +765,14 @@ export function WidgetPreview() {
     (event: MessageEvent) => {
       const data = event.data;
       if (!data) return;
+      if (data.type === "__mcpr_debug" && Array.isArray(data.args)) {
+        // Iframe-side debug logs piped to the parent console. Gated on
+        // window.__mcprDebug — the bridge side won't even post these
+        // unless the flag is on, so this is a defense-in-depth no-op
+        // when the flag is off.
+        dbg("iframe", ...data.args);
+        return;
+      }
       if (data.type === "mcpr_resize" && data.height && iframeEl) {
         iframeEl.style.height = `${data.height}px`;
         return;
@@ -798,6 +807,16 @@ export function WidgetPreview() {
       }
       if (data.type === "mcpr_action") {
         logAction(data.method, data.args);
+        // callTool is already captured as mcp.request (source: "widget");
+        // emitting widget.intent for it would double-record. Every other
+        // legacy openai shim method is unique to this surface.
+        if (data.method && data.method !== "callTool") {
+          recorder.emit({
+            kind: "widget.intent",
+            name: String(data.method),
+            params: data.args ?? {},
+          });
+        }
         if (data.method === "openExternal" && data.args?.url) {
           window.open(data.args.url, "_blank", "noopener,noreferrer");
         }
