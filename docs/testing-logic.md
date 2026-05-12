@@ -112,7 +112,7 @@ isn't sent or a different prompt fires.
    calls `store.applyWidgetMock` which writes `currentMock`.
 3. **Iframe mounts once per widget URL.** `WidgetFrame` keeps `srcdoc`
    stable across mock-only updates; new mocks flow into the live
-   iframe via `postMessage({type: "mcpr_set_mock", mock})`. The injected
+   iframe via `postMessage({type: "studio_set_mock", mock})`. The injected
    `mock-openai` shim mutates `window.openai.toolInput / toolOutput /
    widgetState` in place and dispatches a `openai:set_globals`
    CustomEvent so the React widget can re-render without an iframe

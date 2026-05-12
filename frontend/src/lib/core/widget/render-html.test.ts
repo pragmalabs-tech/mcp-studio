@@ -24,7 +24,7 @@ describe("renderHtml - strict mode", () => {
       strict: true,
     });
     expect(out.html).toContain(`Content-Security-Policy`);
-    expect(out.html).toContain(`mcpr_sandbox_violation`);
+    expect(out.html).toContain(`studio_sandbox_violation`);
   });
 
   it("strict + claude injects CSP meta and sandbox trap (different profile)", () => {
@@ -35,7 +35,7 @@ describe("renderHtml - strict mode", () => {
       strict: true,
     });
     expect(out.html).toContain(`Content-Security-Policy`);
-    expect(out.html).toContain(`mcpr_sandbox_violation`);
+    expect(out.html).toContain(`studio_sandbox_violation`);
   });
 
   it("relaxed mode does NOT inject CSP meta or sandbox trap", () => {
@@ -46,7 +46,7 @@ describe("renderHtml - strict mode", () => {
       strict: false,
     });
     expect(out.html).not.toContain(`Content-Security-Policy`);
-    expect(out.html).not.toContain(`mcpr_sandbox_violation`);
+    expect(out.html).not.toContain(`studio_sandbox_violation`);
   });
 });
 

@@ -11,7 +11,7 @@ export interface ExtAppsMockOptions {
     args: Record<string, unknown>,
   ) => Promise<unknown>;
   onMessage?: (content: unknown) => void;
-  /** Host name shown in ui/initialize response (default: "mcpr-studio") */
+  /** Host name shown in ui/initialize response (default: "mcp-studio") */
   hostName?: string;
   /** Called when the widget sends ui/initialize — signals ext-apps protocol usage */
   onProtocolDetected?: () => void;
@@ -28,13 +28,13 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
     onAction,
     onToolCall,
     onMessage,
-    hostName = "mcpr-studio",
+    hostName = "mcp-studio",
     onProtocolDetected,
   } = opts;
   let currentMock = { ...mock };
   // Tracks whether `ui/initialize` (or `initialize`) round-tripped through
   // this host. The widget bridge JS has no reliable way to set its own flag
-  // (the SDK that would set `window.__mcprBridgeHandshakeOk` doesn't exist
+  // (the SDK that would set `window.__studioBridgeHandshakeOk` doesn't exist
   // in studio's mock environment), so the host is the source of truth.
   // Used to override the (always-false) `handshakeOk` in render.complete
   // forwards to the recorder bus.
@@ -348,6 +348,6 @@ export function createClaudeMock(
     onAction,
     onToolCall,
     onMessage,
-    hostName: "mcpr-studio",
+    hostName: "mcp-studio",
   });
 }

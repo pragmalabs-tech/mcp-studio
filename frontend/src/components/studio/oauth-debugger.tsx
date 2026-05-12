@@ -7,6 +7,7 @@ import {
   type ComplianceCheck,
   type DecodedToken,
 } from "@/lib/studio/oauth-debug";
+import { oauthStorageKey } from "@/lib/studio/oauth";
 
 // ── Sub-tab types ──
 
@@ -358,12 +359,11 @@ function PkcePanel() {
     return window.location.origin;
   });
 
+  const origin = new URL(baseUrl).origin;
   const verifier = localStorage.getItem(
-    `mcpr_oauth_${new URL(baseUrl).origin}_pkce_verifier`,
+    oauthStorageKey(origin, "pkce_verifier"),
   );
-  const state = localStorage.getItem(
-    `mcpr_oauth_${new URL(baseUrl).origin}_pkce_state`,
-  );
+  const state = localStorage.getItem(oauthStorageKey(origin, "pkce_state"));
 
   if (!verifier && !state) {
     return (

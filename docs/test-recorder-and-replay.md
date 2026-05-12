@@ -141,12 +141,12 @@ applyWidgetMock(name, mock)
    │                                  │ mock-openai script    │
    ├─ else (same widget):             │ defines window.openai │
    │    wait 2 RAFs (~32ms)           │ + listens for         │
-   │                                  │ mcpr_set_mock         │
+   │                                  │ studio_set_mock         │
    │                                  └───────────────────────┘
    │
    │   WidgetFrame useEffect[mock]
    ├─►  iframe.postMessage(
-   │      { type: "mcpr_set_mock", mock }
+   │      { type: "studio_set_mock", mock }
    │    )                            ──► mock-openai handler:
    │                                       __toolInput = mock.toolInput
    │                                       __toolOutput = mock.toolOutput
@@ -161,13 +161,13 @@ applyWidgetMock(name, mock)
    │   the effect fires before scripts ran.
 ```
 
-Bridge installs ONCE per iframe mount. The `__mcprRecorderInstalled`
+Bridge installs ONCE per iframe mount. The `__studioRecorderInstalled`
 flag prevents duplicate installs. The bridge stays alive across mock
 updates, so DOM event listeners and the message handler don't get
 wiped.
 
-Debug: set `window.__mcprDebug = true` in the iframe context (or top
-frame) to enable verbose `[mcpr]` / `[bridge]` logs. Bridge logs are
+Debug: set `window.__studioDebug = true` in the iframe context (or top
+frame) to enable verbose `[studio]` / `[bridge]` logs. Bridge logs are
 piped to the parent window so they show up regardless of console
 context filter. Off by default.
 

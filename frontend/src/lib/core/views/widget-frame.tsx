@@ -82,7 +82,7 @@ export function WidgetFrame(props: WidgetFrameProps) {
   useEffect(() => {
     const win = ref.current?.contentWindow;
     if (!win) return;
-    win.postMessage({ type: "mcpr_set_mock", mock }, "*");
+    win.postMessage({ type: "studio_set_mock", mock }, "*");
   }, [mock]);
 
   // After the iframe loads, also send the current mock. This covers the
@@ -94,7 +94,7 @@ export function WidgetFrame(props: WidgetFrameProps) {
   const handleIframeLoad = useCallback(() => {
     const win = ref.current?.contentWindow;
     if (!win) return;
-    win.postMessage({ type: "mcpr_set_mock", mock: mockRef.current }, "*");
+    win.postMessage({ type: "studio_set_mock", mock: mockRef.current }, "*");
   }, []);
 
   const sandbox = strict ? getProfile(platform).sandbox : RELAXED_SANDBOX;

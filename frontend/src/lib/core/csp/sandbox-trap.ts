@@ -24,7 +24,7 @@ export function buildSandboxTrap(): string {
     if (reported[key]) return;
     reported[key] = true;
     window.parent.postMessage({
-      type: 'mcpr_sandbox_violation',
+      type: 'studio_sandbox_violation',
       api: label,
       category: category,
       severity: severity || 'error',

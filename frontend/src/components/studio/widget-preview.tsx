@@ -744,7 +744,7 @@ export function WidgetPreview() {
       },
       onMessage: (content) =>
         addPendingMessage(platform === "openai" ? "openai" : "claude", content),
-      hostName: platform === "openai" ? "chatgpt" : "mcpr-studio",
+      hostName: platform === "openai" ? "chatgpt" : "mcp-studio",
       onProtocolDetected: () => setProtocolDetected("ext_apps"),
     });
     useStudioStore.setState({ _extAppsMock: mock });
@@ -765,19 +765,19 @@ export function WidgetPreview() {
     (event: MessageEvent) => {
       const data = event.data;
       if (!data) return;
-      if (data.type === "__mcpr_debug" && Array.isArray(data.args)) {
+      if (data.type === "__studio_debug" && Array.isArray(data.args)) {
         // Iframe-side debug logs piped to the parent console. Gated on
-        // window.__mcprDebug — the bridge side won't even post these
+        // window.__studioDebug - the bridge side won't even post these
         // unless the flag is on, so this is a defense-in-depth no-op
         // when the flag is off.
         dbg("iframe", ...data.args);
         return;
       }
-      if (data.type === "mcpr_resize" && data.height && iframeEl) {
+      if (data.type === "studio_resize" && data.height && iframeEl) {
         iframeEl.style.height = `${data.height}px`;
         return;
       }
-      if (data.type === "mcpr_sandbox_violation") {
+      if (data.type === "studio_sandbox_violation") {
         const categoryLabels: Record<string, string> = {
           storage: "sandbox (storage)",
           permission: "sandbox (permission)",
@@ -801,11 +801,11 @@ export function WidgetPreview() {
         });
         return;
       }
-      if (data.type === "mcpr_protocol_detect") {
+      if (data.type === "studio_protocol_detect") {
         setProtocolDetected(data.protocol);
         return;
       }
-      if (data.type === "mcpr_action") {
+      if (data.type === "studio_action") {
         logAction(data.method, data.args);
         // callTool is already captured as mcp.request (source: "widget");
         // emitting widget.intent for it would double-record. Every other
@@ -825,7 +825,7 @@ export function WidgetPreview() {
             .then((result) => {
               logAction("callTool:result", { name: data.args.name, result });
               iframeEl?.contentWindow?.postMessage(
-                { type: "mcpr_tool_result", callId: data.callId, result },
+                { type: "studio_tool_result", callId: data.callId, result },
                 "*",
               );
             })
@@ -836,7 +836,7 @@ export function WidgetPreview() {
               });
               iframeEl?.contentWindow?.postMessage(
                 {
-                  type: "mcpr_tool_result",
+                  type: "studio_tool_result",
                   callId: data.callId,
                   result: { error: (err as Error).message },
                 },

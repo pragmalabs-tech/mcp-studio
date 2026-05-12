@@ -2,7 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { StudioLayout } from "@/components/studio/studio-layout";
 import { useStudioStore } from "@/lib/studio/store";
-import { getBaseUrl, loadOAuthTokens } from "@/lib/studio/api";
+import {
+  getBaseUrl,
+  loadOAuthTokens,
+  studioKeyForOrigin,
+} from "@/lib/studio/api";
 import { decodeToken } from "@/lib/studio/oauth-debug";
 
 export const Route = createFileRoute("/")({
@@ -39,7 +43,7 @@ function StudioPage() {
     if (!proxyConnected) return;
 
     const proxyOrigin = new URL(getBaseUrl()).origin;
-    const tokenKey = `mcpr_studio:${proxyOrigin}:oauth_access_token`;
+    const tokenKey = studioKeyForOrigin(proxyOrigin, "oauth_access_token");
 
     const hydrate = () => {
       const saved = loadOAuthTokens();

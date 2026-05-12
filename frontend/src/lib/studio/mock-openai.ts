@@ -12,7 +12,7 @@ var __oaiDetected = {};
 function __oaiDetect(api) {
   if (!__oaiDetected[api]) {
     __oaiDetected[api] = true;
-    window.parent.postMessage({ type: 'mcpr_protocol_detect', protocol: 'legacy_openai', api: api }, '*');
+    window.parent.postMessage({ type: 'studio_protocol_detect', protocol: 'legacy_openai', api: api }, '*');
   }
 }
 
@@ -36,16 +36,16 @@ window.openai = {
 
   sendFollowUpMessage: function(opts) {
     __oaiDetect('sendFollowUpMessage');
-    window.parent.postMessage({ type: 'mcpr_action', method: 'sendFollowUpMessage', args: opts }, '*');
+    window.parent.postMessage({ type: 'studio_action', method: 'sendFollowUpMessage', args: opts }, '*');
     return Promise.resolve();
   },
   callTool: function(name, args) {
     __oaiDetect('callTool');
-    var callId = '__mcpr_call_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-    window.parent.postMessage({ type: 'mcpr_action', method: 'callTool', args: { name: name, arguments: args }, callId: callId }, '*');
+    var callId = '__studio_call_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    window.parent.postMessage({ type: 'studio_action', method: 'callTool', args: { name: name, arguments: args }, callId: callId }, '*');
     return new Promise(function(resolve) {
       function handler(event) {
-        if (event.data && event.data.type === 'mcpr_tool_result' && event.data.callId === callId) {
+        if (event.data && event.data.type === 'studio_tool_result' && event.data.callId === callId) {
           window.removeEventListener('message', handler);
           resolve(event.data.result);
         }
@@ -55,46 +55,46 @@ window.openai = {
   },
   setWidgetState: function(state) {
     __oaiDetect('setWidgetState');
-    window.parent.postMessage({ type: 'mcpr_action', method: 'setWidgetState', args: state }, '*');
+    window.parent.postMessage({ type: 'studio_action', method: 'setWidgetState', args: state }, '*');
   },
   openExternal: function(opts) {
-    window.parent.postMessage({ type: 'mcpr_action', method: 'openExternal', args: opts }, '*');
+    window.parent.postMessage({ type: 'studio_action', method: 'openExternal', args: opts }, '*');
     return Promise.resolve();
   },
   notifyIntrinsicHeight: function(h) {
-    window.parent.postMessage({ type: 'mcpr_resize', height: h }, '*');
+    window.parent.postMessage({ type: 'studio_resize', height: h }, '*');
   },
   requestDisplayMode: function() {
-    window.parent.postMessage({ type: 'mcpr_action', method: 'requestDisplayMode', args: Array.from(arguments) }, '*');
+    window.parent.postMessage({ type: 'studio_action', method: 'requestDisplayMode', args: Array.from(arguments) }, '*');
     return Promise.resolve();
   },
   requestClose: function() {
-    window.parent.postMessage({ type: 'mcpr_action', method: 'requestClose', args: {} }, '*');
+    window.parent.postMessage({ type: 'studio_action', method: 'requestClose', args: {} }, '*');
   },
   requestModal: function(opts) {
-    window.parent.postMessage({ type: 'mcpr_action', method: 'requestModal', args: opts }, '*');
+    window.parent.postMessage({ type: 'studio_action', method: 'requestModal', args: opts }, '*');
     return Promise.resolve();
   },
   uploadFile: function(file) {
-    window.parent.postMessage({ type: 'mcpr_action', method: 'uploadFile', args: { name: file.name, size: file.size } }, '*');
+    window.parent.postMessage({ type: 'studio_action', method: 'uploadFile', args: { name: file.name, size: file.size } }, '*');
     return Promise.resolve({ fileId: 'mock-file-' + Date.now() });
   },
   getFileDownloadUrl: function(opts) {
-    window.parent.postMessage({ type: 'mcpr_action', method: 'getFileDownloadUrl', args: opts }, '*');
+    window.parent.postMessage({ type: 'studio_action', method: 'getFileDownloadUrl', args: opts }, '*');
     return Promise.resolve({ url: 'https://example.com/mock-download' });
   },
   setOpenInAppUrl: function(opts) {
-    window.parent.postMessage({ type: 'mcpr_action', method: 'setOpenInAppUrl', args: opts }, '*');
+    window.parent.postMessage({ type: 'studio_action', method: 'setOpenInAppUrl', args: opts }, '*');
   }
 };
 
-// Inbound update channel: parent posts mcpr_set_mock to update the
+// Inbound update channel: parent posts studio_set_mock to update the
 // widget's tool data in place without reloading the iframe. Mutates the
 // underlying state and dispatches openai:set_globals so React widgets
 // can re-render. This is the canonical update path during both record
 // (re-execute) and replay (engine-driven mock changes).
 window.addEventListener('message', function(ev) {
-  if (!ev.data || ev.data.type !== 'mcpr_set_mock') return;
+  if (!ev.data || ev.data.type !== 'studio_set_mock') return;
   var m = ev.data.mock || {};
   if ('toolInput' in m) __toolInput = m.toolInput;
   if ('toolOutput' in m) __toolOutput = m.toolOutput;

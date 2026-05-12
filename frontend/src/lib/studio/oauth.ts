@@ -17,7 +17,14 @@ import {
 // ── Storage keys (per-origin) ──
 
 function storageKey(baseUrl: string, suffix: string): string {
-  return `mcpr_oauth_${new URL(baseUrl).origin}_${suffix}`;
+  return oauthStorageKey(new URL(baseUrl).origin, suffix);
+}
+
+/** Build an OAuth client storage key for a known origin. Exported so other
+ *  modules (e.g. the OAuth debugger) can use the same format without
+ *  duplicating the prefix as a raw literal. */
+export function oauthStorageKey(origin: string, suffix: string): string {
+  return `studio_oauth_${origin}_${suffix}`;
 }
 
 function store(baseUrl: string, key: string, value: string) {
@@ -140,7 +147,7 @@ export async function registerClient(
 ): Promise<{ clientId: string; clientSecret?: string } | null> {
   try {
     const body = JSON.stringify({
-      client_name: "mcpr-studio",
+      client_name: "mcp-studio",
       redirect_uris: [redirectUri],
       grant_types: ["authorization_code"],
       response_types: ["code"],

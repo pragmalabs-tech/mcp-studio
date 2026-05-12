@@ -35,13 +35,13 @@ versions correspond to release tags in git.
 - **Result modal: tested-methods + step count + capture time** in a
   subline under the trace title. Missing-step rows render with a red
   "MISSING" badge so step_missing failures are visible in the rail.
-- **Debug flag**: set `window.__mcprDebug = true` in DevTools to enable
-  `[mcpr]` / `[bridge]` traces. Iframe logs are piped to the parent so
+- **Debug flag**: set `window.__studioDebug = true` in DevTools to enable
+  `[studio]` / `[bridge]` traces. Iframe logs are piped to the parent so
   they appear regardless of console context filter. Off by default.
 
 ### Changed
 - **Widget iframe lifecycle.** Iframe mounts once per widget URL; mock
-  updates flow via `postMessage({type: "mcpr_set_mock", mock})`. The
+  updates flow via `postMessage({type: "studio_set_mock", mock})`. The
   injected mock-openai shim mutates `window.openai.toolOutput / toolInput
   / widgetState` in place and dispatches `openai:set_globals` so the
   widget re-renders without an iframe reload. Eliminates the
@@ -80,7 +80,7 @@ versions correspond to release tags in git.
 - **`recorder.suspend()` callers** — all gone. The bus retains the
   primitive but no caller invokes it outside the bus implementation.
 - The verbose chain logs (`step1/step2/step3/step5/host RX`) that
-  accumulated during debugging — replaced with the `__mcprDebug` flag.
+  accumulated during debugging - replaced with the `__studioDebug` flag.
 
 ## [0.2.0] – 2026-05-12
 

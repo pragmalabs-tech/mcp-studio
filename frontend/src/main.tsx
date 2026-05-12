@@ -2,7 +2,10 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
+import { migrateLegacyKeys } from "./lib/studio/storage-migration";
 import "./index.css";
+
+migrateLegacyKeys();
 
 const router = createRouter({ routeTree });
 

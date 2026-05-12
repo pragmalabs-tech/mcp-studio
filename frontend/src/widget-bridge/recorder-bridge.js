@@ -9,12 +9,12 @@
  * Posts BridgeMessage payloads (kind: "widget.dom.*") to window.parent.
  */
 (function install() {
-  // Debug helper gated on window.__mcprDebug. Off by default so the
+  // Debug helper gated on window.__studioDebug. Off by default so the
   // production console stays clean. Enable per-session in DevTools by
-  // setting `window.__mcprDebug = true` in the iframe context (the
+  // setting `window.__studioDebug = true` in the iframe context (the
   // logs are also piped to the parent window so they show up there).
   function dbg() {
-    if (!window.__mcprDebug) return;
+    if (!window.__studioDebug) return;
     var args = Array.prototype.slice.call(arguments);
     try {
       console.log.apply(console, args);
@@ -22,7 +22,7 @@
     try {
       window.parent.postMessage(
         {
-          type: "__mcpr_debug",
+          type: "__studio_debug",
           args: args.map(function (a) {
             if (a == null || typeof a !== "object") return a;
             try {
@@ -36,12 +36,12 @@
       );
     } catch (e) {}
   }
-  window.__mcprDbg = dbg;
-  if (window.__mcprRecorderInstalled) {
+  window.__studioDbg = dbg;
+  if (window.__studioRecorderInstalled) {
     dbg("[bridge] already installed");
     return;
   }
-  window.__mcprRecorderInstalled = true;
+  window.__studioRecorderInstalled = true;
   dbg("[bridge] install", new Date().toISOString());
 
   var TEXT_BEARING = {
@@ -302,9 +302,9 @@
 
   // ── Inbound replay channel + render lifecycle ────────────────────────────
 
-  window.__mcprBridgeErrors = 0;
+  window.__studioBridgeErrors = 0;
   window.addEventListener("error", function () {
-    window.__mcprBridgeErrors++;
+    window.__studioBridgeErrors++;
   });
 
   function findByText(root, tag, value) {
@@ -511,7 +511,7 @@
       // is real.
       resolveWithRetry(m.action && m.action.selectors, 500, function (el) {
         if (!el) {
-          window.__mcprDbg(
+          window.__studioDbg(
             "[bridge] selector miss",
             JSON.stringify(m.action.selectors),
           );
@@ -522,7 +522,7 @@
           try {
             dispatchSynthetic(el, m.action);
           } catch (err) {
-            window.__mcprDbg("[bridge] dispatch threw", String(err));
+            window.__studioDbg("[bridge] dispatch threw", String(err));
             ack(m.id, {
               ok: false,
               reason: "dispatch-error: " + (err && err.message),
@@ -596,7 +596,7 @@
         post({
           op: "render.complete",
           bodyChars: document.body ? document.body.innerHTML.length : 0,
-          hasRuntimeErrors: (window.__mcprBridgeErrors || 0) > 0,
+          hasRuntimeErrors: (window.__studioBridgeErrors || 0) > 0,
           handshakeOk: false,
           renderDurationMs: nowFn - bootStart,
         });

@@ -1,8 +1,8 @@
 /**
- * Studio API — communicates exclusively with the MCP proxy.
+ * Studio API - communicates exclusively with the MCP proxy.
  *
  * All state (auth tokens, session, custom headers) is scoped per proxy URL
- * and stored under the "mcpr_studio:" localStorage prefix to avoid collision
+ * and stored under the "studio:" localStorage prefix to avoid collision
  * with mcpr-cloud's own auth (cookie-based JWT).
  */
 
@@ -74,18 +74,25 @@ export function isRemoteProxy(): boolean {
   );
 }
 
-/** Scoped localStorage key: "mcpr_studio:{proxyOrigin}:{suffix}" */
-function studioKey(suffix: string): string {
+/** Scoped localStorage key: "studio:{proxyOrigin}:{suffix}" */
+export function studioKey(suffix: string): string {
   const raw = getBaseUrl();
   let origin: string;
   try {
     origin = new URL(raw).origin;
   } catch {
-    // Invalid URL (bad port, malformed, etc.) — keep keys namespaced by the
+    // Invalid URL (bad port, malformed, etc.) - keep keys namespaced by the
     // raw string so we don't leak across servers, but avoid crashing render.
     origin = `invalid:${raw}`;
   }
-  return `mcpr_studio:${origin}:${suffix}`;
+  return studioKeyForOrigin(origin, suffix);
+}
+
+/** Build the studio-scoped key for a known origin. Exported so the OAuth
+ *  callback path (which doesn't have a `getBaseUrl()` context) can reuse
+ *  the same format. */
+export function studioKeyForOrigin(origin: string, suffix: string): string {
+  return `studio:${origin}:${suffix}`;
 }
 
 // ── Auth (scoped per proxy) ──
@@ -240,7 +247,7 @@ export function clearPKCEState() {
 // Uses a global prefix (not proxy-scoped) because the callback page
 // has no ?proxy= param and only one redirect flow can be in-flight.
 
-const PENDING_PREFIX = "mcpr_studio:pending_oauth:";
+const PENDING_PREFIX = "studio:pending_oauth:";
 
 export function saveOAuthFlowState(params: {
   tokenEndpoint: string;
@@ -295,7 +302,7 @@ export function saveOAuthTokensForProxy(
   clientId: string,
 ) {
   const origin = new URL(proxyUrl).origin;
-  const key = (suffix: string) => `mcpr_studio:${origin}:${suffix}`;
+  const key = (suffix: string) => studioKeyForOrigin(origin, suffix);
   localStorage.setItem(key("oauth_access_token"), tokens.access_token);
   localStorage.setItem(key("oauth_token_type"), tokens.token_type);
   localStorage.setItem(key("oauth_client_id"), clientId);
@@ -415,7 +422,7 @@ async function doHandshake(): Promise<string> {
   const resp = await rawMcpPost("initialize", {
     protocolVersion: "2025-03-26",
     capabilities: {},
-    clientInfo: { name: "mcpr-studio", version: "1.0.0" },
+    clientInfo: { name: "mcp-studio", version: "1.0.0" },
   });
 
   const data = await parseResponse(resp);

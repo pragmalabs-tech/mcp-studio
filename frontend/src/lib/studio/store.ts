@@ -370,7 +370,7 @@ function formatTimestamp(): string {
   );
 }
 
-const PROFILE_AUTH_MIGRATION_FLAG = "mcpr_studio:profile_auth_migrated_v1";
+const PROFILE_AUTH_MIGRATION_FLAG = "studio:profile_auth_migrated_v1";
 
 /**
  * Push a profile's auth into the localStorage origin-scoped cache that
