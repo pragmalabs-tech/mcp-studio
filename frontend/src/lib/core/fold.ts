@@ -26,8 +26,7 @@ export function foldTrace(trace: Trace): Trace {
     trace.steps.map((s) => s.action),
   );
   const steps: Step[] = trace.steps.map((s, i) => ({
-    relMs: s.relMs,
-    action: s.action,
+    ...s,
     stateAfter: states[i],
   }));
   return { ...trace, steps };

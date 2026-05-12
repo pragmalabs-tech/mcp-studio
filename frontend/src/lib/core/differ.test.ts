@@ -363,3 +363,117 @@ describe("diff", () => {
     ]);
   });
 });
+
+describe("diff shape mode", () => {
+  function shapeTrace(states: State[]): Trace {
+    const t = trace(states);
+    return {
+      ...t,
+      steps: t.steps.map((s) => ({ ...s, compare: "shape" as const })),
+    };
+  }
+
+  it("suppresses leaf value differences", () => {
+    const exp = makeState({
+      tools: { w: { callCount: 1, lastResult: { id: "a", n: 1 } } },
+    });
+    const act = makeState({
+      tools: { w: { callCount: 1, lastResult: { id: "b", n: 2 } } },
+    });
+    const verdict = diff(shapeTrace([exp]), trace([act]), NO_RULES);
+    expect(verdict.ok).toBe(true);
+    expect(verdict.drifts).toEqual([]);
+  });
+
+  it("suppresses array length differences", () => {
+    const exp = makeState({
+      tools: {
+        w: {
+          callCount: 1,
+          lastResult: { items: [{ id: "a" }] },
+        },
+      },
+    });
+    const act = makeState({
+      tools: {
+        w: {
+          callCount: 1,
+          lastResult: { items: [{ id: "x" }, { id: "y" }, { id: "z" }] },
+        },
+      },
+    });
+    const verdict = diff(shapeTrace([exp]), trace([act]), NO_RULES);
+    expect(verdict.ok).toBe(true);
+    expect(verdict.drifts).toEqual([]);
+  });
+
+  it("still emits type_differs when JSON type changes", () => {
+    const exp = makeState({
+      tools: { w: { callCount: 1, lastResult: { temp: 22 } } },
+    });
+    const act = makeState({
+      tools: {
+        w: {
+          callCount: 1,
+          lastResult: { temp: "warm" as unknown as number },
+        },
+      },
+    });
+    const verdict = diff(shapeTrace([exp]), trace([act]), NO_RULES);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.drifts[0]).toMatchObject({
+      path: "tools.w.lastResult.temp",
+      reason: "type_differs",
+    });
+  });
+
+  it("still emits missing for dropped object keys", () => {
+    const exp = makeState({
+      tools: { w: { callCount: 1, lastResult: { id: "a", temp: 22 } } },
+    });
+    const act = makeState({
+      tools: { w: { callCount: 1, lastResult: { id: "a" } } },
+    });
+    const verdict = diff(shapeTrace([exp]), trace([act]), NO_RULES);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.drifts[0]).toMatchObject({
+      path: "tools.w.lastResult.temp",
+      reason: "missing",
+    });
+  });
+
+  it("suppresses extra object keys (forward-compatible)", () => {
+    const exp = makeState({
+      tools: { w: { callCount: 1, lastResult: { id: "a" } } },
+    });
+    const act = makeState({
+      tools: {
+        w: { callCount: 1, lastResult: { id: "a", newField: "added" } },
+      },
+    });
+    const verdict = diff(shapeTrace([exp]), trace([act]), NO_RULES);
+    expect(verdict.ok).toBe(true);
+    expect(verdict.drifts).toEqual([]);
+  });
+
+  it("only the step with compare:shape switches mode", () => {
+    // Step 0 is shape-only, step 1 is exact. Both have value drifts.
+    // Step 1 uses fresh primitive values so the identity short-circuit
+    // doesn't suppress its drift.
+    const recorded = trace([
+      makeState({ tools: { w: { callCount: 1, lastResult: { v: 1 } } } }),
+      makeState({ tools: { w: { callCount: 2, lastResult: { v: 2 } } } }),
+    ]);
+    recorded.steps[0] = { ...recorded.steps[0], compare: "shape" };
+    const replayed = trace([
+      makeState({ tools: { w: { callCount: 1, lastResult: { v: 99 } } } }),
+      makeState({ tools: { w: { callCount: 2, lastResult: { v: 100 } } } }),
+    ]);
+    const verdict = diff(recorded, replayed, NO_RULES);
+    // Step 0 shape-mode: no drift. Step 1 exact-mode: lastResult.v drifts.
+    const surfaced = verdict.drifts.filter((d) => !d.suppressedBy);
+    expect(surfaced.map((x) => [x.stepIndex, x.path])).toEqual([
+      [1, "tools.w.lastResult.v"],
+    ]);
+  });
+});

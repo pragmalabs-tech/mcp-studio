@@ -25,7 +25,13 @@ interface Props {
   showIgnored: boolean;
   onIgnorePath?: (path: string) => void;
   onMatchPath?: (path: string, matcher: Matcher) => void;
+  /** Current compare mode for this step (read from the recorded trace). */
+  compareMode?: "exact" | "shape";
+  /** Switch this step's compare strategy. Caller persists + re-diffs. */
+  onCompareChange?: (mode: "exact" | "shape") => void | Promise<void>;
 }
+
+const SHAPE_BANNER_THRESHOLD = 5;
 
 export function StepDetail({
   steps,
@@ -35,6 +41,8 @@ export function StepDetail({
   showIgnored,
   onIgnorePath,
   onMatchPath,
+  compareMode = "exact",
+  onCompareChange,
 }: Props) {
   const widget = useMemo(
     () => findActiveWidget(steps, selectedStepIdx),
@@ -65,8 +73,15 @@ export function StepDetail({
   const showDrifts = visibleDrifts.length > 0;
   const showJson = !!jsonView;
   const showWidget = !!widget;
+  const failDriftCount = visibleDrifts.filter(
+    (d) => d.severity === "fail" && !d.suppressedBy,
+  ).length;
+  const showShapeBanner =
+    onCompareChange &&
+    compareMode === "exact" &&
+    failDriftCount >= SHAPE_BANNER_THRESHOLD;
 
-  if (!showDrifts && !showJson && !showWidget) {
+  if (!showDrifts && !showJson && !showWidget && !onCompareChange) {
     return (
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="text-xs font-mono text-muted-foreground italic">
@@ -88,7 +103,25 @@ export function StepDetail({
                   ? `${drifts.length - visibleDrifts.length} ignored`
                   : undefined
               }
+              compareMode={onCompareChange ? compareMode : undefined}
+              onCompareChange={onCompareChange}
             />
+            {showShapeBanner && (
+              <div className="mx-3 mt-3 rounded-md border border-yellow-400/40 bg-yellow-400/10 px-3 py-2 flex items-center gap-3">
+                <span className="text-[11px] text-yellow-200/90 flex-1">
+                  {failDriftCount} value drifts on this step. If the response
+                  content varies across envs, switch to shape-only to assert
+                  structure instead of values.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onCompareChange?.("shape")}
+                  className="text-[11px] px-2 py-0.5 rounded border border-yellow-400/60 text-yellow-100 hover:bg-yellow-400/20 transition-colors shrink-0"
+                >
+                  Switch to shape-only
+                </button>
+              </div>
+            )}
             <div className="p-3 space-y-2">
               {visibleDrifts.map((drift, i) => (
                 <DriftCard
@@ -141,15 +174,42 @@ export function StepDetail({
   );
 }
 
-function SectionHeader({ title, right }: { title: string; right?: string }) {
+function SectionHeader({
+  title,
+  right,
+  compareMode,
+  onCompareChange,
+}: {
+  title: string;
+  right?: string;
+  compareMode?: "exact" | "shape";
+  onCompareChange?: (mode: "exact" | "shape") => void | Promise<void>;
+}) {
   return (
     <div className="px-4 py-2 border-b bg-muted/20 text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 truncate flex items-center justify-between gap-2">
       <span className="truncate">{title}</span>
-      {right && (
-        <span className="text-muted-foreground/60 normal-case tracking-normal">
-          {right}
-        </span>
-      )}
+      <div className="flex items-center gap-3 shrink-0">
+        {right && (
+          <span className="text-muted-foreground/60 normal-case tracking-normal">
+            {right}
+          </span>
+        )}
+        {onCompareChange && compareMode && (
+          <label className="flex items-center gap-1 normal-case tracking-normal">
+            <span className="text-muted-foreground/60">Compare:</span>
+            <select
+              value={compareMode}
+              onChange={(e) =>
+                onCompareChange(e.target.value as "exact" | "shape")
+              }
+              className="bg-transparent border border-border/60 rounded px-1 py-0.5 text-[10px] text-foreground"
+            >
+              <option value="exact">Exact</option>
+              <option value="shape">Shape only</option>
+            </select>
+          </label>
+        )}
+      </div>
     </div>
   );
 }

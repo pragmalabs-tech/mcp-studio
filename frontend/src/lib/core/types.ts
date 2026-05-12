@@ -176,6 +176,11 @@ export interface Step {
   relMs: number;
   action: Action;
   stateAfter: State;
+  /** Comparison strategy for this step's stateAfter when running the
+   *  differ. Defaults to "exact". "shape" checks JSON shape/types only,
+   *  allowing leaf values and array lengths to differ. Use for tool
+   *  responses with content that legitimately varies across envs. */
+  compare?: "exact" | "shape";
 }
 
 export interface Trace {

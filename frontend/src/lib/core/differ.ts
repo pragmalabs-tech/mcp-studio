@@ -57,6 +57,7 @@ export function diff(
       i === 0 ? recorded.initialState : recorded.steps[i - 1].stateAfter;
     const prevRep =
       i === 0 ? replayed.initialState : replayed.steps[i - 1].stateAfter;
+    const mode: CompareMode = rec.compare ?? "exact";
     walk(
       rec.stateAfter,
       rep.stateAfter,
@@ -65,6 +66,7 @@ export function diff(
       "",
       i,
       rules,
+      mode,
       drifts,
     );
   }
@@ -79,6 +81,8 @@ function isSurfacedOk(drift: Drift): boolean {
   return drift.severity !== "fail" || drift.suppressedBy !== undefined;
 }
 
+type CompareMode = "exact" | "shape";
+
 function walk(
   exp: unknown,
   act: unknown,
@@ -87,6 +91,7 @@ function walk(
   path: string,
   stepIndex: number,
   rules: ResolvedRules,
+  mode: CompareMode,
   out: Drift[],
 ): void {
   // Identity short-circuit: this cell didn't move on either side since
@@ -99,6 +104,9 @@ function walk(
   }
   if (exp === null || typeof exp !== "object") {
     if (exp !== act) {
+      // Shape mode: same JSON type at this leaf is the whole contract.
+      // Skip emitting value_differs. Match rules also become moot here.
+      if (mode === "shape") return;
       // Leaf: try match first (shape check; pass → warn+suppressedBy,
       // fail → red drift); then fall through to ignore + classifier.
       const matchEntry = findMatch(path, rules.match);
@@ -128,7 +136,12 @@ function walk(
     const b = act as unknown[];
     const pa = Array.isArray(prevExp) ? (prevExp as unknown[]) : [];
     const pb = Array.isArray(prevAct) ? (prevAct as unknown[]) : [];
-    const len = Math.max(a.length, b.length);
+    // Shape mode walks the common prefix only; differing list length is
+    // expected for volatile collections (activities, search results).
+    const len =
+      mode === "shape"
+        ? Math.min(a.length, b.length)
+        : Math.max(a.length, b.length);
     for (let i = 0; i < len; i++) {
       const cp = `${path}[${i}]`;
       if (i >= a.length) {
@@ -138,7 +151,7 @@ function walk(
           applyRules(d(stepIndex, cp, a[i], undefined, "missing"), rules),
         );
       } else {
-        walk(a[i], b[i], pa[i], pb[i], cp, stepIndex, rules, out);
+        walk(a[i], b[i], pa[i], pb[i], cp, stepIndex, rules, mode, out);
       }
     }
     return;
@@ -157,9 +170,12 @@ function walk(
         applyRules(d(stepIndex, cp, eo[k], undefined, "missing"), rules),
       );
     } else if (!inE) {
+      // Shape mode is forward-compatible: server adding a new field is
+      // not a contract break. Suppress extra keys.
+      if (mode === "shape") continue;
       out.push(applyRules(d(stepIndex, cp, undefined, ao[k], "extra"), rules));
     } else {
-      walk(eo[k], ao[k], peo[k], pao[k], cp, stepIndex, rules, out);
+      walk(eo[k], ao[k], peo[k], pao[k], cp, stepIndex, rules, mode, out);
     }
   }
 }

@@ -8,6 +8,7 @@ import {
   History as HistoryIcon,
   Loader2,
   Play,
+  Settings,
   StepForward,
   Tag as TagIcon,
   Trash2,
@@ -41,8 +42,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { TagInput } from "@/components/ui/tag-input";
+import { RulesEditor } from "@/components/studio/rules-editor";
 import { listTests, getTrace, deleteTest, saveTrace } from "@/lib/tests/api";
 import { collectTags, normalizeTags } from "@/lib/tests/tags";
+import {
+  actionExpectation,
+  actionLabel,
+  actionSummary,
+} from "@/lib/core/action-format";
 import type { TestSummary } from "@/lib/recorder/schema";
 import { useStudioStore } from "@/lib/studio/store";
 import { run as runEngine } from "@/lib/core/engine";
@@ -137,22 +144,40 @@ function ActionList({
   }
   return (
     <div className="py-1">
-      {visible.map((step, i) => (
-        <div
-          key={i}
-          className="px-4 py-1 text-[11px] font-mono flex items-center gap-2"
-        >
-          <span className="text-muted-foreground/60 w-8 shrink-0 text-right">
-            {i + 1}
-          </span>
-          <span className="text-foreground w-40 shrink-0 font-semibold truncate">
-            {step.action.driver}.{step.action.kind}
-          </span>
-          <span className="text-muted-foreground truncate flex-1">
-            {step.action.source}
-          </span>
-        </div>
-      ))}
+      {visible.map((step, i) => {
+        const summary = actionSummary(step.action);
+        const expects = actionExpectation(step.action);
+        return (
+          <div
+            key={i}
+            className="px-4 py-1.5 text-[11px] font-mono flex items-start gap-2"
+          >
+            <span className="text-muted-foreground/60 w-8 shrink-0 text-right pt-0.5">
+              {i + 1}
+            </span>
+            <span className="text-foreground w-40 shrink-0 font-semibold truncate pt-0.5">
+              {actionLabel(step.action)}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-muted-foreground truncate">
+                {summary || (
+                  <span className="italic opacity-60">(no detail)</span>
+                )}
+              </div>
+              {expects && (
+                <div className="text-muted-foreground/60 truncate text-[10px] mt-0.5">
+                  {expects}
+                </div>
+              )}
+            </div>
+            {step.compare === "shape" && (
+              <span className="text-[9px] uppercase tracking-wider px-1 py-0 rounded bg-yellow-400/15 text-yellow-200 shrink-0 mt-0.5">
+                shape
+              </span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -277,6 +302,79 @@ function EditTagsDialog({
   );
 }
 
+function ViewRulesDialog({
+  test,
+  onClose,
+}: {
+  test: TestSummary;
+  onClose: () => void;
+}) {
+  const [trace, setTrace] = useState<Trace | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getTrace(test.name)
+      .then((t) => {
+        if (!cancelled) setTrace(t);
+      })
+      .catch((e) => {
+        if (!cancelled) setLoadError((e as Error).message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [test.name]);
+
+  async function handleRulesChange(nextRules: TraceRules) {
+    if (!trace) return;
+    const next: Trace = { ...trace, rules: nextRules };
+    setTrace(next);
+    setSaving(true);
+    try {
+      await saveTrace(test.name, next);
+    } catch (e) {
+      setLoadError(`Failed to save rules: ${(e as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={true} onOpenChange={(v) => !v && !saving && onClose()}>
+      <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Rules · {test.displayName ?? test.name}</DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 min-h-0 overflow-y-auto -mx-6">
+          {loadError && (
+            <p className="text-xs text-destructive font-mono px-6 py-2">
+              {loadError}
+            </p>
+          )}
+          {!trace && !loadError && (
+            <p className="text-xs text-muted-foreground italic px-6 py-4">
+              Loading rules…
+            </p>
+          )}
+          {trace && <RulesEditor trace={trace} onChange={handleRulesChange} />}
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onClose}
+            disabled={saving}
+          >
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function TestsPage({ open, onOpenChange }: Props) {
   const [tests, setTests] = useState<TestSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -307,6 +405,9 @@ export function TestsPage({ open, onOpenChange }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
   const [editingTagsFor, setEditingTagsFor] = useState<TestSummary | null>(
+    null,
+  );
+  const [viewingRulesFor, setViewingRulesFor] = useState<TestSummary | null>(
     null,
   );
 
@@ -483,6 +584,43 @@ export function TestsPage({ open, onOpenChange }: Props) {
         await saveTrace(testFsName, nextRecorded);
       } catch (e) {
         setError(`Failed to persist rules: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  /** Set the compare strategy for one step on the recorded trace,
+   *  re-run the differ against the existing replay, and persist. */
+  async function handleCompareChange(
+    stepIndex: number,
+    mode: "exact" | "shape",
+  ) {
+    if (!resultData) return;
+    const { testFsName, recorded, replayed } = resultData;
+    const nextSteps = recorded.steps.map((s, i) =>
+      i === stepIndex
+        ? { ...s, compare: mode === "exact" ? undefined : mode }
+        : s,
+    );
+    const nextRecorded: Trace = { ...recorded, steps: nextSteps };
+    const nextVerdict = diff(
+      nextRecorded,
+      replayed,
+      resolveRules(nextRecorded),
+    );
+    setResultData({
+      testFsName,
+      recorded: nextRecorded,
+      replayed,
+      verdict: nextVerdict,
+    });
+    if (testFsName) {
+      try {
+        await saveTrace(testFsName, nextRecorded);
+        setLoadedTests((prev) =>
+          testFsName in prev ? { ...prev, [testFsName]: nextRecorded } : prev,
+        );
+      } catch (e) {
+        setError(`Failed to persist compare mode: ${(e as Error).message}`);
       }
     }
   }
@@ -786,6 +924,15 @@ export function TestsPage({ open, onOpenChange }: Props) {
                           <Button
                             variant="ghost"
                             size="icon-sm"
+                            onClick={() => setViewingRulesFor(t)}
+                            disabled={busyName === t.name}
+                            title="View assertion rules"
+                          >
+                            <Settings className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
                             onClick={() => requestDelete(t)}
                             disabled={busyName === t.name}
                             title="Delete"
@@ -877,6 +1024,7 @@ export function TestsPage({ open, onOpenChange }: Props) {
           if (!v) setResultData(null);
         }}
         onRulesChange={handleRulesChange}
+        onCompareChange={handleCompareChange}
       />
       {editingTagsFor && (
         <EditTagsDialog
@@ -892,6 +1040,12 @@ export function TestsPage({ open, onOpenChange }: Props) {
               ),
             );
           }}
+        />
+      )}
+      {viewingRulesFor && (
+        <ViewRulesDialog
+          test={viewingRulesFor}
+          onClose={() => setViewingRulesFor(null)}
         />
       )}
     </Dialog>

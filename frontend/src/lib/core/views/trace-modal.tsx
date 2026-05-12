@@ -25,7 +25,6 @@ import {
 import { Dialog, DialogOverlay, DialogPortal } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import type {
-  Action,
   Drift,
   Matcher,
   State,
@@ -35,6 +34,7 @@ import type {
   Verdict,
 } from "../types";
 import { addIgnore, setMatch } from "../rules";
+import { actionLabel, actionSummary, primaryMethods } from "../action-format";
 import { RulesEditor } from "@/components/studio/rules-editor";
 import { ContentDialog } from "./content-dialog";
 import { TracePlayer, type PlayerSpeed } from "./trace-player";
@@ -50,6 +50,13 @@ interface Props {
   /** Persist a new rule set on the recorded trace and re-diff. Receives
    *  the new TraceRules; caller handles persistence + verdict refresh. */
   onRulesChange?(rules: TraceRules): void | Promise<void>;
+  /** Set the per-step compare strategy on the recorded trace and re-diff.
+   *  Receives the step index and the new mode. Caller handles
+   *  persistence + verdict refresh. */
+  onCompareChange?(
+    stepIndex: number,
+    mode: "exact" | "shape",
+  ): void | Promise<void>;
 }
 
 type StepSeverity = "fail" | "warn" | "ok";
@@ -66,6 +73,7 @@ export function TraceModal({
   open,
   onOpenChange,
   onRulesChange,
+  onCompareChange,
 }: Props) {
   if (!recorded || !replayed || !verdict) return null;
 
@@ -181,11 +189,14 @@ export function TraceModal({
           className="fixed top-[2vh] left-1/2 -translate-x-1/2 z-50 h-[96vh] w-[96vw] bg-popover text-sm border rounded-lg shadow-2xl flex flex-col"
         >
           <header className="flex items-center justify-between px-4 py-3 border-b shrink-0">
-            <DialogPrimitive.Title className="text-sm font-medium flex items-center gap-2">
-              <span>{recorded.name}</span>
-              <VerdictBadge ok={verdict.ok} />
-              <CountsLine counts={counts} />
-            </DialogPrimitive.Title>
+            <div className="min-w-0 flex-1">
+              <DialogPrimitive.Title className="text-sm font-medium flex items-center gap-2">
+                <span>{recorded.name}</span>
+                <VerdictBadge ok={verdict.ok} />
+                <CountsLine counts={counts} />
+              </DialogPrimitive.Title>
+              <TraceMeta trace={recorded} />
+            </div>
             <div className="flex items-center gap-2">
               {counts.ignored > 0 && (
                 <Button
@@ -286,12 +297,48 @@ export function TraceModal({
                 showIgnored={showIgnored}
                 onIgnorePath={ignorePath}
                 onMatchPath={matchPath}
+                compareMode={recorded.steps[selectedIdx]?.compare ?? "exact"}
+                onCompareChange={
+                  onCompareChange
+                    ? (mode) => onCompareChange(selectedIdx, mode)
+                    : undefined
+                }
               />
             )}
           </div>
         </DialogPrimitive.Popup>
       </DialogPortal>
     </Dialog>
+  );
+}
+
+function TraceMeta({ trace }: { trace: Trace }) {
+  const methods = primaryMethods(trace);
+  const captured = useMemo(() => {
+    try {
+      return new Date(trace.capturedAt).toLocaleString();
+    } catch {
+      return trace.capturedAt;
+    }
+  }, [trace.capturedAt]);
+  const stepCount = trace.steps.length;
+  if (methods.length === 0 && stepCount === 0) return null;
+  return (
+    <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
+      {methods.length > 0 && (
+        <span>
+          tests{" "}
+          <span className="font-mono text-foreground/80">
+            {methods.join(", ")}
+          </span>
+          {" · "}
+        </span>
+      )}
+      <span>
+        {stepCount} step{stepCount === 1 ? "" : "s"}
+      </span>
+      <span> · captured {captured}</span>
+    </div>
   );
 }
 
@@ -577,35 +624,4 @@ function filterPlayerDrifts(
       !d.suppressedBy ||
       !d.suppressedBy.layer.endsWith(".ignore"),
   );
-}
-
-function actionLabel(a: Action): string {
-  return `${a.driver}.${a.kind}`;
-}
-
-function actionSummary(a: Action): string {
-  if (a.driver === "studio" && a.kind === "select") {
-    return a.payload.selection?.name ?? "(cleared)";
-  }
-  if (a.driver === "mcp" && a.kind === "request") {
-    const name = (a.payload.params as { name?: unknown } | null)?.name;
-    return typeof name === "string"
-      ? `${a.payload.method} ${name}`
-      : a.payload.method;
-  }
-  if (a.driver === "mcp" && a.kind === "response") {
-    return a.payload.error ? `error: ${a.payload.error.message}` : "ok";
-  }
-  if (a.driver === "widget" && a.kind === "opened") {
-    return a.payload.uri;
-  }
-  if (a.driver === "widget" && a.kind.startsWith("dom.")) {
-    const sel = (
-      a.payload as {
-        selectors?: { testid?: string; aria?: { label?: string } };
-      }
-    ).selectors;
-    return sel?.testid ?? sel?.aria?.label ?? "(selector)";
-  }
-  return "";
 }

@@ -99,4 +99,23 @@ describe("fold", () => {
     const twice = foldTrace(once);
     expect(twice.steps[0].stateAfter).toEqual(once.steps[0].stateAfter);
   });
+
+  it("foldTrace__preserves_extra_step_fields_like_compare_mode", () => {
+    const trace = makeTrace({
+      steps: [
+        {
+          action: mcpAction("response", {
+            requestId: 1,
+            tool: "weather",
+            durationMs: 5,
+            result: { temp: 22 },
+          }),
+          stateAfter: emptyState(),
+        },
+      ],
+    });
+    trace.steps[0] = { ...trace.steps[0], compare: "shape" };
+    const folded = foldTrace(trace);
+    expect(folded.steps[0].compare).toBe("shape");
+  });
 });
