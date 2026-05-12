@@ -25,6 +25,17 @@ export interface EngineDeps {
   /** Override the driver list. Default: registry's `DRIVERS`. Tests
    *  pass fakes; production passes the registered drivers. */
   drivers?: readonly Driver[];
+  /** Called before each step's dispatch / await begins. `index` is the
+   *  position in `trace.steps`; `total` is `trace.steps.length`. */
+  onStepStart?: (index: number, action: Action, total: number) => void;
+  /** Called after the engine pushes a produced step into the replay
+   *  timeline. `step` is the replay step (may differ from the recorded
+   *  one). Not called for skipped/missing steps. */
+  onStepDone?: (index: number, step: Step) => void;
+  /** Optional gate awaited before each step's dispatch / await. The UI's
+   *  step-by-step mode uses it to pause until the user clicks Next.
+   *  Resolve to continue; signal abort to break the loop. */
+  beforeStep?: (index: number, action: Action) => Promise<void>;
 }
 
 export async function run(trace: Trace, deps: EngineDeps): Promise<Trace> {
@@ -40,8 +51,18 @@ export async function run(trace: Trace, deps: EngineDeps): Promise<Trace> {
   const steps: Step[] = [];
 
   try {
-    for (const expected of trace.steps) {
+    for (let i = 0; i < trace.steps.length; i++) {
       if (deps.signal.aborted) break;
+      const expected = trace.steps[i];
+      deps.onStepStart?.(i, expected.action, trace.steps.length);
+      if (deps.beforeStep) {
+        try {
+          await deps.beforeStep(i, expected.action);
+        } catch {
+          break;
+        }
+        if (deps.signal.aborted) break;
+      }
 
       if (
         expected.action.source === "user" ||
@@ -51,40 +72,45 @@ export async function run(trace: Trace, deps: EngineDeps): Promise<Trace> {
         while (ambient.length > 0) {
           const a = ambient.shift()!;
           state = applyAction(state, a);
-          steps.push({
+          const drained: Step = {
             relMs: performance.now() - t0,
             action: a,
             stateAfter: state,
-          });
+          };
+          steps.push(drained);
         }
         await driverFor(expected.action)?.dispatch?.(expected.action, ctx);
         state = applyAction(state, expected.action);
-        steps.push({
+        const pushed: Step = {
           relMs: performance.now() - t0,
           action: expected.action,
           stateAfter: state,
-        });
+        };
+        steps.push(pushed);
+        deps.onStepDone?.(i, pushed);
         continue;
       }
 
       // widget/server: await ambient arrival or timeout. Match by
       // (driver, kind) so leftover ambient entries don't get consumed
-      // in place of the expected step. 4s default — covers React
-      // commit + iframe postMessage RTT + widget intent emission.
+      // in place of the expected step. 2s default — typical RTT for
+      // React commit + postMessage + intent emission is <50ms.
       const matched = await waitForKind(
         ambient,
         expected.action.driver,
         expected.action.kind,
-        deps.awaitMs ?? 4000,
+        deps.awaitMs ?? 2000,
         deps.signal,
       );
       if (matched) {
         state = applyAction(state, matched);
-        steps.push({
+        const pushed: Step = {
           relMs: performance.now() - t0,
           action: matched,
           stateAfter: state,
-        });
+        };
+        steps.push(pushed);
+        deps.onStepDone?.(i, pushed);
       }
       // No match: leave a gap; the differ will surface step_missing.
     }

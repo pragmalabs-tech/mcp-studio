@@ -512,16 +512,24 @@ export function TestsPage({ open, onOpenChange }: Props) {
   async function startRun(
     recorded: Trace,
     testFsName: string,
-    _mode: "auto" | "step" = "auto",
+    mode: "auto" | "step" = "auto",
   ) {
     onOpenChange(false);
     const ctrl = new AbortController();
+    const store = useStudioStore.getState();
+    store.setRunState({
+      testName: recorded.name,
+      mode,
+      currentStep: -1,
+      totalSteps: recorded.steps.length,
+      currentAction: null,
+      ctrl,
+      nextResolver: null,
+    });
     try {
       const bridge = createBridgeClient(
         () => useStudioStore.getState()._iframeRef,
       );
-      // BridgeClient's dispatch signature differs slightly from our
-      // RuntimeBridge; adapt at the boundary.
       const replayed = await runEngine(recorded, {
         signal: ctrl.signal,
         drivers: buildRuntimeDrivers({
@@ -535,7 +543,26 @@ export function TestsPage({ open, onOpenChange }: Props) {
             await bridge.awaitRenderComplete(timeoutMs);
           },
         }),
+        onStepStart: (i, action, total) =>
+          useStudioStore.getState().patchRunState({
+            currentStep: i,
+            currentAction: action,
+            totalSteps: total,
+          }),
+        beforeStep: () =>
+          new Promise<void>((resolve) => {
+            // Read latest mode synchronously from the store — survives
+            // mid-run mode changes (Auto from here).
+            if (useStudioStore.getState().runState?.mode !== "step") {
+              resolve();
+              return;
+            }
+            useStudioStore.getState().patchRunState({ nextResolver: resolve });
+          }),
       });
+      if (ctrl.signal.aborted) {
+        return;
+      }
       const verdict = diff(recorded, replayed, resolveRules(recorded));
       setResultData({ testFsName, recorded, replayed, verdict });
       setResultOpen(true);
@@ -555,6 +582,8 @@ export function TestsPage({ open, onOpenChange }: Props) {
       );
     } catch (e) {
       alert(`Test failed to run: ${(e as Error).message}`);
+    } finally {
+      useStudioStore.getState().setRunState(null);
     }
   }
 

@@ -26,7 +26,7 @@ import {
   type McpResourceInfo,
 } from "./api";
 import { DEFAULT_MOCK, type MockData } from "./mock-openai";
-import type { WidgetMock } from "@/lib/core/types";
+import type { Action, WidgetMock } from "@/lib/core/types";
 import { createClaudeMock } from "./mock-claude";
 import { extractCspDomains } from "@/lib/core/csp/profiles";
 import { analyze } from "@/lib/core/csp/analyze";
@@ -85,6 +85,23 @@ function generateRandomString(length: number): string {
 // ── Types ──
 
 export type Platform = "openai" | "claude";
+
+/**
+ * Live replay state. When non-null, a test is being replayed. The
+ * TopHeader subscribes to render the run banner + controls; the engine
+ * reads `mode` synchronously via getState() in its `beforeStep` gate.
+ */
+export interface RunState {
+  testName: string;
+  mode: "auto" | "step";
+  /** 0-indexed; -1 before the first step starts. */
+  currentStep: number;
+  totalSteps: number;
+  currentAction: Action | null;
+  ctrl: AbortController;
+  /** Resolver while paused in step mode. null = not paused. */
+  nextResolver: (() => void) | null;
+}
 
 export type ViewportPreset = "desktop" | "tablet" | "mobile" | "custom";
 
@@ -501,6 +518,14 @@ interface StudioState {
    */
   slicingState: { startIndex: number; startedAt: string } | null;
 
+  /**
+   * Live replay state: drives the TopHeader's run-mode indicator and
+   * step controls, and serves as the source of truth the engine's
+   * `beforeStep` gate reads to decide whether to pause. Null when no
+   * replay is in flight.
+   */
+  runState: RunState | null;
+
   // Widget config
   platform: Platform;
   theme: string;
@@ -574,6 +599,9 @@ interface StudioState {
   setSlicingState: (
     state: { startIndex: number; startedAt: string } | null,
   ) => void;
+  setRunState: (next: RunState | null) => void;
+  /** Partial update for in-flight runs. No-ops when runState is null. */
+  patchRunState: (patch: Partial<RunState>) => void;
   setPlatform: (p: Platform) => void;
   setTheme: (t: string) => void;
   setLocale: (l: string) => void;
@@ -802,6 +830,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   })(),
   studioMode: "normal" as "normal" | "test",
   slicingState: null as { startIndex: number; startedAt: string } | null,
+  runState: null as RunState | null,
 
   // Widget config
   platform: "openai",
@@ -1282,6 +1311,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   },
   setStudioMode: (mode) => set({ studioMode: mode }),
   setSlicingState: (state) => set({ slicingState: state }),
+  setRunState: (next) => set({ runState: next }),
+  patchRunState: (patch) =>
+    set((s) => ({ runState: s.runState ? { ...s.runState, ...patch } : null })),
   setPlatform: (p) => {
     set({ platform: p });
     setTimeout(() => get().loadWidget(), 50);

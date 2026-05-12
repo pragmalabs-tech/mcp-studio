@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { Clock, FlaskConical, Circle, Square } from "lucide-react";
+import {
+  Clock,
+  FastForward,
+  FlaskConical,
+  Circle,
+  SkipForward,
+  Square,
+} from "lucide-react";
 import { RecordingHistoryDialog } from "@/components/studio/recording-history-dialog";
 import { TestsPage } from "@/components/studio/tests-page";
 import { SaveTestModal } from "@/components/studio/save-test-modal";
@@ -11,14 +18,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useStudioStore } from "@/lib/studio/store";
+import { useStudioStore, type RunState } from "@/lib/studio/store";
 import { useMcpHealth } from "@/lib/studio/health";
 import { recorder } from "@/lib/recorder/bus";
+import { actionLabel, actionSummary } from "@/lib/core/action-format";
 import type { McpHealth } from "@/lib/studio/api";
 
 export function TopHeader() {
   const slicingState = useStudioStore((s) => s.slicingState);
   const setSlicingState = useStudioStore((s) => s.setSlicingState);
+  const runState = useStudioStore((s) => s.runState);
+  const patchRunState = useStudioStore((s) => s.patchRunState);
   const { status: healthStatus } = useMcpHealth();
   // Gate destructive / network-bound controls on the server being live.
   // Stop Record stays enabled while disconnected so an in-flight slice
@@ -68,55 +78,65 @@ export function TopHeader() {
         <HealthDot />
       </div>
 
-      <div className="flex-1" />
-
-      {/* Test record + saved tests + reports — the top bar's whole job is
-          test ergonomics now that profile/cloud/auth live in the sidebar. */}
-      {!slicingState ? (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleStartRecording}
-          disabled={recordDisabled}
-          title={
-            recordDisabled
-              ? "MCP server not reachable - reconnect to record"
-              : "Start a named test by recording the next series of actions"
-          }
-        >
-          <Circle className="h-3.5 w-3.5 mr-1.5" />
-          Record Test
-        </Button>
+      {/* When a replay is in flight, the header shows live progress +
+          step controls instead of the normal record/tests/history. The
+          test catalog is hidden during a run to discourage stacking. */}
+      {runState ? (
+        <RunBar state={runState} patch={patchRunState} />
       ) : (
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={handleStopRecording}
-          title="Stop and save the recorded actions as a test"
-        >
-          <Square className="h-3.5 w-3.5 mr-1.5 fill-current" />
-          Stop Record Test
-        </Button>
+        <>
+          <div className="flex-1" />
+
+          {/* Test record + saved tests + reports — the top bar's whole job
+              is test ergonomics now that profile/cloud/auth live in the
+              sidebar. */}
+          {!slicingState ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleStartRecording}
+              disabled={recordDisabled}
+              title={
+                recordDisabled
+                  ? "MCP server not reachable - reconnect to record"
+                  : "Start a named test by recording the next series of actions"
+              }
+            >
+              <Circle className="h-3.5 w-3.5 mr-1.5" />
+              Record Test
+            </Button>
+          ) : (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleStopRecording}
+              title="Stop and save the recorded actions as a test"
+            >
+              <Square className="h-3.5 w-3.5 mr-1.5 fill-current" />
+              Stop Record Test
+            </Button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setTestsOpen(true)}
+            title="Saved tests"
+            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md hover:bg-muted text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <FlaskConical className="h-4 w-4" />
+            Tests
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            title="View recorded actions"
+            className="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Clock className="h-4 w-4" />
+          </button>
+        </>
       )}
-
-      <button
-        type="button"
-        onClick={() => setTestsOpen(true)}
-        title="Saved tests"
-        className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md hover:bg-muted text-xs text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <FlaskConical className="h-4 w-4" />
-        Tests
-      </button>
-
-      <button
-        type="button"
-        onClick={() => setHistoryOpen(true)}
-        title="View recorded actions"
-        className="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <Clock className="h-4 w-4" />
-      </button>
 
       <RecordingHistoryDialog
         open={historyOpen}
@@ -218,6 +238,84 @@ const HEALTH_TONES: Record<McpHealth, string> = {
   unauthorized: "text-amber-400",
   disconnected: "text-red-400",
 };
+
+function RunBar({
+  state,
+  patch,
+}: {
+  state: RunState;
+  patch: (p: Partial<RunState>) => void;
+}) {
+  const pct =
+    state.totalSteps > 0
+      ? Math.round(
+          (Math.max(0, state.currentStep + 1) / state.totalSteps) * 100,
+        )
+      : 0;
+  const paused = state.nextResolver !== null;
+  const next = () => {
+    state.nextResolver?.();
+    patch({ nextResolver: null });
+  };
+  const autoFromHere = () => {
+    state.nextResolver?.();
+    patch({ mode: "auto", nextResolver: null });
+  };
+  const stop = () => {
+    state.ctrl.abort();
+    state.nextResolver?.();
+  };
+  return (
+    <div className="flex-1 flex items-center gap-3 min-w-0">
+      <span className="inline-flex items-center gap-1.5 shrink-0">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">
+          {state.mode === "step" ? "Step mode" : "Replaying"}
+        </span>
+      </span>
+      <span className="text-sm font-medium truncate max-w-[14rem]">
+        {state.testName}
+      </span>
+      <span className="text-xs text-muted-foreground font-mono shrink-0">
+        step {Math.max(0, state.currentStep + 1)} / {state.totalSteps} · {pct}%
+      </span>
+      {state.currentAction && (
+        <span className="text-xs text-muted-foreground font-mono truncate flex-1 min-w-0">
+          {actionLabel(state.currentAction)}
+          {actionSummary(state.currentAction) && (
+            <span className="text-muted-foreground/60">
+              {" · "}
+              {actionSummary(state.currentAction)}
+            </span>
+          )}
+        </span>
+      )}
+      {!state.currentAction && <div className="flex-1" />}
+      {state.mode === "step" && (
+        <>
+          <Button size="sm" onClick={next} disabled={!paused}>
+            <SkipForward className="h-3.5 w-3.5 mr-1.5" />
+            Next
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={autoFromHere}
+            disabled={!paused}
+            title="Switch to autoplay"
+          >
+            <FastForward className="h-3.5 w-3.5 mr-1.5" />
+            Auto
+          </Button>
+        </>
+      )}
+      <Button variant="destructive" size="sm" onClick={stop}>
+        <Square className="h-3.5 w-3.5 mr-1.5 fill-current" />
+        Stop
+      </Button>
+    </div>
+  );
+}
 
 function HealthDot() {
   const { status, recheck } = useMcpHealth();

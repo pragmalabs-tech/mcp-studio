@@ -504,11 +504,12 @@
         /^widget\./,
         "",
       );
-      // Selector resolution retries for 2s. Most misses are transient —
-      // React just committed a mock update and the target element will
-      // exist within a frame or two. Bailing fast (the old 500ms) made
-      // replay flaky on heavier widgets.
-      resolveWithRetry(m.action && m.action.selectors, 2000, function (el) {
+      // Selector resolution retries for 500ms (polls every 16ms). With
+      // the postMessage mock-update path + React commit, the target
+      // button typically appears within 1-2 frames. 500ms is plenty;
+      // longer caps just delay the "selector miss" error when the bug
+      // is real.
+      resolveWithRetry(m.action && m.action.selectors, 500, function (el) {
         if (!el) {
           window.__mcprDbg(
             "[bridge] selector miss",
