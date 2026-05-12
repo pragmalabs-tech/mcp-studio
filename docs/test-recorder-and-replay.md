@@ -122,6 +122,55 @@ The **bus** (`src/lib/recorder/bus.ts`) is the only piece that knows about
 timing, ordering, redaction, and the `Session` schema. The three layers
 emit; the bus orders and persists.
 
+### Widget iframe lifecycle (record + replay symmetric)
+
+The iframe `WidgetFrame` (`src/lib/core/views/widget-frame.tsx`) mounts
+once per widget URL. After that, mock updates flow into the live
+iframe via `postMessage`, not by recomputing `srcdoc`:
+
+```
+parent                              iframe
+─────────                           ─────────
+applyWidgetMock(name, mock)
+   │
+   ├─ store.set({currentMock})
+   │
+   ├─ if first widget URL:          srcdoc loads
+   │    await render.complete  ◄──── bridge install + render.complete
+   │                                  ┌───────────────────────┐
+   │                                  │ mock-openai script    │
+   ├─ else (same widget):             │ defines window.openai │
+   │    wait 2 RAFs (~32ms)           │ + listens for         │
+   │                                  │ mcpr_set_mock         │
+   │                                  └───────────────────────┘
+   │
+   │   WidgetFrame useEffect[mock]
+   ├─►  iframe.postMessage(
+   │      { type: "mcpr_set_mock", mock }
+   │    )                            ──► mock-openai handler:
+   │                                       __toolInput = mock.toolInput
+   │                                       __toolOutput = mock.toolOutput
+   │                                       __widgetState = mock.widgetState
+   │                                       window.dispatchEvent(
+   │                                         openai:set_globals
+   │                                       )
+   │                                     ──► React widget re-renders
+   │
+   │   iframe.onload also re-sends the
+   │   current mock to cover the race where
+   │   the effect fires before scripts ran.
+```
+
+Bridge installs ONCE per iframe mount. The `__mcprRecorderInstalled`
+flag prevents duplicate installs. The bridge stays alive across mock
+updates, so DOM event listeners and the message handler don't get
+wiped.
+
+Debug: set `window.__mcprDebug = true` in the iframe context (or top
+frame) to enable verbose `[mcpr]` / `[bridge]` logs. Bridge logs are
+piped to the parent window so they show up regardless of console
+context filter. Off by default.
+
 ### Three-driver replay
 
 ```
@@ -141,9 +190,9 @@ emit; the bus orders and persists.
 
 | Driver | Action kinds it handles | What it does |
 |---|---|---|
-| **Chrome** | `config.update`, `auth.update`, `sidebar.select`, `editor.set_args` | Calls the matching live store setter. Always pass-through. |
-| **MCP** | `mcp.request` | For `source: "user"`, calls `store.execute()` (which re-uses live editor + selection state and naturally chains the widget render). For `source: "widget"`, treated as observation — the widget will or won't fire it as a side effect. |
-| **Widget** | `widget.render`, `widget.dom.*`, `widget.intent` | For renders: `bridge.awaitRenderComplete()` (cached for 3s so a late await catches an already-fired event). For DOM events: `bridge.dispatch(action)` and awaits an ack. |
+| **Studio** | `studio.select`, `studio.set_args`, `studio.set_config`, `studio.set_mock` | Calls the matching live store setter. Pure state mutations. |
+| **MCP** | `mcp.request` | For `source: "user"` or `"engine"`, the engine dispatches via `mcpCall(method, params)` — a real MCP call. For `source: "widget"`, treated as observation; the widget will or won't fire it as a side effect. Responses are observed via `mcpAttach`, not driven. |
+| **Widget** | `widget.opened`, `widget.runtime_error`, `widget.render`, `widget.intent`, `widget.dom.*` | `widget.render` calls `store.applyWidgetMock` (pure setter + emit). On a different widget name from the previous step, the engine awaits `bridge.awaitRenderComplete` (first mount). Same-widget mock updates wait two animation frames for React to commit. DOM events use `bridge.dispatch(action)` with a 2s selector retry. `widget.intent` is observed via `widgetAttach`, not driven. |
 
 The **Engine** (`src/lib/engine/engine.ts`) doesn't know about MCP, the
 store, or the iframe. It walks the timeline, picks a driver per action by
@@ -160,11 +209,11 @@ Defined in `src/lib/recorder/schema.ts`. Categorized by what they do:
 
 | Kind | Fields | Driver |
 |---|---|---|
-| `sidebar.select` | `selection: { type, name }` | chrome |
-| `editor.set_args` | `value` (any JSON) | chrome |
-| `config.update` | `patch: Partial<SetupConfig>` | chrome |
-| `auth.update` | `patch: Partial<AuthBlock>` (token redacted) | chrome |
-| `widget.mock.set` | `value` | (chrome — apply via store) |
+| `sidebar.select` → `studio.select` | `selection: { type, name }` | studio |
+| `editor.set_args` → `studio.set_args` | `value` (any JSON) | studio |
+| `config.update` → `studio.set_config` | `patch: Partial<StudioConfig>` | studio |
+| `widget.mock.set` → `studio.set_mock` | `value` | studio |
+| `widget.render` → `widget.render` | `name`, `mock` ({toolInput, toolOutput, meta, widgetState}) | widget — applies mock via store + postMessage |
 
 ### MCP boundary (mixed)
 

@@ -65,21 +65,67 @@ Built-in matchers (shape-asserted instead of dropped):
 
 ### Widget driver (`state.widgets`)
 
-| Case                          | Action                 | Slice path                      |
-| ----------------------------- | ---------------------- | ------------------------------- |
-| Widget open / render          | `widget.opened`        | `widgets.open[].{uri,data}`     |
-| Render count                  | `widget.opened`        | `widgets.renderCount`           |
-| Runtime error per open widget | `widget.runtime_error` | `widgets.open[].hasErrors`      |
-| DOM click intent              | `widget.dom.click`     | (drives next Action via bridge) |
-| DOM input intent              | `widget.dom.input`     | (drives next Action via bridge) |
-| DOM change intent             | `widget.dom.change`    | (drives next Action via bridge) |
-| DOM submit intent             | `widget.dom.submit`    | (drives next Action via bridge) |
-| DOM keydown intent            | `widget.dom.keydown`   | (drives next Action via bridge) |
+| Case                                        | Action                 | Slice path                                                 |
+| ------------------------------------------- | ---------------------- | ---------------------------------------------------------- |
+| Widget open / render                        | `widget.opened`        | `widgets.open[].{uri,data}`                                |
+| Render count                                | `widget.opened`        | `widgets.renderCount`                                      |
+| Runtime error per open widget               | `widget.runtime_error` | `widgets.open[].hasErrors`                                 |
+| Mock applied to widget (which widget + data) | `widget.render`        | `widgets.activeRender.{widgetName,mock}`                   |
+| Widget→host intent (sendFollowUpMessage, …) | `widget.intent`        | `widgets.intents[]` (append-only `{name, params}`)         |
+| DOM click intent                            | `widget.dom.click`     | (drives next Action via bridge)                            |
+| DOM input intent                            | `widget.dom.input`     | (drives next Action via bridge)                            |
+| DOM change intent                           | `widget.dom.change`    | (drives next Action via bridge)                            |
+| DOM submit intent                           | `widget.dom.submit`    | (drives next Action via bridge)                            |
+| DOM keydown intent                          | `widget.dom.keydown`   | (drives next Action via bridge)                            |
 
 `dom.*` actions are **observations** at apply-time (same-state return).
 They matter because they get replayed through the bridge into the
 iframe; their downstream effects (state mutations from the widget's
 own logic) are what gets asserted on the next step.
+
+`widget.render` records what data the widget was rendered against
+(`activeRender.widgetName`, `activeRender.mock.{toolInput, toolOutput,
+meta, widgetState}`). The differ asserts on this cell, so the test
+fails if replay loads the wrong widget or feeds it different data.
+Flaky payloads (UUIDs, timestamps inside `mock.toolOutput`) are
+managed with per-step shape mode or path-level rules; the widget name
+itself is always exact-compared so a regression that loads the wrong
+widget can't silently pass.
+
+`widget.intent` is the higher-level surface above DOM events: things
+the widget posts back to the host (sendFollowUpMessage, setWidgetState,
+openExternal, ui/message, ui/open-link, etc.). Tool calls
+(`callTool` / `ui/call-server-tool`) are NOT here — those are already
+captured as `mcp.request` with `source: "widget"`. Intents append to
+`widgets.intents[]` in order, so a test fails if an expected prompt
+isn't sent or a different prompt fires.
+
+#### Widget render lifecycle (record + replay symmetry)
+
+1. **HTML fetch** is captured as a normal `mcp.request resources/read`
+   action. A store subscriber on the recorder bus derives
+   `widgetSourceHtml` from `mcp.response` events for `ui://*` URIs —
+   pure deterministic derivation, runs identically in record and
+   replay.
+2. **`widget.render` action** carries `{widgetName, mock}`. The driver
+   updates `state.widgets.activeRender`. The runtime dispatch handler
+   calls `store.applyWidgetMock` which writes `currentMock`.
+3. **Iframe mounts once per widget URL.** `WidgetFrame` keeps `srcdoc`
+   stable across mock-only updates; new mocks flow into the live
+   iframe via `postMessage({type: "mcpr_set_mock", mock})`. The injected
+   `mock-openai` shim mutates `window.openai.toolInput / toolOutput /
+   widgetState` in place and dispatches a `openai:set_globals`
+   CustomEvent so the React widget can re-render without an iframe
+   reload.
+4. **Engine awaits the bridge** (`awaitRenderComplete`) only on the
+   first mount of a new widget. Same-widget mock updates wait two
+   animation frames (~32ms) for React to commit, then continue. The
+   bridge's selector retry covers any remaining timing slack (up to
+   2s per dispatch).
+
+Everything that mutates state goes through actions on the bus, so
+record and replay use the SAME code paths. There are no
+`recorder.suspend()` workarounds.
 
 ### Per-test rules
 
@@ -112,6 +158,26 @@ ISO-8601 datetime format), `@uuid`, `@epoch` (integer >= 1e9), or
 Resolution order: built-in → trace. Within `match`, the last matching
 pattern wins, so trace rules override built-in defaults for the same
 path. `ignore` is additive (presence is enough).
+
+#### Per-step compare mode (shape vs exact)
+
+A `Step` can carry `compare: "exact" | "shape"`. Default `exact`.
+`shape` mode asserts JSON structure but allows leaf values to differ
+at that step's `stateAfter` walk:
+
+- Skips `value_differs` at leaves (same type = no drift).
+- Skips array length differences (walks common prefix only).
+- Keeps `type_differs` (string vs number is a real contract break).
+- Keeps `missing` object keys (response dropped a documented field).
+- Suppresses `extra` object keys (forward-compatible: server may add
+  fields; not a regression).
+
+UX: open the result modal, select the noisy step, flip the **Compare**
+dropdown to **Shape only**. Persists onto the recorded trace as
+`steps[i].compare = "shape"` and the differ re-runs in place. Shape
+mode is the right tool when a tool response has structurally stable
+shape but volatile content (UUIDs, timestamps, paginated lists,
+LLM-generated text). For surgical control, use `match` rules instead.
 
 Suppressed drifts are **kept** in the verdict but carry `suppressedBy:
 { layer, pattern }` so the UI can show what was let through. `verdict.ok`
@@ -184,11 +250,16 @@ against the resolved rule set before committing.
 | Excluded                  | Why                                                          |
 | ------------------------- | ------------------------------------------------------------ |
 | Visual / pixel diff       | No screenshot infra. Widgets vary by viewport, font, theme.  |
-| Wall-clock timing         | Latency lives outside the State model.                       |
-| Network payload bodies    | Only counts in State; full bodies would be noisy.            |
-| Multi-iframe coordination | One widget at a time today; stack present but unused.        |
-| Mock fixture diff         | `studio.mock` participates in State but isn't compared deep. |
+| Wall-clock timing         | Latency lives outside the State model. `relMs` is recorded   |
+|                           | but not asserted.                                            |
+| Network payload bodies    | `mcp.request.params` are not asserted by default (volatile). |
+|                           | Tool result IS asserted via `tools.<name>.lastResult`.       |
+| Multi-iframe coordination | One widget active at a time. `widgets.open[]` is a stack but |
+|                           | only the top entry is interactively driven.                  |
 | Cross-trace assertions    | Each Verdict is one trace vs one replay.                     |
+| Server-side regressions   | Replay calls the live MCP — content differences across envs |
+|                           | are handled with shape mode / rules, not by switching to a  |
+|                           | recorded-response fixture.                                   |
 
 ## Future cases (priority-ordered)
 
