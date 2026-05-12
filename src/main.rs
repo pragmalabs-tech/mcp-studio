@@ -6,6 +6,7 @@ mod forwarding;
 mod profiles;
 mod proxy;
 mod reports_api;
+mod run_results_api;
 mod server;
 mod storage;
 mod tests_api;

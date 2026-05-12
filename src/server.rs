@@ -17,6 +17,7 @@ use crate::cloud::{self, CloudClient};
 use crate::config::{self, AuthConfig, Config, TunnelConfig};
 use crate::profiles;
 use crate::reports_api;
+use crate::run_results_api;
 use crate::tests_api;
 use crate::tunnel::{TunnelInfo, TunnelState};
 
@@ -49,6 +50,16 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/studio/reports/{name}",
             get(reports_api::get_report).put(reports_api::put_report),
+        )
+        .route(
+            "/api/studio/run-results",
+            get(run_results_api::list_run_results),
+        )
+        .route(
+            "/api/studio/run-results/{id}",
+            get(run_results_api::get_run_result)
+                .put(run_results_api::put_run_result)
+                .delete(run_results_api::delete_run_result),
         )
         .route(
             "/api/studio/profiles",

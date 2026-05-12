@@ -8,8 +8,10 @@ import {
   History as HistoryIcon,
   Loader2,
   Play,
+  PlayCircle,
   Settings,
   StepForward,
+  Square,
   Tag as TagIcon,
   Trash2,
   XCircle,
@@ -43,8 +45,20 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { TagInput } from "@/components/ui/tag-input";
 import { RulesEditor } from "@/components/studio/rules-editor";
-import { listTests, getTrace, deleteTest, saveTrace } from "@/lib/tests/api";
+import {
+  listTests,
+  getTrace,
+  deleteTest,
+  saveTrace,
+  saveRunResult,
+} from "@/lib/tests/api";
 import { collectTags, normalizeTags } from "@/lib/tests/tags";
+import { runBatch, type BatchTraceInput } from "@/lib/core/batch";
+import {
+  newRunId,
+  summarize,
+  type RunFile,
+} from "@/lib/tests/run-result-schema";
 import {
   actionExpectation,
   actionLabel,
@@ -414,6 +428,18 @@ export function TestsPage({ open, onOpenChange }: Props) {
   const [viewingRulesFor, setViewingRulesFor] = useState<TestSummary | null>(
     null,
   );
+  const [batchState, setBatchState] = useState<{
+    ctrl: AbortController;
+    current: number;
+    total: number;
+    currentName: string;
+  } | null>(null);
+  const [batchResult, setBatchResult] = useState<{
+    title: string;
+    description: string;
+    variant: "success" | "error";
+  } | null>(null);
+  const [confirmRunAll, setConfirmRunAll] = useState(false);
 
   const allTags = useMemo(() => collectTags(tests), [tests]);
   const filteredTests = useMemo(() => {
@@ -515,6 +541,8 @@ export function TestsPage({ open, onOpenChange }: Props) {
     mode: "auto" | "step" = "auto",
   ) {
     onOpenChange(false);
+    const startedAt = Date.now();
+    const runStart = performance.now();
     const ctrl = new AbortController();
     const store = useStudioStore.getState();
     store.setRunState({
@@ -564,6 +592,7 @@ export function TestsPage({ open, onOpenChange }: Props) {
         return;
       }
       const verdict = diff(recorded, replayed, resolveRules(recorded));
+      const finishedAt = Date.now();
       setResultData({ testFsName, recorded, replayed, verdict });
       setResultOpen(true);
       setRunHistory((prev) =>
@@ -580,10 +609,168 @@ export function TestsPage({ open, onOpenChange }: Props) {
           ...prev,
         ].slice(0, 50),
       );
+      // Persist as a standalone run-result so it joins the same Runs catalog
+      // as Run-all batches. Fire-and-forget - a save failure shouldn't
+      // disrupt the in-flight UI.
+      const studio = useStudioStore.getState();
+      const standaloneFile: RunFile = {
+        id: newRunId(startedAt),
+        runType: "standalone",
+        startedAt,
+        finishedAt,
+        filter: { tags: [] },
+        env: {
+          proxyUrl: studio.proxyUrl,
+          studioVersion: "0.1.0",
+          platform: studio.platform,
+          strict: studio.strictMode,
+          profileId: studio.activeProfileId ?? undefined,
+        },
+        summary: {
+          total: 1,
+          passed: verdict.ok ? 1 : 0,
+          failed: verdict.ok ? 0 : 1,
+          errored: 0,
+          durationMs: performance.now() - runStart,
+        },
+        results: [
+          {
+            testName: recorded.name,
+            testFsName,
+            status: verdict.ok ? "passed" : "failed",
+            durationMs: performance.now() - runStart,
+            recorded,
+            replayed,
+            verdict,
+          },
+        ],
+      };
+      void saveRunResult(standaloneFile).catch(() => {
+        /* non-critical; standalone result is still visible in History */
+      });
     } catch (e) {
       alert(`Test failed to run: ${(e as Error).message}`);
     } finally {
       useStudioStore.getState().setRunState(null);
+    }
+  }
+
+  async function runAllFiltered() {
+    if (filteredTests.length === 0 || batchState) return;
+    const startedAt = Date.now();
+    const ctrl = new AbortController();
+    setBatchState({
+      ctrl,
+      current: 0,
+      total: filteredTests.length,
+      currentName: "",
+    });
+
+    // Load every trace upfront. If a load fails we mark that test as errored
+    // and keep going; the engine will skip it.
+    const inputs: BatchTraceInput[] = [];
+    const loadErrors: Array<{ name: string; error: string }> = [];
+    for (const t of filteredTests) {
+      if (ctrl.signal.aborted) break;
+      try {
+        const trace = await getTrace(t.name);
+        inputs.push({ testFsName: t.name, trace });
+      } catch (e) {
+        loadErrors.push({
+          name: t.name,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+    if (ctrl.signal.aborted) {
+      setBatchState(null);
+      return;
+    }
+
+    const bridge = createBridgeClient(
+      () => useStudioStore.getState()._iframeRef,
+    );
+
+    try {
+      const results = await runBatch(inputs, {
+        signal: ctrl.signal,
+        buildDeps: () => ({
+          drivers: buildRuntimeDrivers({
+            dispatch: async (selectors, kind, _extra) => {
+              await bridge.dispatch(
+                { kind: kind as never, selectors } as never,
+                2_000,
+              );
+            },
+            awaitRenderComplete: async (timeoutMs) => {
+              await bridge.awaitRenderComplete(timeoutMs);
+            },
+          }),
+        }),
+        onTestStart: (i, input, total) =>
+          setBatchState({
+            ctrl,
+            current: i + 1,
+            total,
+            currentName: input.trace.name,
+          }),
+      });
+
+      if (ctrl.signal.aborted) {
+        setBatchState(null);
+        return;
+      }
+
+      const finishedAt = Date.now();
+      const studio = useStudioStore.getState();
+      const summary = summarize(results);
+      const id = newRunId(startedAt);
+      const file: RunFile = {
+        id,
+        runType: "batch",
+        startedAt,
+        finishedAt,
+        filter: { tags: Array.from(activeTags) },
+        env: {
+          proxyUrl: studio.proxyUrl,
+          studioVersion: "0.1.0",
+          platform: studio.platform,
+          strict: studio.strictMode,
+          profileId: studio.activeProfileId ?? undefined,
+        },
+        summary,
+        results,
+      };
+      try {
+        await saveRunResult(file);
+        const parts = [
+          `${summary.passed} passed`,
+          `${summary.failed} failed`,
+          `${summary.errored} errored`,
+        ];
+        if (loadErrors.length) {
+          parts.push(`${loadErrors.length} could not be loaded`);
+        }
+        setBatchResult({
+          title: "Run saved",
+          description: `${parts.join(", ")}. Open the Runs panel to view.`,
+          variant: "success",
+        });
+      } catch (e) {
+        setBatchResult({
+          title: "Run completed but failed to save",
+          description: (e as Error).message,
+          variant: "error",
+        });
+      }
+    } catch (e) {
+      setBatchResult({
+        title: "Batch run failed",
+        description: (e as Error).message,
+        variant: "error",
+      });
+    } finally {
+      setBatchState(null);
     }
   }
 
@@ -774,6 +961,24 @@ export function TestsPage({ open, onOpenChange }: Props) {
               )}
               {!showHistory && (
                 <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setConfirmRunAll(true)}
+                  disabled={
+                    filteredTests.length === 0 || !!batchState || loading
+                  }
+                  title={
+                    filteredTests.length === 0
+                      ? "No tests match the current filter"
+                      : `Run all ${filteredTests.length} filtered tests and save a run result`
+                  }
+                >
+                  <PlayCircle className="h-3.5 w-3.5 mr-1.5" />
+                  Run all ({filteredTests.length})
+                </Button>
+              )}
+              {!showHistory && (
+                <Button
                   variant="ghost"
                   size="icon-sm"
                   onClick={refresh}
@@ -796,6 +1001,25 @@ export function TestsPage({ open, onOpenChange }: Props) {
           {error && (
             <div className="px-4 py-2 text-xs text-destructive font-mono border-b">
               {error}
+            </div>
+          )}
+          {batchState && (
+            <div className="px-4 py-2 text-xs border-b flex items-center gap-2 bg-muted/30">
+              <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+              <span className="truncate">
+                Running {batchState.current}/{batchState.total}
+                {batchState.currentName ? `: ${batchState.currentName}` : ""}
+              </span>
+              <div className="flex-1" />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => batchState.ctrl.abort()}
+                title="Stop the batch - results are discarded"
+              >
+                <Square className="h-3.5 w-3.5 mr-1.5 fill-current" />
+                Stop
+              </Button>
             </div>
           )}
           {!showHistory && allTags.length > 0 && (
@@ -1015,6 +1239,75 @@ export function TestsPage({ open, onOpenChange }: Props) {
           }}
         />
       )}
+      <AlertDialog
+        open={confirmRunAll}
+        onOpenChange={(v) => {
+          if (!v) setConfirmRunAll(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia className="bg-blue-500/10 text-blue-400">
+              <PlayCircle />
+            </AlertDialogMedia>
+            <AlertDialogTitle>
+              Run all {filteredTests.length} filtered test
+              {filteredTests.length === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Tests run sequentially in the foreground iframe. The run can take
+              a while depending on each test's actions, and you can click Stop
+              at any time. The result is saved to{" "}
+              <span className="font-mono">~/.mcp-studio/run-results/</span> when
+              the batch finishes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmRunAll(false);
+                void runAllFiltered();
+              }}
+            >
+              Run all
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={!!batchResult}
+        onOpenChange={(v) => {
+          if (!v) setBatchResult(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia
+              className={
+                batchResult?.variant === "success"
+                  ? "bg-green-500/10 text-green-400"
+                  : "bg-red-500/10 text-red-400"
+              }
+            >
+              {batchResult?.variant === "success" ? (
+                <CheckCircle2 />
+              ) : (
+                <XCircle />
+              )}
+            </AlertDialogMedia>
+            <AlertDialogTitle>{batchResult?.title}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {batchResult?.description}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setBatchResult(null)}>
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={!!pendingDelete}
         onOpenChange={(v) => {

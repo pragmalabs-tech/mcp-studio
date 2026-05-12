@@ -6,6 +6,7 @@
 import type { TestSummary } from "@/lib/recorder/schema";
 import { loadTrace, saveTrace as serializeTrace } from "@/lib/core/trace-io";
 import type { Trace } from "@/lib/core/types";
+import type { RunFile, RunFileSummary } from "./run-result-schema";
 
 interface BackendSummary {
   name: string;
@@ -76,5 +77,68 @@ export async function deleteTest(name: string): Promise<void> {
   const resp = await fetch(`/api/studio/tests/${encodeURIComponent(name)}`, {
     method: "DELETE",
   });
+  await unwrap<void>(resp);
+}
+
+// ── Run-result API ──
+
+interface BackendRunSummary {
+  id: string;
+  size: number;
+  modified_ms: number;
+  run_type?: string | null;
+  started_at?: number | null;
+  finished_at?: number | null;
+  filter?: RunFileSummary["filter"] | null;
+  env?: RunFileSummary["env"] | null;
+  summary?: RunFileSummary["summary"] | null;
+}
+
+function toRunSummary(s: BackendRunSummary): RunFileSummary {
+  // Legacy files (written before the `runType` field existed) were all
+  // produced by the Run-all path. Default them to "batch" so the grouping
+  // UI doesn't put them in the wrong bucket.
+  const runType = s.run_type === "standalone" ? "standalone" : "batch";
+  return {
+    id: s.id,
+    size: s.size,
+    modifiedMs: s.modified_ms,
+    runType,
+    startedAt: s.started_at ?? undefined,
+    finishedAt: s.finished_at ?? undefined,
+    filter: s.filter ?? undefined,
+    env: s.env ?? undefined,
+    summary: s.summary ?? undefined,
+  };
+}
+
+export async function listRunResults(): Promise<RunFileSummary[]> {
+  const resp = await fetch("/api/studio/run-results");
+  const list = await unwrap<BackendRunSummary[]>(resp);
+  return list.map(toRunSummary);
+}
+
+export async function getRunResult(id: string): Promise<RunFile> {
+  const resp = await fetch(`/api/studio/run-results/${encodeURIComponent(id)}`);
+  return unwrap<RunFile>(resp);
+}
+
+export async function saveRunResult(file: RunFile): Promise<RunFileSummary> {
+  const resp = await fetch(
+    `/api/studio/run-results/${encodeURIComponent(file.id)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(file),
+    },
+  );
+  return toRunSummary(await unwrap<BackendRunSummary>(resp));
+}
+
+export async function deleteRunResult(id: string): Promise<void> {
+  const resp = await fetch(
+    `/api/studio/run-results/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
   await unwrap<void>(resp);
 }
