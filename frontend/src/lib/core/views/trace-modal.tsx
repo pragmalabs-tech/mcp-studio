@@ -57,6 +57,14 @@ interface Props {
     stepIndex: number,
     mode: "exact" | "shape",
   ): void | Promise<void>;
+  /** When provided, the modal renders a sticky "unsaved changes" banner
+   *  under the header with Apply/Discard buttons. Callers buffer their
+   *  rule/compare edits in memory and use this to commit or revert them
+   *  as a batch (e.g. write to the source test file). */
+  unsavedChanges?: {
+    onApply(): void | Promise<void>;
+    onDiscard(): void;
+  };
 }
 
 type StepSeverity = "fail" | "warn" | "ok";
@@ -74,6 +82,7 @@ export function TraceModal({
   onOpenChange,
   onRulesChange,
   onCompareChange,
+  unsavedChanges,
 }: Props) {
   if (!recorded || !replayed || !verdict) return null;
 
@@ -240,6 +249,13 @@ export function TraceModal({
             </div>
           </header>
 
+          {unsavedChanges && (
+            <UnsavedChangesBanner
+              onApply={unsavedChanges.onApply}
+              onDiscard={unsavedChanges.onDiscard}
+            />
+          )}
+
           <TracePlayer
             steps={replayed.steps}
             driftsByStep={playerDriftsByStep}
@@ -319,6 +335,37 @@ export function TraceModal({
         </DialogPrimitive.Popup>
       </DialogPortal>
     </Dialog>
+  );
+}
+
+function UnsavedChangesBanner({
+  onApply,
+  onDiscard,
+}: {
+  onApply(): void | Promise<void>;
+  onDiscard(): void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const handleApply = async () => {
+    setBusy(true);
+    try {
+      await onApply();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="px-4 py-2 border-b bg-yellow-500/10 flex items-center gap-3 shrink-0">
+      <span className="text-xs text-yellow-200/90 flex-1">
+        You have changes that haven't been saved to the test suite.
+      </span>
+      <Button variant="ghost" size="sm" onClick={onDiscard} disabled={busy}>
+        Discard
+      </Button>
+      <Button variant="default" size="sm" onClick={handleApply} disabled={busy}>
+        {busy ? "Applying…" : "Apply to test suite"}
+      </Button>
+    </div>
   );
 }
 

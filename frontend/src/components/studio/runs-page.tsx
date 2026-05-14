@@ -26,9 +26,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { listRunResults, getRunResult, deleteRunResult } from "@/lib/tests/api";
+import {
+  listRunResults,
+  getRunResult,
+  deleteRunResult,
+  saveTrace,
+} from "@/lib/tests/api";
 import { diff as runDiff } from "@/lib/core/differ";
 import { resolveRules } from "@/lib/core/rules";
+import { applyCompareMode, applyRules } from "@/lib/core/trace-edits";
 import { TraceModal } from "@/lib/core/views/trace-modal";
 import type {
   RunFile,
@@ -63,8 +69,19 @@ export function RunsPage({ open, onOpenChange }: Props) {
   const [selectedEntry, setSelectedEntry] = useState<RunResultEntry | null>(
     null,
   );
+  // Edits to rules / compare mode from this viewer are buffered: the
+  // current `selectedEntry.recorded` reflects pending changes, `pristine`
+  // is the original (for Discard), and `dirty` gates the banner.
+  const [pristine, setPristine] = useState<Trace | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [busyDelete, setBusyDelete] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const selectEntry = useCallback((entry: RunResultEntry | null) => {
+    setSelectedEntry(entry);
+    setPristine(entry?.recorded ?? null);
+    setDirty(false);
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -84,25 +101,28 @@ export function RunsPage({ open, onOpenChange }: Props) {
     if (open) refresh();
   }, [open, refresh]);
 
-  const openRun = useCallback(async (id: string) => {
-    setOpenId(id);
-    setLoadingDetail(true);
-    setSelectedEntry(null);
-    try {
-      setOpenFile(await getRunResult(id));
-    } catch (e) {
-      setError((e as Error).message);
-      setOpenId(null);
-    } finally {
-      setLoadingDetail(false);
-    }
-  }, []);
+  const openRun = useCallback(
+    async (id: string) => {
+      setOpenId(id);
+      setLoadingDetail(true);
+      selectEntry(null);
+      try {
+        setOpenFile(await getRunResult(id));
+      } catch (e) {
+        setError((e as Error).message);
+        setOpenId(null);
+      } finally {
+        setLoadingDetail(false);
+      }
+    },
+    [selectEntry],
+  );
 
   const closeDetail = useCallback(() => {
     setOpenId(null);
     setOpenFile(null);
-    setSelectedEntry(null);
-  }, []);
+    selectEntry(null);
+  }, [selectEntry]);
 
   async function handleDelete(id: string) {
     setBusyDelete(id);
@@ -208,7 +228,7 @@ export function RunsPage({ open, onOpenChange }: Props) {
               </div>
             )}
             {openFile && !loadingDetail && (
-              <RunDetail file={openFile} onSelectEntry={setSelectedEntry} />
+              <RunDetail file={openFile} onSelectEntry={selectEntry} />
             )}
           </div>
         </DialogPrimitive.Popup>
@@ -219,33 +239,83 @@ export function RunsPage({ open, onOpenChange }: Props) {
         verdict={modalVerdict}
         open={selectedEntry !== null && !showErrorDialog}
         onOpenChange={(o) => {
-          if (!o) setSelectedEntry(null);
+          if (!o) selectEntry(null);
         }}
-        onRulesChange={async (nextRules) => {
-          // Rules edits in the past-run viewer recompute the verdict
-          // in-memory only - they don't write back to the run file or
-          // the source test. Edit rules from the Tests panel to persist.
+        onRulesChange={(nextRules) => {
           if (!selectedEntry) return;
-          const nextRecorded: Trace = {
-            ...selectedEntry.recorded,
-            rules: nextRules,
-          };
-          const nextVerdict = runDiff(
-            nextRecorded,
+          const { recorded: nextRecorded, verdict: nextVerdict } = applyRules(
+            selectedEntry.recorded,
             selectedEntry.replayed,
-            resolveRules(nextRecorded),
+            nextRules,
           );
           setSelectedEntry({
             ...selectedEntry,
             recorded: nextRecorded,
             verdict: nextVerdict,
           });
+          setDirty(true);
         }}
+        onCompareChange={(stepIndex, mode) => {
+          if (!selectedEntry) return;
+          const { recorded: nextRecorded, verdict: nextVerdict } =
+            applyCompareMode(
+              selectedEntry.recorded,
+              selectedEntry.replayed,
+              stepIndex,
+              mode,
+            );
+          setSelectedEntry({
+            ...selectedEntry,
+            recorded: nextRecorded,
+            verdict: nextVerdict,
+          });
+          setDirty(true);
+        }}
+        unsavedChanges={
+          dirty && selectedEntry
+            ? {
+                onApply: async () => {
+                  if (!selectedEntry.testFsName) {
+                    setError(
+                      "Cannot apply: this run has no source test (testFsName missing).",
+                    );
+                    return;
+                  }
+                  try {
+                    await saveTrace(
+                      selectedEntry.testFsName,
+                      selectedEntry.recorded,
+                    );
+                    setPristine(selectedEntry.recorded);
+                    setDirty(false);
+                  } catch (e) {
+                    setError(
+                      `Failed to apply changes: ${(e as Error).message}`,
+                    );
+                  }
+                },
+                onDiscard: () => {
+                  if (!pristine) return;
+                  const restoredVerdict = runDiff(
+                    pristine,
+                    selectedEntry.replayed,
+                    resolveRules(pristine),
+                  );
+                  setSelectedEntry({
+                    ...selectedEntry,
+                    recorded: pristine,
+                    verdict: restoredVerdict,
+                  });
+                  setDirty(false);
+                },
+              }
+            : undefined
+        }
       />
       <AlertDialog
         open={showErrorDialog}
         onOpenChange={(o) => {
-          if (!o) setSelectedEntry(null);
+          if (!o) selectEntry(null);
         }}
       >
         <AlertDialogContent>
@@ -268,7 +338,7 @@ export function RunsPage({ open, onOpenChange }: Props) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction onClick={() => setSelectedEntry(null)}>
+            <AlertDialogAction onClick={() => selectEntry(null)}>
               Close
             </AlertDialogAction>
           </AlertDialogFooter>

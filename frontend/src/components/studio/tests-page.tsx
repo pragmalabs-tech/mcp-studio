@@ -69,6 +69,7 @@ import { useStudioStore } from "@/lib/studio/store";
 import { run as runEngine } from "@/lib/core/engine";
 import { diff } from "@/lib/core/differ";
 import { resolveRules } from "@/lib/core/rules";
+import { applyCompareMode, applyRules } from "@/lib/core/trace-edits";
 import { buildRuntimeDrivers } from "@/lib/core/runtime";
 import { createBridgeClient } from "@/lib/recorder/bridge-client";
 import { TestPreconditionDialog } from "@/components/studio/test-precondition-dialog";
@@ -789,12 +790,11 @@ export function TestsPage({ open, onOpenChange }: Props) {
    *  open viewer. Returns a promise so the UI can disable buttons. */
   async function handleRulesChange(nextRules: TraceRules) {
     if (!resultData) return;
-    const { testFsName, recorded, replayed } = resultData;
-    const nextRecorded: Trace = { ...recorded, rules: nextRules };
-    const nextVerdict = diff(
-      nextRecorded,
+    const { testFsName, replayed } = resultData;
+    const { recorded: nextRecorded, verdict: nextVerdict } = applyRules(
+      resultData.recorded,
       replayed,
-      resolveRules(nextRecorded),
+      nextRules,
     );
     setResultData({
       testFsName,
@@ -818,17 +818,12 @@ export function TestsPage({ open, onOpenChange }: Props) {
     mode: "exact" | "shape",
   ) {
     if (!resultData) return;
-    const { testFsName, recorded, replayed } = resultData;
-    const nextSteps = recorded.steps.map((s, i) =>
-      i === stepIndex
-        ? { ...s, compare: mode === "exact" ? undefined : mode }
-        : s,
-    );
-    const nextRecorded: Trace = { ...recorded, steps: nextSteps };
-    const nextVerdict = diff(
-      nextRecorded,
+    const { testFsName, replayed } = resultData;
+    const { recorded: nextRecorded, verdict: nextVerdict } = applyCompareMode(
+      resultData.recorded,
       replayed,
-      resolveRules(nextRecorded),
+      stepIndex,
+      mode,
     );
     setResultData({
       testFsName,
