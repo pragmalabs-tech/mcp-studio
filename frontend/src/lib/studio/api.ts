@@ -67,13 +67,6 @@ export function hasProxyUrl(): boolean {
   );
 }
 
-export function isRemoteProxy(): boolean {
-  return (
-    _overrideProxyUrl !== null ||
-    new URLSearchParams(window.location.search).has("proxy")
-  );
-}
-
 /** Scoped localStorage key: "studio:{proxyOrigin}:{suffix}" */
 export function studioKey(suffix: string): string {
   const raw = getBaseUrl();

@@ -289,7 +289,7 @@ The bridge is a single self-contained JS file
 (`src/widget-bridge/recorder-bridge.js`) imported via Vite's `?raw` so it
 inlines into the iframe srcdoc with no separate build step. The
 host-side counterpart is `BridgeClient`
-(`src/lib/engine/bridge-client.ts`) which:
+(`src/lib/recorder/bridge-client.ts`) which:
 
 - holds a monotonic id counter and a `Map<id, pending>` for dispatch acks
   and snapshot replies
@@ -619,21 +619,21 @@ mcp-studio/
     │   ├── instrumentation.ts  Zustand subscriber (chrome layer)
     │   ├── mcp-interceptor.ts  recordedMcpCall (MCP layer)
     │   ├── bridge-protocol.ts  message envelope types
+    │   ├── bridge-client.ts    host-side dispatcher with render.complete cache
     │   ├── selector.ts         buildSelectorChain + resolveSelectorChain
     │   ├── summarize.ts        summarize() / verbalize() / skipReasonForKind
     │   └── export.ts           downloadSession Blob helper
-    ├── lib/engine/
+    ├── lib/core/
     │   ├── engine.ts           state machine over the timeline
-    │   ├── bridge-client.ts    host-side dispatcher with render.complete cache
-    │   ├── asserter.ts         per-kind ASSERTERS table
-    │   ├── timing.ts           per-kind TIMEOUTS
-    │   ├── artifacts.ts        ArtifactCollector (failures + previews)
-    │   ├── report.ts           buildReport + reportFilename
-    │   ├── runtime.ts          live progress singleton (overlay subscribes)
-    │   ├── make-store.ts       EngineStore adapter over useStudioStore
+    │   ├── batch.ts            runBatch over many traces
+    │   ├── runtime.ts          buildRuntimeDrivers wiring for replay
+    │   ├── differ.ts           recorded vs replayed verdict
+    │   ├── classify.ts         per-kind classification
+    │   ├── fold.ts             state fold over Action stream
+    │   ├── rules.ts            ignore/volatile path resolution
+    │   ├── registry.ts         driver registry
     │   └── drivers/
-    │       ├── types.ts        Driver interface, DriverContext
-    │       ├── chrome.ts       chromeDriver — config/auth/sidebar/editor
+    │       ├── studio.ts       studioDriver — config/auth/sidebar/editor
     │       ├── mcp.ts          mcpDriver — execute() for user, observe for widget
     │       └── widget.ts       widgetDriver — bridge dispatch + render.complete
     ├── lib/tests/

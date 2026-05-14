@@ -23,8 +23,3 @@ export function dbg(...args: unknown[]): void {
   if (!enabled()) return;
   console.log("[studio]", ...args);
 }
-
-export function dbgWarn(...args: unknown[]): void {
-  if (!enabled()) return;
-  console.warn("[studio]", ...args);
-}

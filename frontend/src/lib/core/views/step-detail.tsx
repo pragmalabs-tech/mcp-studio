@@ -214,18 +214,3 @@ function SectionHeader({
   );
 }
 
-/** Header utility for higher-level layouts (re-exported so callers
- *  can match styling without importing it from this file).
- *  Kept here for now; move if other surfaces need it. */
-export { SectionHeader as StepDetailSectionHeader };
-
-// Re-export for downstream consumers (e.g. tests-page may want to
-// surface a "Drifts toggle" widget eventually). Currently unused.
-export type { Props as StepDetailProps };
-
-/** Convenience: count surfaced (non-ignored) drifts for a step. */
-export function surfacedCount(drifts: readonly Drift[]): number {
-  return drifts.filter(
-    (d) => !d.suppressedBy || !d.suppressedBy.layer.endsWith(".ignore"),
-  ).length;
-}

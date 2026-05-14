@@ -70,7 +70,7 @@ import { run as runEngine } from "@/lib/core/engine";
 import { diff } from "@/lib/core/differ";
 import { resolveRules } from "@/lib/core/rules";
 import { buildRuntimeDrivers } from "@/lib/core/runtime";
-import { createBridgeClient } from "@/lib/engine/bridge-client";
+import { createBridgeClient } from "@/lib/recorder/bridge-client";
 import { TestPreconditionDialog } from "@/components/studio/test-precondition-dialog";
 import { TraceModal } from "@/lib/core/views/trace-modal";
 import type {

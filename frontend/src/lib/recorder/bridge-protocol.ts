@@ -88,12 +88,3 @@ export function isBridgeMessage(value: unknown): value is BridgeMessage {
     (value as { [k: string]: unknown })[BRIDGE_MARK] === true
   );
 }
-
-/** Outbound capture event (the legacy non-op case). */
-export function isCaptureMessage(
-  value: BridgeMessage,
-): value is BridgeCaptureMessage {
-  return (
-    !("op" in value) && typeof (value as { kind?: unknown }).kind === "string"
-  );
-}
