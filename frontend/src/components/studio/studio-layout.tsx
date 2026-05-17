@@ -9,7 +9,10 @@ import { WidgetConfig } from "@/components/studio/widget-config";
 import { WidgetPreview } from "@/components/studio/widget-preview";
 import { CspPanel } from "@/components/studio/csp-panel";
 import { OAuthDebugger } from "@/components/studio/oauth-debugger";
-import { ResizableSplit } from "@/components/studio/resizable-split";
+import {
+  ResizableSplit,
+  ResizableHorizontalSplit,
+} from "@/components/studio/resizable-split";
 import { TopHeader } from "@/components/studio/top-header";
 import { SignInDialog } from "@/components/studio/sign-in-dialog";
 import { PublishDialog } from "@/components/studio/publish-dialog";
@@ -60,134 +63,142 @@ export function StudioLayout() {
       <div className="flex-1 flex min-h-0">
         <Sidebar />
 
-        {/* Middle column */}
-        <div className="flex-1 flex flex-col border-r min-w-0">
-          <div className="flex items-center gap-2 px-4 py-2 border-b shrink-0">
-            <span className="font-semibold text-sm truncate">
-              {headerLabel}
-            </span>
-            {headerBadge && (
-              <Badge
-                variant={
-                  selected?.type === "tool"
-                    ? "default"
-                    : selected?.type === "resource"
-                      ? "secondary"
-                      : "destructive"
-                }
-                className="text-[10px] px-1.5 py-0"
-              >
-                {headerBadge}
-              </Badge>
-            )}
-          </div>
-          <ResizableSplit
-            top={<RequestEditor />}
-            bottom={
-              <div className="flex-1 flex flex-col min-h-0">
-                <PendingMessages />
-                <div className="flex border-b shrink-0">
-                  <button
-                    onClick={() => setBottomTab("logs")}
-                    className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
-                      bottomTab === "logs"
-                        ? "text-foreground border-b-2 border-primary"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
+        <ResizableHorizontalSplit
+          storageKey="mcp-studio:layout-split"
+          defaultRatio={0.45}
+          minLeftPx={360}
+          minRightPx={480}
+          left={
+            <div className="flex-1 flex flex-col min-w-0">
+              <div className="flex items-center gap-2 px-4 py-2 border-b shrink-0">
+                <span className="font-semibold text-sm truncate">
+                  {headerLabel}
+                </span>
+                {headerBadge && (
+                  <Badge
+                    variant={
+                      selected?.type === "tool"
+                        ? "default"
+                        : selected?.type === "resource"
+                          ? "secondary"
+                          : "destructive"
+                    }
+                    className="text-[10px] px-1.5 py-0"
                   >
-                    Logs
-                  </button>
-                  <button
-                    onClick={() => setBottomTab("console")}
-                    className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${
-                      bottomTab === "console"
-                        ? "text-foreground border-b-2 border-primary"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    Console
-                    {consoleEntries.length > 0 && (
-                      <span
-                        className={`px-1.5 py-0 rounded-full text-[10px] font-semibold ${
-                          consoleEntries.some((e) => e.level === "error")
-                            ? "bg-red-500/20 text-red-400"
-                            : consoleEntries.some((e) => e.level === "warn")
-                              ? "bg-yellow-500/20 text-yellow-400"
-                              : "bg-secondary text-muted-foreground"
-                        }`}
-                      >
-                        {consoleEntries.length}
-                      </span>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => setBottomTab("csp")}
-                    className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${
-                      bottomTab === "csp"
-                        ? "text-foreground border-b-2 border-primary"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    CSP
-                    {cspViolations.length > 0 && (
-                      <span
-                        className={`px-1.5 py-0 rounded-full text-[10px] font-semibold ${
-                          cspViolations.some((v) => v.severity === "error")
-                            ? "bg-red-500/20 text-red-400"
-                            : "bg-yellow-500/20 text-yellow-400"
-                        }`}
-                      >
-                        {cspViolations.length}
-                      </span>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setBottomTab("oauth");
-                      setOAuthDebugOpen(true);
-                    }}
-                    className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${
-                      bottomTab === "oauth"
-                        ? "text-foreground border-b-2 border-primary"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    OAuth
-                    {oauthDebugEvents.length > 0 && (
-                      <span
-                        className={`px-1.5 py-0 rounded-full text-[10px] font-semibold ${
-                          oauthDebugEvents.some((e) => e.status === "error")
-                            ? "bg-red-500/20 text-red-400"
-                            : "bg-green-500/20 text-green-400"
-                        }`}
-                      >
-                        {oauthDebugEvents.length}
-                      </span>
-                    )}
-                  </button>
-                </div>
-                {bottomTab === "logs" ? (
-                  <ActionLog />
-                ) : bottomTab === "console" ? (
-                  <ConsoleLog />
-                ) : bottomTab === "csp" ? (
-                  <CspPanel />
-                ) : (
-                  <OAuthDebugger />
+                    {headerBadge}
+                  </Badge>
                 )}
               </div>
-            }
-            defaultRatio={0.4}
-            minTopPx={100}
-            minBottomPx={200}
-          />
-        </div>
-
-        {/* Right column */}
-        <div className="flex-1 flex flex-col min-w-0">
-          <WidgetConfig />
-          <WidgetPreview />
-        </div>
+              <ResizableSplit
+                storageKey="mcp-studio:editor-split"
+                top={<RequestEditor />}
+                bottom={
+                  <div className="flex-1 flex flex-col min-h-0">
+                    <PendingMessages />
+                    <div className="flex border-b shrink-0">
+                      <button
+                        onClick={() => setBottomTab("logs")}
+                        className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+                          bottomTab === "logs"
+                            ? "text-foreground border-b-2 border-primary"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Logs
+                      </button>
+                      <button
+                        onClick={() => setBottomTab("console")}
+                        className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${
+                          bottomTab === "console"
+                            ? "text-foreground border-b-2 border-primary"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Console
+                        {consoleEntries.length > 0 && (
+                          <span
+                            className={`px-1.5 py-0 rounded-full text-[10px] font-semibold ${
+                              consoleEntries.some((e) => e.level === "error")
+                                ? "bg-red-500/20 text-red-400"
+                                : consoleEntries.some((e) => e.level === "warn")
+                                  ? "bg-yellow-500/20 text-yellow-400"
+                                  : "bg-secondary text-muted-foreground"
+                            }`}
+                          >
+                            {consoleEntries.length}
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setBottomTab("csp")}
+                        className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${
+                          bottomTab === "csp"
+                            ? "text-foreground border-b-2 border-primary"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        CSP
+                        {cspViolations.length > 0 && (
+                          <span
+                            className={`px-1.5 py-0 rounded-full text-[10px] font-semibold ${
+                              cspViolations.some((v) => v.severity === "error")
+                                ? "bg-red-500/20 text-red-400"
+                                : "bg-yellow-500/20 text-yellow-400"
+                            }`}
+                          >
+                            {cspViolations.length}
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setBottomTab("oauth");
+                          setOAuthDebugOpen(true);
+                        }}
+                        className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${
+                          bottomTab === "oauth"
+                            ? "text-foreground border-b-2 border-primary"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        OAuth
+                        {oauthDebugEvents.length > 0 && (
+                          <span
+                            className={`px-1.5 py-0 rounded-full text-[10px] font-semibold ${
+                              oauthDebugEvents.some((e) => e.status === "error")
+                                ? "bg-red-500/20 text-red-400"
+                                : "bg-green-500/20 text-green-400"
+                            }`}
+                          >
+                            {oauthDebugEvents.length}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+                    {bottomTab === "logs" ? (
+                      <ActionLog />
+                    ) : bottomTab === "console" ? (
+                      <ConsoleLog />
+                    ) : bottomTab === "csp" ? (
+                      <CspPanel />
+                    ) : (
+                      <OAuthDebugger />
+                    )}
+                  </div>
+                }
+                defaultRatio={0.4}
+                minTopPx={100}
+                minBottomPx={200}
+              />
+            </div>
+          }
+          right={
+            <div className="flex-1 flex flex-col min-w-0">
+              <WidgetConfig />
+              <WidgetPreview />
+            </div>
+          }
+        />
       </div>
     </div>
   );

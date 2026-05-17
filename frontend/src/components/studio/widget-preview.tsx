@@ -422,9 +422,11 @@ function ChatChrome({
 
 function ViewportFrame({
   hidden,
+  onScaleChange,
   children,
 }: {
   hidden: boolean;
+  onScaleChange?: (scale: number) => void;
   children: React.ReactNode;
 }) {
   const {
@@ -432,9 +434,6 @@ function ViewportFrame({
     viewportCustom,
     platform,
     theme,
-    displayMode,
-    locale,
-    strictMode,
     selected,
     resolveWidgetName: resolve,
   } = useStudioStore();
@@ -452,24 +451,34 @@ function ViewportFrame({
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
 
-  // Compute scale to fit viewport within available container space
   useEffect(() => {
     const container = containerRef.current;
     if (!container || hidden) return;
 
+    let raf = 0;
     const update = () => {
-      const availW = container.clientWidth - 32;
-      const availH = container.clientHeight - 56;
+      raf = 0;
+      const availW = container.clientWidth - 16;
+      const availH = container.clientHeight - 16;
       if (availW <= 0 || availH <= 0) return;
       const s = Math.min(1, availW / viewport.width, availH / viewport.height);
       setScale(s);
+      onScaleChange?.(s);
+    };
+
+    const schedule = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(update);
     };
 
     update();
-    const ro = new ResizeObserver(update);
+    const ro = new ResizeObserver(schedule);
     ro.observe(container);
-    return () => ro.disconnect();
-  }, [viewport.width, viewport.height, hidden]);
+    return () => {
+      ro.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [viewport.width, viewport.height, hidden, onScaleChange]);
 
   const scaledW = viewport.width * scale;
   const scaledH = viewport.height * scale;
@@ -477,7 +486,7 @@ function ViewportFrame({
   return (
     <div
       ref={containerRef}
-      className={`flex-1 overflow-hidden flex flex-col items-center justify-start p-4 ${
+      className={`flex-1 overflow-hidden flex items-center justify-center p-2 ${
         hidden ? "hidden" : ""
       }`}
     >
@@ -485,7 +494,6 @@ function ViewportFrame({
         className="rounded-2xl border border-border overflow-hidden shrink-0"
         style={{ width: `${scaledW}px`, height: `${scaledH}px` }}
       >
-        {/* Scaled viewport container */}
         <div
           style={{
             width: `${viewport.width}px`,
@@ -500,28 +508,6 @@ function ViewportFrame({
             {children}
           </ChatChrome>
         </div>
-      </div>
-      <div className="flex items-center gap-1.5 mt-2 text-[10px] text-muted-foreground">
-        <span className="font-medium text-foreground/70">
-          {platform === "openai" ? "OpenAI" : "Claude"}
-        </span>
-        <span>·</span>
-        <span>{theme}</span>
-        <span>·</span>
-        <span>{displayMode}</span>
-        <span>·</span>
-        <span>{locale}</span>
-        <span>·</span>
-        <span>
-          {viewport.width} × {viewport.height}
-          {scale < 1 && ` (${Math.round(scale * 100)}%)`}
-        </span>
-        {strictMode && (
-          <>
-            <span>·</span>
-            <span className="text-emerald-500/80">strict CSP</span>
-          </>
-        )}
       </div>
     </div>
   );
@@ -692,12 +678,19 @@ export function WidgetPreview() {
     currentMock,
     platform,
     strictMode,
+    viewportPreset,
+    viewportCustom,
     cspViolations,
     addCspViolation,
     setProtocolDetected,
   } = useStudioStore();
   const widgetName = resolveWidgetName();
   const [activeTab, setActiveTab] = useState<Tab>("widget");
+  const [previewScale, setPreviewScale] = useState(1);
+  const viewport =
+    viewportPreset === "custom"
+      ? viewportCustom
+      : VIEWPORT_PRESETS[viewportPreset];
 
   useEffect(() => {
     if (widgetName && lastResult) setActiveTab("widget");
@@ -986,6 +979,17 @@ export function WidgetPreview() {
           </>
         )}
         <div className="ml-auto flex items-center">
+          {(showTabs ? activeTab : "widget") === "widget" && (
+            <div className="flex items-center gap-1.5 px-2 text-[10px] text-muted-foreground">
+              <span className="tabular-nums">
+                {viewport.width} × {viewport.height}
+                {previewScale < 1 && ` (${Math.round(previewScale * 100)}%)`}
+              </span>
+              {strictMode && (
+                <span className="text-emerald-500/80">· strict CSP</span>
+              )}
+            </div>
+          )}
           {(() => {
             const current = showTabs ? activeTab : "widget";
             if (current === "html" && widgetSourceHtml) {
@@ -1030,7 +1034,10 @@ export function WidgetPreview() {
       {/* Widget iframe - always mounted but hidden when another tab is
           active. Keeping it mounted preserves iframe state (scroll position,
           runtime message handlers) across tab switches. */}
-      <ViewportFrame hidden={showTabs && activeTab !== "widget"}>
+      <ViewportFrame
+        hidden={showTabs && activeTab !== "widget"}
+        onScaleChange={setPreviewScale}
+      >
         {widgetRawHtml && currentMock ? (
           <WidgetFrame
             html={widgetRawHtml}
