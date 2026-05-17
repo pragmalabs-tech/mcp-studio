@@ -32,6 +32,9 @@ export interface WidgetFrameProps {
   onCspViolation?: (event: SecurityPolicyViolationEvent) => void;
   /** When true, polls the iframe's documentElement.scrollHeight and resizes. */
   autoResize?: boolean;
+  /** Display-only: disables pointer/keyboard input inside the widget so
+   *  reviewers can read the captured render without firing handlers. */
+  viewOnly?: boolean;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -48,6 +51,7 @@ export function WidgetFrame(props: WidgetFrameProps) {
     onPostMessage,
     onCspViolation,
     autoResize = true,
+    viewOnly = false,
     className,
     style,
   } = props;
@@ -59,9 +63,17 @@ export function WidgetFrame(props: WidgetFrameProps) {
   // Removing `mock` from this dep list is what gives us a stable iframe.
   const srcdoc = useMemo(
     () =>
-      renderHtml({ html, mock, platform, strict, baseUrl, bridgeSource }).html,
+      renderHtml({
+        html,
+        mock,
+        platform,
+        strict,
+        baseUrl,
+        bridgeSource,
+        viewOnly,
+      }).html,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [html, platform, strict, baseUrl, bridgeSource],
+    [html, platform, strict, baseUrl, bridgeSource, viewOnly],
   );
 
   // Track the latest mock in a ref so the iframe's onLoad handler can

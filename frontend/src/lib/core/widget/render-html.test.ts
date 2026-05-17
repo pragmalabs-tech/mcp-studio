@@ -123,6 +123,30 @@ describe("renderHtml - tunnel URL rewrite", () => {
   });
 });
 
+describe("renderHtml - viewOnly", () => {
+  it("viewOnly omitted: no input-blocking script", () => {
+    const out = renderHtml({
+      html: PAGE,
+      mock: baseMock(),
+      platform: "openai",
+      strict: false,
+    });
+    expect(out.html).not.toContain("pointer-events:none");
+  });
+
+  it("viewOnly true: injects pointer/keyboard blocker", () => {
+    const out = renderHtml({
+      html: PAGE,
+      mock: baseMock(),
+      platform: "openai",
+      strict: false,
+      viewOnly: true,
+    });
+    expect(out.html).toContain("pointer-events:none");
+    expect(out.html).toContain("stopPropagation");
+  });
+});
+
 describe("renderHtml - cspDomains output", () => {
   it("returns the CSP domains it derived from mock._meta", () => {
     const out = renderHtml({

@@ -150,6 +150,7 @@ export function StepDetail({
                   mock={widget!.mock}
                   platform="openai"
                   strict={false}
+                  viewOnly
                   className="border-none block w-full"
                   style={{ minHeight: "320px", width: "100%" }}
                 />

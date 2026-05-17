@@ -31,6 +31,9 @@ export interface RenderOpts {
    *  injected into the iframe so DOM events flow back to the recorder.
    *  Strict CSP would block the bridge, so it is silently skipped. */
   bridgeSource?: string;
+  /** Display-only mode for replay/review: blocks pointer + keyboard input
+   *  so reviewers can read the widget without firing submit handlers. */
+  viewOnly?: boolean;
 }
 
 export interface RenderResult {
@@ -39,7 +42,8 @@ export interface RenderResult {
 }
 
 export function renderHtml(opts: RenderOpts): RenderResult {
-  const { html, mock, platform, strict, baseUrl, bridgeSource } = opts;
+  const { html, mock, platform, strict, baseUrl, bridgeSource, viewOnly } =
+    opts;
   const meta = (mock._meta || {}) as Record<string, unknown>;
   const cspDomains = extractCspDomains(meta);
 
@@ -61,12 +65,39 @@ export function renderHtml(opts: RenderOpts): RenderResult {
     scripts.push(claudeLinkInterceptScript());
   }
 
+  if (viewOnly) {
+    scripts.push(viewOnlyScript());
+  }
+
   const finalHtml = inject(html, {
     rewriteTunnel: baseUrl,
     metas,
     scripts,
   });
   return { html: finalHtml, cspDomains };
+}
+
+/** Blocks all user interaction inside the widget. Used by the trace review
+ *  pane so reviewers can read the captured widget without firing submits,
+ *  toggling state, or otherwise drifting the snapshot. Text remains
+ *  selectable so reviewers can copy values. */
+function viewOnlyScript(): string {
+  return `<script>
+(function () {
+  var style = document.createElement('style');
+  style.textContent = 'html,body{pointer-events:none!important;}body *{user-select:text!important;-webkit-user-select:text!important;cursor:default!important;}';
+  (document.head || document.documentElement).appendChild(style);
+  var swallow = function (e) { e.stopPropagation(); e.preventDefault(); };
+  ['click','dblclick','mousedown','mouseup','keydown','keypress','keyup','submit','change','input','pointerdown','pointerup','touchstart','touchend']
+    .forEach(function (t) { window.addEventListener(t, swallow, true); });
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('input,select,textarea,button').forEach(function (el) {
+      try { el.disabled = true; } catch (_) {}
+      el.setAttribute('tabindex', '-1');
+    });
+  });
+})();
+</script>`;
 }
 
 /** Routes anchor clicks through `ui/open-link` so Claude's host opens the
