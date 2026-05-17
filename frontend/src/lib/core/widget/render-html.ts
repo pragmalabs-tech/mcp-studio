@@ -59,6 +59,13 @@ export function renderHtml(opts: RenderOpts): RenderResult {
     scripts.push(`<script>${bridgeSource}</script>`);
   }
 
+  // Forward widget console output to the studio shell so developers can
+  // copy log lines without opening devtools. Skipped under strict CSP
+  // for the same reason as the bridge: inline scripts may be blocked.
+  if (!strict) {
+    scripts.push(consoleForwardScript());
+  }
+
   if (platform === "openai") {
     scripts.push(buildOpenAIMockScript(mock));
   } else {
@@ -75,6 +82,66 @@ export function renderHtml(opts: RenderOpts): RenderResult {
     scripts,
   });
   return { html: finalHtml, cspDomains };
+}
+
+/** Forwards `console.log/info/warn/error/debug` calls from the widget up
+ *  to the studio shell via `postMessage`. The original console methods
+ *  still fire so browser devtools keep working; we only piggyback on
+ *  them. Args are safely serialized (circular refs become `[Circular]`,
+ *  functions become `[Function]`, Errors include their stack) so the
+ *  receiver can render plain strings. */
+function consoleForwardScript(): string {
+  return `<script>
+(function () {
+  var LEVELS = ['log','info','warn','error','debug'];
+  function safeStringify(v) {
+    if (v === null) return 'null';
+    if (v === undefined) return 'undefined';
+    if (typeof v === 'string') return v;
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    if (v instanceof Error) return v.stack || (v.name + ': ' + v.message);
+    try {
+      var seen = new WeakSet();
+      return JSON.stringify(v, function (_k, val) {
+        if (typeof val === 'object' && val !== null) {
+          if (seen.has(val)) return '[Circular]';
+          seen.add(val);
+        }
+        if (typeof val === 'function') return '[Function]';
+        if (typeof val === 'bigint') return val.toString() + 'n';
+        return val;
+      });
+    } catch (_e) {
+      try { return String(v); } catch (_e2) { return '[Unserializable]'; }
+    }
+  }
+  LEVELS.forEach(function (level) {
+    var original = console[level];
+    console[level] = function () {
+      try {
+        var args = Array.prototype.map.call(arguments, safeStringify);
+        window.parent.postMessage({ type: 'studio_console', level: level, args: args, time: Date.now() }, '*');
+      } catch (_) { /* parent gone or cross-origin */ }
+      try { original.apply(console, arguments); } catch (_) { /* ignore */ }
+    };
+  });
+  // Surface uncaught errors and unhandled rejections too - they're the
+  // most useful signal when a widget silently breaks.
+  window.addEventListener('error', function (e) {
+    try {
+      var msg = e.message + (e.filename ? ' (' + e.filename + ':' + e.lineno + ')' : '');
+      window.parent.postMessage({ type: 'studio_console', level: 'error', args: [msg], time: Date.now() }, '*');
+    } catch (_) {}
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    try {
+      var reason = e.reason;
+      var msg = reason && reason.stack ? reason.stack : safeStringify(reason);
+      window.parent.postMessage({ type: 'studio_console', level: 'error', args: ['Unhandled rejection: ' + msg], time: Date.now() }, '*');
+    } catch (_) {}
+  });
+})();
+</script>`;
 }
 
 /** Blocks all user interaction inside the widget. Used by the trace review

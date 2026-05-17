@@ -131,6 +131,16 @@ export interface ActionEntry {
   args: string;
 }
 
+export type ConsoleLevel = "log" | "info" | "warn" | "error" | "debug";
+
+export interface ConsoleEntry {
+  /** HH:MM:SS.mmm formatted timestamp; matches ActionEntry.time. */
+  time: string;
+  level: ConsoleLevel;
+  /** Pre-stringified args from the widget. Joined with space at render. */
+  args: string[];
+}
+
 export interface PendingMessage {
   id: string;
   time: string;
@@ -543,6 +553,9 @@ interface StudioState {
    *  Cleared on selection change and at the start of each execute. */
   resultIssues: ResultIssue[];
   actions: ActionEntry[];
+  /** Forwarded `console.*` calls from the live widget iframe. Read-only
+   *  debug info - never used for replay assertions. */
+  consoleEntries: ConsoleEntry[];
   pendingMessages: PendingMessage[];
 
   // CSP / Strict mode
@@ -615,6 +628,8 @@ interface StudioState {
   getViewportSize: () => ViewportSize;
   logAction: (method: string, args: unknown) => void;
   clearActions: () => void;
+  addConsoleEntry: (level: ConsoleLevel, args: string[]) => void;
+  clearConsoleEntries: () => void;
   addPendingMessage: (source: "openai" | "claude", content: unknown) => void;
   dismissMessage: (id: string) => void;
   clearMessages: () => void;
@@ -850,6 +865,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   lastResult: null,
   resultIssues: [],
   actions: [],
+  consoleEntries: [],
   pendingMessages: [],
 
   // CSP / Strict mode
@@ -1286,6 +1302,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     set({
       selected: item,
       actions: [],
+      consoleEntries: [],
       pendingMessages: [],
       jsonOutput: null,
       lastResult: null,
@@ -1359,6 +1376,16 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   },
 
   clearActions: () => set({ actions: [] }),
+
+  addConsoleEntry: (level, args) =>
+    set((s) => ({
+      consoleEntries: [
+        ...s.consoleEntries,
+        { time: formatTimestamp(), level, args },
+      ],
+    })),
+
+  clearConsoleEntries: () => set({ consoleEntries: [] }),
 
   addPendingMessage: (source, content) => {
     const msg: PendingMessage = {

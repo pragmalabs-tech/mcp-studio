@@ -123,6 +123,29 @@ describe("renderHtml - tunnel URL rewrite", () => {
   });
 });
 
+describe("renderHtml - console forwarding", () => {
+  it("relaxed mode: injects console forwarder", () => {
+    const out = renderHtml({
+      html: PAGE,
+      mock: baseMock(),
+      platform: "openai",
+      strict: false,
+    });
+    expect(out.html).toContain("studio_console");
+    expect(out.html).toContain("unhandledrejection");
+  });
+
+  it("strict mode: console forwarder is SKIPPED (CSP would block)", () => {
+    const out = renderHtml({
+      html: PAGE,
+      mock: baseMock(),
+      platform: "openai",
+      strict: true,
+    });
+    expect(out.html).not.toContain("studio_console");
+  });
+});
+
 describe("renderHtml - viewOnly", () => {
   it("viewOnly omitted: no input-blocking script", () => {
     const out = renderHtml({

@@ -808,6 +808,25 @@ export function WidgetPreview() {
         setProtocolDetected(data.protocol);
         return;
       }
+      if (
+        data.type === "studio_console" &&
+        typeof data.level === "string" &&
+        Array.isArray(data.args)
+      ) {
+        const level = data.level as "log" | "info" | "warn" | "error" | "debug";
+        if (
+          level === "log" ||
+          level === "info" ||
+          level === "warn" ||
+          level === "error" ||
+          level === "debug"
+        ) {
+          useStudioStore
+            .getState()
+            .addConsoleEntry(level, data.args.map(String));
+        }
+        return;
+      }
       if (data.type === "studio_action") {
         logAction(data.method, data.args);
         // callTool is already captured as mcp.request (source: "widget");

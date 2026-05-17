@@ -3,6 +3,7 @@ import { useStudioStore } from "@/lib/studio/store";
 import { Sidebar } from "@/components/studio/sidebar";
 import { RequestEditor } from "@/components/studio/request-editor";
 import { ActionLog } from "@/components/studio/action-log";
+import { ConsoleLog } from "@/components/studio/console-log";
 import { PendingMessages } from "@/components/studio/pending-messages";
 import { WidgetConfig } from "@/components/studio/widget-config";
 import { WidgetPreview } from "@/components/studio/widget-preview";
@@ -14,11 +15,12 @@ import { SignInDialog } from "@/components/studio/sign-in-dialog";
 import { PublishDialog } from "@/components/studio/publish-dialog";
 import { Badge } from "@/components/ui/badge";
 
-type BottomTab = "logs" | "csp" | "oauth";
+type BottomTab = "logs" | "console" | "csp" | "oauth";
 
 export function StudioLayout() {
   const selected = useStudioStore((s) => s.selected);
   const cspViolations = useStudioStore((s) => s.cspViolations);
+  const consoleEntries = useStudioStore((s) => s.consoleEntries);
   const oauthDebugEvents = useStudioStore((s) => s.oauthDebugEvents);
   const oauthDebugOpen = useStudioStore((s) => s.oauthDebugOpen);
   const setOAuthDebugOpen = useStudioStore((s) => s.setOAuthDebugOpen);
@@ -96,6 +98,29 @@ export function StudioLayout() {
                     Logs
                   </button>
                   <button
+                    onClick={() => setBottomTab("console")}
+                    className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${
+                      bottomTab === "console"
+                        ? "text-foreground border-b-2 border-primary"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Console
+                    {consoleEntries.length > 0 && (
+                      <span
+                        className={`px-1.5 py-0 rounded-full text-[10px] font-semibold ${
+                          consoleEntries.some((e) => e.level === "error")
+                            ? "bg-red-500/20 text-red-400"
+                            : consoleEntries.some((e) => e.level === "warn")
+                              ? "bg-yellow-500/20 text-yellow-400"
+                              : "bg-secondary text-muted-foreground"
+                        }`}
+                      >
+                        {consoleEntries.length}
+                      </span>
+                    )}
+                  </button>
+                  <button
                     onClick={() => setBottomTab("csp")}
                     className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${
                       bottomTab === "csp"
@@ -143,6 +168,8 @@ export function StudioLayout() {
                 </div>
                 {bottomTab === "logs" ? (
                   <ActionLog />
+                ) : bottomTab === "console" ? (
+                  <ConsoleLog />
                 ) : bottomTab === "csp" ? (
                   <CspPanel />
                 ) : (
