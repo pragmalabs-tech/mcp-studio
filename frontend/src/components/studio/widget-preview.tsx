@@ -5,6 +5,7 @@ import { callTool, getBaseUrl } from "@/lib/studio/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CopyButton } from "@/components/ui/copy-button";
 import { WidgetFrame } from "@/lib/core/views/widget-frame";
+import { ResultIssuesBanner } from "@/lib/core/views/result-issues-banner";
 import { createExtAppsMock } from "@/lib/studio/mock-claude";
 import { recorder } from "@/lib/recorder/bus";
 import { dbg } from "@/lib/recorder/debug";
@@ -681,6 +682,7 @@ export function WidgetPreview() {
   const {
     jsonOutput,
     lastResult,
+    resultIssues,
     resolveWidgetName,
     setIframeRef,
     logAction,
@@ -899,6 +901,7 @@ export function WidgetPreview() {
   if (!hasWidget && hasJson) {
     return (
       <div className="flex-1 flex flex-col min-h-0">
+        <ResultIssuesBanner issues={resultIssues} />
         <div className="px-3 py-1.5 bg-secondary/50 shrink-0 flex items-center justify-between">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             JSON Response
@@ -925,6 +928,7 @@ export function WidgetPreview() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
+      <ResultIssuesBanner issues={resultIssues} />
       <div className="flex border-b shrink-0">
         {showTabs && (
           <>

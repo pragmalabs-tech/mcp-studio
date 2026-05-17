@@ -12,8 +12,10 @@ import { useEffect, useMemo, useRef } from "react";
 import { CspFindingsList } from "./csp-findings";
 import { WidgetFrame } from "./widget-frame";
 import { DriftCard } from "./drift-card";
+import { ResultIssuesBanner } from "./result-issues-banner";
 import { buildJsonView, findActiveWidget } from "./step-views";
 import { CopyButton } from "@/components/ui/copy-button";
+import { validateToolResult } from "@/lib/studio/validate-tool-result";
 import type { Drift, Matcher, Step } from "../types";
 
 interface Props {
@@ -53,6 +55,15 @@ export function StepDetail({
     () => buildJsonView(steps, selectedStepIdx),
     [steps, selectedStepIdx],
   );
+  // Surface spec-compliance issues on the recorded response so review
+  // sessions catch the same footguns (e.g. non-object structuredContent)
+  // that the live preview flags. Only meaningful for mcp.response steps.
+  const resultIssues = useMemo(() => {
+    const step = steps[Math.min(selectedStepIdx, steps.length - 1)];
+    const a = step?.action;
+    if (a?.driver !== "mcp" || a.kind !== "response") return [];
+    return validateToolResult(a.payload.result);
+  }, [steps, selectedStepIdx]);
   const visibleDrifts = useMemo(
     () =>
       drifts.filter(
@@ -82,7 +93,15 @@ export function StepDetail({
     compareMode === "exact" &&
     failDriftCount >= SHAPE_BANNER_THRESHOLD;
 
-  if (!showDrifts && !showJson && !showWidget && !onCompareChange) {
+  const hasIssues = resultIssues.length > 0;
+
+  if (
+    !showDrifts &&
+    !showJson &&
+    !showWidget &&
+    !onCompareChange &&
+    !hasIssues
+  ) {
     return (
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="text-xs font-mono text-muted-foreground italic">
@@ -95,6 +114,7 @@ export function StepDetail({
   return (
     <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
       <div className="flex-1 min-h-0 overflow-y-auto">
+        <ResultIssuesBanner issues={resultIssues} />
         {showDrifts && (
           <section className="border-b">
             <SectionHeader

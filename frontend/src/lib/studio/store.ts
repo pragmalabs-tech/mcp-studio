@@ -26,6 +26,7 @@ import {
   type McpResourceInfo,
 } from "./api";
 import { DEFAULT_MOCK, type MockData } from "./mock-openai";
+import { validateToolResult, type ResultIssue } from "./validate-tool-result";
 import type { Action, WidgetMock } from "@/lib/core/types";
 import { createClaudeMock } from "./mock-claude";
 import { extractCspDomains } from "@/lib/core/csp/profiles";
@@ -538,6 +539,9 @@ interface StudioState {
   executing: boolean;
   jsonOutput: string | null;
   lastResult: unknown | null;
+  /** Spec-compliance issues from the latest tool/resource response.
+   *  Cleared on selection change and at the start of each execute. */
+  resultIssues: ResultIssue[];
   actions: ActionEntry[];
   pendingMessages: PendingMessage[];
 
@@ -844,6 +848,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   executing: false,
   jsonOutput: null,
   lastResult: null,
+  resultIssues: [],
   actions: [],
   pendingMessages: [],
 
@@ -1284,6 +1289,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       pendingMessages: [],
       jsonOutput: null,
       lastResult: null,
+      resultIssues: [],
       _extAppsMock: null,
       widgetRawHtml: null,
       currentMock: null,
@@ -1742,7 +1748,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       resolveWidgetName,
     } = get();
     if (!selected) return;
-    set({ executing: true });
+    set({ executing: true, resultIssues: [] });
     logAction("system", `Executing ${selected.type}…`);
 
     try {
@@ -1758,6 +1764,23 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       } else {
         set({ executing: false });
         return;
+      }
+
+      // Spec-compliance check. The biggest footgun is structuredContent
+      // shape: hosts (Claude / ChatGPT) consume it as an object, so a
+      // primitive or array silently breaks downstream parsing. Surface
+      // any issues to both the action log and the preview banner.
+      if (selected.type === "tool") {
+        const issues = validateToolResult(result);
+        if (issues.length > 0) {
+          set({ resultIssues: issues });
+          for (const issue of issues) {
+            logAction(
+              issue.severity === "error" ? "error" : "warn",
+              `${issue.title} - ${issue.detail}`,
+            );
+          }
+        }
       }
 
       // Extract tool output
