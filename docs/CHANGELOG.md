@@ -82,6 +82,27 @@ versions correspond to release tags in git.
 - The verbose chain logs (`step1/step2/step3/step5/host RX`) that
   accumulated during debugging - replaced with the `__studioDebug` flag.
 
+## [0.2.1] – 2026-05-17
+
+- **Resizable middle/right preview split** at the workspace level. The
+  divider between the tool panel and the widget preview is now a 1px
+  drag handle; the ratio persists in `localStorage` and is clamped so
+  neither column drops below its minimum (360px / 480px). Fixes the
+  cramped layout at 1280px desktop widths.
+- **Viewport readout in the widget tab row.** Dimensions, current
+  rendering scale (`430 × 932 (55%)`), and a `strict CSP` indicator now
+  sit next to Copy HTML / Reload, replacing the bottom footer strip so
+  the viewport itself gets the full vertical space.
+- **Widget viewport frame tightened.** Removed the duplicated
+  platform/theme/locale footer (already shown in the config bar),
+  reduced internal padding from `p-4` to `p-2`, and centered the
+  scaled viewport in both axes. At 1280px the mobile preset renders
+  ~60px taller before scale-to-fit kicks in.
+- **rAF-throttled ResizeObserver** on the viewport frame. Drag events
+  coalesce to one scale update per frame instead of firing
+  synchronously on every observer tick, removing the jittery re-scale
+  that felt like animation while resizing the split.
+
 ## [0.2.0] – 2026-05-12
 
 - **Widget render 2.0** — postMessage-based iframe update protocol;
