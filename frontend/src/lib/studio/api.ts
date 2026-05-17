@@ -594,10 +594,28 @@ export async function mcpCall(
   return recordedMcpCall(rawMcpCall, method, params, "user");
 }
 
+/** MCP tool annotations - behavioural hints surfaced in `tools/list` so
+ *  hosts (OpenAI Apps, Claude, etc.) can show users what the tool does
+ *  before invoking it. All fields are advisory; the server is trusted to
+ *  set them honestly. See modelcontextprotocol spec for semantics. */
+export interface McpToolAnnotations {
+  /** Human-readable display title (often differs from the program name). */
+  title?: string;
+  /** Tool does not mutate its environment. */
+  readOnlyHint?: boolean;
+  /** Tool may perform destructive updates (defaults to true when omitted). */
+  destructiveHint?: boolean;
+  /** Calling repeatedly with the same args has no further effect. */
+  idempotentHint?: boolean;
+  /** Tool interacts with the outside world (network, external services). */
+  openWorldHint?: boolean;
+}
+
 export interface McpToolInfo {
   name: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
+  annotations?: McpToolAnnotations;
   meta?: Record<string, unknown>;
   _meta?: Record<string, unknown>;
 }
@@ -625,11 +643,21 @@ export async function callTool(
   );
 }
 
+/** MCP resource annotations - reading/display hints. `audience` says which
+ *  party (user / assistant) the resource is intended for, `priority` is a
+ *  relevance score in [0,1], `lastModified` is an ISO timestamp. */
+export interface McpResourceAnnotations {
+  audience?: ("user" | "assistant")[];
+  priority?: number;
+  lastModified?: string;
+}
+
 export interface McpResourceInfo {
   uri: string;
   name: string;
   description?: string;
   mimeType?: string;
+  annotations?: McpResourceAnnotations;
   meta?: Record<string, unknown>;
 }
 
