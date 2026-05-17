@@ -13,6 +13,7 @@ import { CspFindingsList } from "./csp-findings";
 import { WidgetFrame } from "./widget-frame";
 import { DriftCard } from "./drift-card";
 import { buildJsonView, findActiveWidget } from "./step-views";
+import { CopyButton } from "@/components/ui/copy-button";
 import type { Drift, Matcher, Step } from "../types";
 
 interface Props {
@@ -141,7 +142,12 @@ export function StepDetail({
 
         {showWidget && (
           <section className={showJson ? "border-b" : undefined}>
-            <SectionHeader title={widget!.uri} />
+            <SectionHeader
+              title={widget!.uri}
+              action={
+                <CopyButton value={() => widget!.html} label="Copy HTML" />
+              }
+            />
             <div className="flex">
               <div className="flex-1 min-w-0 min-h-[320px] bg-background">
                 <WidgetFrame
@@ -164,7 +170,13 @@ export function StepDetail({
 
         {showJson && (
           <section>
-            <SectionHeader title={jsonView!.label} right={jsonView!.subtitle} />
+            <SectionHeader
+              title={jsonView!.label}
+              right={jsonView!.subtitle}
+              action={
+                <CopyButton value={() => jsonView!.body} label="Copy JSON" />
+              }
+            />
             <pre className="p-4 text-xs font-mono whitespace-pre-wrap break-all bg-background text-foreground select-text">
               {jsonView!.body}
             </pre>
@@ -180,11 +192,13 @@ function SectionHeader({
   right,
   compareMode,
   onCompareChange,
+  action,
 }: {
   title: string;
   right?: string;
   compareMode?: "exact" | "shape";
   onCompareChange?: (mode: "exact" | "shape") => void | Promise<void>;
+  action?: React.ReactNode;
 }) {
   return (
     <div className="px-4 py-2 border-b bg-muted/20 text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 truncate flex items-center justify-between gap-2">
@@ -210,6 +224,7 @@ function SectionHeader({
             </select>
           </label>
         )}
+        {action}
       </div>
     </div>
   );

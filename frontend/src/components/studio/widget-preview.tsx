@@ -3,6 +3,7 @@ import { useStudioStore, type CspViolation } from "@/lib/studio/store";
 import { VIEWPORT_PRESETS } from "@/lib/studio/store";
 import { callTool, getBaseUrl } from "@/lib/studio/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { CopyButton } from "@/components/ui/copy-button";
 import { WidgetFrame } from "@/lib/core/views/widget-frame";
 import { createExtAppsMock } from "@/lib/studio/mock-claude";
 import { recorder } from "@/lib/recorder/bus";
@@ -898,10 +899,11 @@ export function WidgetPreview() {
   if (!hasWidget && hasJson) {
     return (
       <div className="flex-1 flex flex-col min-h-0">
-        <div className="px-3 py-1.5 bg-secondary/50 shrink-0">
+        <div className="px-3 py-1.5 bg-secondary/50 shrink-0 flex items-center justify-between">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             JSON Response
           </span>
+          <CopyButton value={() => jsonText ?? ""} label="Copy JSON" />
         </div>
         <ScrollArea className="flex-1 min-h-0">
           <pre className="p-4 text-xs font-mono whitespace-pre-wrap break-all text-foreground select-text">
@@ -961,6 +963,37 @@ export function WidgetPreview() {
           </>
         )}
         <div className="ml-auto flex items-center">
+          {(() => {
+            const current = showTabs ? activeTab : "widget";
+            if (current === "html" && widgetSourceHtml) {
+              return (
+                <CopyButton
+                  value={() => widgetSourceHtml!}
+                  label="Copy HTML"
+                  className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                />
+              );
+            }
+            if (current === "json" && jsonText) {
+              return (
+                <CopyButton
+                  value={() => jsonText!}
+                  label="Copy JSON"
+                  className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                />
+              );
+            }
+            if (current === "widget" && widgetRawHtml) {
+              return (
+                <CopyButton
+                  value={() => widgetRawHtml!}
+                  label="Copy HTML"
+                  className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                />
+              );
+            }
+            return null;
+          })()}
           <button
             onClick={() => useStudioStore.getState().loadWidget()}
             className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
