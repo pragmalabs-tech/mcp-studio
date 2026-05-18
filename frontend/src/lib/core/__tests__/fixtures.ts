@@ -37,6 +37,7 @@ export function makeState(overrides: StateOverrides = {}): State {
       ? { ...base.studio, ...overrides.studio }
       : base.studio,
     tools: overrides.tools ?? base.tools,
+    resources: overrides.resources ?? base.resources,
     widgets: overrides.widgets
       ? { ...base.widgets, ...overrides.widgets }
       : base.widgets,
@@ -49,6 +50,7 @@ export function makeState(overrides: StateOverrides = {}): State {
 interface StateOverrides {
   studio?: Partial<State["studio"]>;
   tools?: State["tools"];
+  resources?: State["resources"];
   widgets?: Partial<State["widgets"]>;
   network?: Partial<State["network"]>;
 }

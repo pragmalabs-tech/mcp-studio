@@ -1289,9 +1289,13 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       set({ editorValue: JSON.stringify({ uri: item.resource.uri }, null, 2) });
     }
 
-    // Auto-load widget if applicable (defer to let React update refs)
+    // Auto-load widget if applicable (defer to let React update refs).
+    // Skipped during replay (studioMode === "test") — the engine drives
+    // widget rendering through widget.render actions, and a deferred
+    // loadWidget here would fire an unwanted resources/read that
+    // duplicates a recorded one and pollutes the replay timeline.
     const widgetName = get().resolveWidgetName();
-    if (widgetName) {
+    if (widgetName && get().studioMode !== "test") {
       // Small delay to ensure iframe ref is set
       setTimeout(() => get().loadWidget(), 50);
     }
@@ -1309,19 +1313,27 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     set((s) => ({ runState: s.runState ? { ...s.runState, ...patch } : null })),
   setPlatform: (p) => {
     set({ platform: p });
-    setTimeout(() => get().loadWidget(), 50);
+    if (get().studioMode !== "test") {
+      setTimeout(() => get().loadWidget(), 50);
+    }
   },
   setTheme: (t) => {
     set({ theme: t });
-    setTimeout(() => get().applyMock(), 50);
+    if (get().studioMode !== "test") {
+      setTimeout(() => get().applyMock(), 50);
+    }
   },
   setLocale: (l) => {
     set({ locale: l });
-    setTimeout(() => get().applyMock(), 50);
+    if (get().studioMode !== "test") {
+      setTimeout(() => get().applyMock(), 50);
+    }
   },
   setDisplayMode: (d) => {
     set({ displayMode: d });
-    setTimeout(() => get().applyMock(), 50);
+    if (get().studioMode !== "test") {
+      setTimeout(() => get().applyMock(), 50);
+    }
   },
   setViewportPreset: (p) => set({ viewportPreset: p }),
   setViewportCustom: (size) => {
@@ -1379,7 +1391,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   setStrictMode: (on) => {
     set({ strictMode: on, cspViolations: [] });
-    setTimeout(() => get().loadWidget(), 50);
+    if (get().studioMode !== "test") {
+      setTimeout(() => get().loadWidget(), 50);
+    }
   },
 
   addCspViolation: (v) => {
@@ -1728,7 +1742,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         editorValue: JSON.stringify({ uri: selected.resource.uri }, null, 2),
       });
     }
-    setTimeout(loadWidget, 50);
+    if (get().studioMode !== "test") {
+      setTimeout(loadWidget, 50);
+    }
   },
 
   // ── Execute ──

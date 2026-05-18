@@ -31,6 +31,7 @@ import {
   getRunResult,
   deleteRunResult,
   saveTrace,
+  updateRunResultEntry,
 } from "@/lib/tests/api";
 import { diff as runDiff } from "@/lib/core/differ";
 import { resolveRules } from "@/lib/core/rules";
@@ -281,18 +282,36 @@ export function RunsPage({ open, onOpenChange }: Props) {
                     );
                     return;
                   }
+                  if (!openFile) {
+                    setError("Cannot apply: no run file open.");
+                    return;
+                  }
                   try {
                     await saveTrace(
                       selectedEntry.testFsName,
                       selectedEntry.recorded,
                     );
-                    setPristine(selectedEntry.recorded);
-                    setDirty(false);
                   } catch (e) {
                     setError(
                       `Failed to apply changes: ${(e as Error).message}`,
                     );
+                    return;
                   }
+                  try {
+                    await updateRunResultEntry(
+                      openFile.id,
+                      selectedEntry.testFsName,
+                      selectedEntry.recorded,
+                      selectedEntry.verdict,
+                    );
+                  } catch (e) {
+                    setError(
+                      `Saved to test fixture but failed to update this run-result: ${(e as Error).message}`,
+                    );
+                    return;
+                  }
+                  setPristine(selectedEntry.recorded);
+                  setDirty(false);
                 },
                 onDiscard: () => {
                   if (!pristine) return;

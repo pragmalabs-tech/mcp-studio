@@ -42,12 +42,24 @@ function mcpSummary(a: Extract<Action, { driver: "mcp" }>): string {
     return `${a.payload.method} ${previewValue(a.payload.params)}`.trimEnd();
   }
   // response
-  const tool = a.payload.tool ?? "(response)";
+  const label = responseLabel(a.payload);
   const took = a.payload.durationMs ? ` (${a.payload.durationMs}ms)` : "";
   if (a.payload.error) {
-    return `${tool} → error: ${a.payload.error.message}${took}`;
+    return `${label} → error: ${a.payload.error.message}${took}`;
   }
-  return `${tool} → ok${took}`;
+  return `${label} → ok${took}`;
+}
+
+function responseLabel(p: {
+  tool?: string;
+  method?: string;
+  resourceUri?: string;
+}): string {
+  if (p.tool) return p.tool;
+  if (p.method === "resources/read" && p.resourceUri) {
+    return `resources/read ${p.resourceUri}`;
+  }
+  return p.method ?? "(response)";
 }
 
 function widgetSummary(a: Extract<Action, { driver: "widget" }>): string {
@@ -137,9 +149,19 @@ export function actionExpectation(a: Action): string {
     return `sends ${a.payload.method}`;
   }
   if (a.driver === "mcp" && a.kind === "response") {
-    const tool = a.payload.tool ?? "(response)";
-    if (a.payload.error) return `expects tools.${tool}.lastError`;
-    return `expects tools.${tool}.lastResult`;
+    if (a.payload.tool) {
+      return a.payload.error
+        ? `expects tools.${a.payload.tool}.lastError`
+        : `expects tools.${a.payload.tool}.lastResult`;
+    }
+    if (a.payload.resourceUri) {
+      return a.payload.error
+        ? `expects resources["${a.payload.resourceUri}"].lastError`
+        : `expects resources["${a.payload.resourceUri}"].lastResult`;
+    }
+    return a.payload.method
+      ? `expects ${a.payload.method} response`
+      : "expects response";
   }
   if (a.driver === "widget" && a.kind === "opened") {
     return `expects widgets[${a.payload.uri}]`;
@@ -157,6 +179,83 @@ export function actionExpectation(a: Action): string {
     return "(no state assertion)";
   }
   return "";
+}
+
+/** Structured, un-truncated view of an action's payload, for inspector
+ *  display. Each entry is one labelled field of the action's input.
+ *  Unlike `actionSummary`, returns the full values so the user can read
+ *  the actual data the test will send. Returns an empty array for
+ *  actions that have no meaningful input. */
+export function actionInputs(
+  a: Action,
+): Array<{ label: string; value: unknown }> {
+  if (a.driver === "studio") {
+    if (a.kind === "select")
+      return [{ label: "selection", value: a.payload.selection }];
+    if (a.kind === "set_args")
+      return [{ label: "args", value: a.payload.value }];
+    if (a.kind === "set_config")
+      return [{ label: "patch", value: a.payload.patch }];
+    if (a.kind === "set_mock")
+      return [{ label: "mock", value: a.payload.value }];
+    return [];
+  }
+  if (a.driver === "mcp") {
+    if (a.kind === "request") {
+      if (a.payload.method === "tools/call") {
+        const params = a.payload.params as {
+          name?: unknown;
+          arguments?: unknown;
+        } | null;
+        return [
+          { label: "tool", value: params?.name },
+          { label: "arguments", value: params?.arguments },
+        ];
+      }
+      return [
+        { label: "method", value: a.payload.method },
+        { label: "params", value: a.payload.params },
+      ];
+    }
+    // response
+    const out: Array<{ label: string; value: unknown }> = [];
+    if (a.payload.method)
+      out.push({ label: "responding to", value: a.payload.method });
+    if (a.payload.resourceUri)
+      out.push({ label: "uri", value: a.payload.resourceUri });
+    out.push({ label: "tool", value: a.payload.tool ?? null });
+    if (a.payload.error) out.push({ label: "error", value: a.payload.error });
+    else out.push({ label: "result", value: a.payload.result });
+    if (a.payload.durationMs != null)
+      out.push({ label: "durationMs", value: a.payload.durationMs });
+    return out;
+  }
+  if (a.driver === "widget") {
+    if (a.kind === "opened") return [{ label: "uri", value: a.payload.uri }];
+    if (a.kind === "runtime_error")
+      return [{ label: "message", value: a.payload.message }];
+    if (a.kind === "intent")
+      return [
+        { label: "name", value: a.payload.name },
+        { label: "params", value: a.payload.params },
+      ];
+    if (a.kind === "render")
+      return [
+        { label: "widgetName", value: a.payload.widgetName },
+        { label: "mock", value: a.payload.mock },
+      ];
+    if (a.kind.startsWith("dom.")) {
+      const inputs: Array<{ label: string; value: unknown }> = [
+        { label: "selectors", value: a.payload.selectors },
+      ];
+      if (a.kind === "dom.input" || a.kind === "dom.change")
+        inputs.push({ label: "value", value: a.payload.value });
+      if (a.kind === "dom.keydown")
+        inputs.push({ label: "key", value: a.payload.key });
+      return inputs;
+    }
+  }
+  return [];
 }
 
 /** Unique tool names invoked by `tools/call` requests in this trace,

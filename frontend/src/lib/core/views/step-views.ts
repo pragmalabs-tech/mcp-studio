@@ -48,26 +48,20 @@ export function buildJsonView(
 
   if (a.driver === "mcp" && a.kind === "response") {
     const result = a.payload.result;
+    const baseLabel = responseLabel(a.payload);
+    const subtitle = `${a.payload.durationMs.toFixed(1)}ms`;
     const parsed = parseToolResult(result);
     if (parsed !== undefined) {
-      return {
-        label: a.payload.tool ? `tools/call ${a.payload.tool}` : "mcp.response",
-        subtitle: `${a.payload.durationMs.toFixed(1)}ms`,
-        body: prettify(parsed),
-      };
+      return { label: baseLabel, subtitle, body: prettify(parsed) };
     }
     if (a.payload.error) {
       return {
-        label: "mcp.response (error)",
-        subtitle: `${a.payload.durationMs.toFixed(1)}ms`,
+        label: `${baseLabel} (error)`,
+        subtitle,
         body: prettify(a.payload.error),
       };
     }
-    return {
-      label: "mcp.response",
-      subtitle: `${a.payload.durationMs.toFixed(1)}ms`,
-      body: prettify(result ?? null),
-    };
+    return { label: baseLabel, subtitle, body: prettify(result ?? null) };
   }
 
   if (a.driver === "mcp" && a.kind === "request") {
@@ -87,6 +81,18 @@ export function buildJsonView(
   }
 
   return null;
+}
+
+function responseLabel(p: {
+  tool?: string;
+  method?: string;
+  resourceUri?: string;
+}): string {
+  if (p.tool) return `tools/call ${p.tool}`;
+  if (p.method === "resources/read" && p.resourceUri) {
+    return `resources/read ${p.resourceUri}`;
+  }
+  return p.method ?? "mcp.response";
 }
 
 /** Tool results land as `{ structuredContent }` or `{ content: [{ text }] }`.

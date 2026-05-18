@@ -17,7 +17,6 @@ import {
   XCircle,
   XIcon,
   RefreshCw,
-  EyeOff,
   Eye,
 } from "lucide-react";
 import {
@@ -51,6 +50,7 @@ import {
   deleteTest,
   saveTrace,
   saveRunResult,
+  updateRunResultEntry,
 } from "@/lib/tests/api";
 import { collectTags, normalizeTags } from "@/lib/tests/tags";
 import { runBatch, type BatchTraceInput } from "@/lib/core/batch";
@@ -73,14 +73,9 @@ import { applyCompareMode, applyRules } from "@/lib/core/trace-edits";
 import { buildRuntimeDrivers } from "@/lib/core/runtime";
 import { createBridgeClient } from "@/lib/recorder/bridge-client";
 import { TestPreconditionDialog } from "@/components/studio/test-precondition-dialog";
+import { TestInspectorDialog } from "@/components/studio/test-inspector";
 import { TraceModal } from "@/lib/core/views/trace-modal";
-import type {
-  Action,
-  Step,
-  Trace,
-  TraceRules,
-  Verdict,
-} from "@/lib/core/types";
+import type { Step, Trace, TraceRules, Verdict } from "@/lib/core/types";
 
 interface Props {
   open: boolean;
@@ -89,6 +84,10 @@ interface Props {
 
 interface RunRecord {
   id: string;
+  /** Id of the persisted RunFile this entry was saved into; needed so the
+   *  trace viewer can patch the on-disk run-result when the user applies
+   *  a rule. Optional for records produced before this field existed. */
+  runFileId?: string;
   testName: string;
   /** Filesystem name to persist rule edits against. Optional for
    *  records originating from sources that don't track it. */
@@ -104,75 +103,61 @@ function formatTime(ms: number): string {
   return new Date(ms).toLocaleString();
 }
 
-/** Render the test's action count, accounting for the visible filter.
- *  Shows "X of Y actions" when filter is active and hides some, otherwise
- *  the simple "Y actions". */
 function ActionCountLabel({
   total,
-  visible,
-  hideObservations,
   savedAt,
 }: {
   total: number;
-  visible: number | null;
-  hideObservations: boolean;
   savedAt: number;
 }) {
-  const showFraction =
-    hideObservations && visible !== null && visible !== total;
   return (
     <div className="text-[10px] text-muted-foreground mt-0.5">
-      {showFraction
-        ? `${visible} of ${total} actions visible`
-        : `${total} action${total === 1 ? "" : "s"}`}
+      {`${total} action${total === 1 ? "" : "s"}`}
       {" · "}
       saved {formatTime(savedAt)}
     </div>
   );
 }
 
-/** True if `action` is a server/widget-source effect rather than a
- *  user-driven step. Used by the "Inputs only" filter. Widget intents
- *  (sendFollowUpMessage, ui/message, …) are user-meaningful actions the
- *  widget made on behalf of the user, so they're shown as inputs even
- *  though they technically originate from the widget. */
-export function isObservation(action: Action): boolean {
-  if (action.driver === "widget" && action.kind === "intent") return false;
-  if (action.source === "server" || action.source === "widget") return true;
-  return false;
-}
-
-function ActionList({
+export function ActionList({
   steps,
-  hideObservations,
+  selectedIdx,
+  onSelect,
 }: {
   steps: readonly Step[];
-  hideObservations: boolean;
+  /** Original-trace index of the selected step. When undefined, rows
+   *  render as static (no hover/selected states). */
+  selectedIdx?: number;
+  /** Click handler receives the step index in `steps`. */
+  onSelect?: (idx: number) => void;
 }) {
-  const visible = hideObservations
-    ? steps.filter((s) => !isObservation(s.action))
-    : steps;
-  if (visible.length === 0) {
+  if (steps.length === 0) {
     return (
       <p className="px-4 py-3 text-xs text-muted-foreground italic">
-        {steps.length === 0
-          ? "Empty trace."
-          : "All steps are observations — turn the filter off to see them."}
+        Empty trace.
       </p>
     );
   }
+  const selectable = !!onSelect;
   return (
     <div className="py-1">
-      {visible.map((step, i) => {
+      {steps.map((step, originalIdx) => {
         const summary = actionSummary(step.action);
         const expects = actionExpectation(step.action);
-        return (
-          <div
-            key={i}
-            className="px-4 py-1.5 text-[11px] font-mono flex items-start gap-2"
-          >
+        const isSelected = selectable && selectedIdx === originalIdx;
+        const className = `pl-3 pr-4 py-1.5 text-[11px] font-mono flex items-start gap-2 border-l-2 ${
+          selectable
+            ? `w-full text-left transition-colors ${
+                isSelected
+                  ? "bg-primary/15 border-l-primary text-foreground"
+                  : "border-l-transparent hover:bg-secondary/40"
+              }`
+            : "border-l-transparent"
+        }`;
+        const content = (
+          <>
             <span className="text-muted-foreground/60 w-8 shrink-0 text-right pt-0.5">
-              {i + 1}
+              {originalIdx + 1}
             </span>
             <span className="text-foreground w-40 shrink-0 font-semibold truncate pt-0.5">
               {actionLabel(step.action)}
@@ -194,6 +179,20 @@ function ActionList({
                 shape
               </span>
             )}
+          </>
+        );
+        return selectable ? (
+          <button
+            key={originalIdx}
+            type="button"
+            onClick={() => onSelect?.(originalIdx)}
+            className={className}
+          >
+            {content}
+          </button>
+        ) : (
+          <div key={originalIdx} className={className}>
+            {content}
           </div>
         );
       })}
@@ -408,6 +407,11 @@ export function TestsPage({ open, onOpenChange }: Props) {
     /** Filesystem name of the saved test, used to persist rule edits.
      *  Null when viewing a history entry whose fs-name we no longer track. */
     testFsName: string | null;
+    /** Id of the persisted RunFile this result was saved into. Set on the
+     *  in-session standalone path and on history reopens; null when we
+     *  have no on-disk record to update. Used to double-write rule edits
+     *  back to the run-result file alongside the test fixture. */
+    runFileId: string | null;
     recorded: Trace;
     replayed: Trace;
     verdict: Verdict;
@@ -416,10 +420,8 @@ export function TestsPage({ open, onOpenChange }: Props) {
   // In-memory log of replays for this session. Resets on page reload.
   const [runHistory, setRunHistory] = useState<RunRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loadedTests, setLoadedTests] = useState<Record<string, Trace>>({});
   const [loadingName, setLoadingName] = useState<string | null>(null);
-  const [hideObservations, setHideObservations] = useState(true);
   const [pendingDelete, setPendingDelete] = useState<TestSummary | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
@@ -427,6 +429,12 @@ export function TestsPage({ open, onOpenChange }: Props) {
     null,
   );
   const [viewingRulesFor, setViewingRulesFor] = useState<TestSummary | null>(
+    null,
+  );
+  /** Test currently open in the inspector dialog (the pre-run preview).
+   *  Set when the user clicks Preview on a row; trace is read from
+   *  `loadedTests` so we don't re-fetch. */
+  const [inspectingTest, setInspectingTest] = useState<TestSummary | null>(
     null,
   );
   const [batchState, setBatchState] = useState<{
@@ -465,7 +473,6 @@ export function TestsPage({ open, onOpenChange }: Props) {
     try {
       setTests(await listTests());
       setLoadedTests({});
-      setExpanded(new Set());
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -516,11 +523,6 @@ export function TestsPage({ open, onOpenChange }: Props) {
         delete next[name];
         return next;
       });
-      setExpanded((prev) => {
-        const next = new Set(prev);
-        next.delete(name);
-        return next;
-      });
       setPendingDelete(null);
     } catch (e) {
       setError((e as Error).message);
@@ -555,6 +557,12 @@ export function TestsPage({ open, onOpenChange }: Props) {
       ctrl,
       nextResolver: null,
     });
+    // Signal "replay in progress" so the studio store's recording-time
+    // auto-side-effects (deferred loadWidget/applyMock from select / theme
+    // / locale / displayMode / strictMode setters) skip themselves — the
+    // engine drives renders explicitly via widget.render and shouldn't
+    // race against a 50ms timer firing a fresh readResource.
+    store.setStudioMode("test");
     try {
       const bridge = createBridgeClient(
         () => useStudioStore.getState()._iframeRef,
@@ -594,12 +602,14 @@ export function TestsPage({ open, onOpenChange }: Props) {
       }
       const verdict = diff(recorded, replayed, resolveRules(recorded));
       const finishedAt = Date.now();
-      setResultData({ testFsName, recorded, replayed, verdict });
+      const runFileId = newRunId(startedAt);
+      setResultData({ testFsName, runFileId, recorded, replayed, verdict });
       setResultOpen(true);
       setRunHistory((prev) =>
         [
           {
             id: `run_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            runFileId,
             testName: recorded.name,
             testFsName,
             ranAt: Date.now(),
@@ -615,7 +625,7 @@ export function TestsPage({ open, onOpenChange }: Props) {
       // disrupt the in-flight UI.
       const studio = useStudioStore.getState();
       const standaloneFile: RunFile = {
-        id: newRunId(startedAt),
+        id: runFileId,
         runType: "standalone",
         startedAt,
         finishedAt,
@@ -653,6 +663,7 @@ export function TestsPage({ open, onOpenChange }: Props) {
       alert(`Test failed to run: ${(e as Error).message}`);
     } finally {
       useStudioStore.getState().setRunState(null);
+      useStudioStore.getState().setStudioMode("normal");
     }
   }
 
@@ -692,6 +703,9 @@ export function TestsPage({ open, onOpenChange }: Props) {
       () => useStudioStore.getState()._iframeRef,
     );
 
+    // See startRun above — flip studioMode for the duration of the batch
+    // so per-test replays don't trigger the deferred auto-load setters.
+    useStudioStore.getState().setStudioMode("test");
     try {
       const results = await runBatch(inputs, {
         signal: ctrl.signal,
@@ -772,12 +786,14 @@ export function TestsPage({ open, onOpenChange }: Props) {
       });
     } finally {
       setBatchState(null);
+      useStudioStore.getState().setStudioMode("normal");
     }
   }
 
   function openRun(run: RunRecord) {
     setResultData({
       testFsName: run.testFsName ?? null,
+      runFileId: run.runFileId ?? null,
       recorded: run.recorded,
       replayed: run.replayed,
       verdict: run.verdict,
@@ -787,10 +803,13 @@ export function TestsPage({ open, onOpenChange }: Props) {
 
   /** Persist new rules on the recorded trace, recompute the verdict
    *  against the existing replayed trace (no re-run), and refresh the
-   *  open viewer. Returns a promise so the UI can disable buttons. */
+   *  open viewer. Double-writes to the test fixture (live contract for
+   *  future runs) AND to the run-result file the user is viewing (so
+   *  reopening shows the applied rule). Returns a promise so the UI can
+   *  disable buttons. */
   async function handleRulesChange(nextRules: TraceRules) {
     if (!resultData) return;
-    const { testFsName, replayed } = resultData;
+    const { testFsName, runFileId, replayed } = resultData;
     const { recorded: nextRecorded, verdict: nextVerdict } = applyRules(
       resultData.recorded,
       replayed,
@@ -798,17 +817,18 @@ export function TestsPage({ open, onOpenChange }: Props) {
     );
     setResultData({
       testFsName,
+      runFileId,
       recorded: nextRecorded,
       replayed,
       verdict: nextVerdict,
     });
-    if (testFsName) {
-      try {
-        await saveTrace(testFsName, nextRecorded);
-      } catch (e) {
-        setError(`Failed to persist rules: ${(e as Error).message}`);
-      }
-    }
+    await persistRuleEdit(
+      testFsName,
+      runFileId,
+      nextRecorded,
+      nextVerdict,
+      "rules",
+    );
   }
 
   /** Set the compare strategy for one step on the recorded trace,
@@ -818,7 +838,7 @@ export function TestsPage({ open, onOpenChange }: Props) {
     mode: "exact" | "shape",
   ) {
     if (!resultData) return;
-    const { testFsName, replayed } = resultData;
+    const { testFsName, runFileId, replayed } = resultData;
     const { recorded: nextRecorded, verdict: nextVerdict } = applyCompareMode(
       resultData.recorded,
       replayed,
@@ -827,45 +847,81 @@ export function TestsPage({ open, onOpenChange }: Props) {
     );
     setResultData({
       testFsName,
+      runFileId,
       recorded: nextRecorded,
       replayed,
       verdict: nextVerdict,
     });
+    await persistRuleEdit(
+      testFsName,
+      runFileId,
+      nextRecorded,
+      nextVerdict,
+      "compare mode",
+    );
     if (testFsName) {
+      setLoadedTests((prev) =>
+        testFsName in prev ? { ...prev, [testFsName]: nextRecorded } : prev,
+      );
+    }
+  }
+
+  /** Shared persistence for rule and compare-mode edits made from the
+   *  trace viewer. Writes to the test fixture (so future runs see the
+   *  change) AND to the run-result file the user is viewing (so reopen
+   *  is consistent). When testFsName is missing we have no fixture to
+   *  update; warn the user so the silent-skip case is visible. */
+  async function persistRuleEdit(
+    testFsName: string | null,
+    runFileId: string | null,
+    nextRecorded: Trace,
+    nextVerdict: Verdict,
+    label: string,
+  ) {
+    if (!testFsName) {
+      setError(
+        `Applied ${label} to this run only - no linked test fixture to update. Future runs of this test won't see the change.`,
+      );
+      return;
+    }
+    try {
+      await saveTrace(testFsName, nextRecorded);
+    } catch (e) {
+      setError(`Failed to persist ${label}: ${(e as Error).message}`);
+      return;
+    }
+    if (runFileId) {
       try {
-        await saveTrace(testFsName, nextRecorded);
-        setLoadedTests((prev) =>
-          testFsName in prev ? { ...prev, [testFsName]: nextRecorded } : prev,
+        await updateRunResultEntry(
+          runFileId,
+          testFsName,
+          nextRecorded,
+          nextVerdict,
         );
       } catch (e) {
-        setError(`Failed to persist compare mode: ${(e as Error).message}`);
+        setError(
+          `Saved ${label} to test fixture but failed to update this run-result: ${(e as Error).message}`,
+        );
       }
     }
   }
 
-  async function toggleExpanded(name: string) {
-    const next = new Set(expanded);
-    if (next.has(name)) {
-      next.delete(name);
-      setExpanded(next);
-      return;
-    }
-    next.add(name);
-    setExpanded(next);
-    if (!loadedTests[name]) {
-      setLoadingName(name);
+  /** Load a test's trace if not already cached, then open the Preview
+   *  inspector. The inspector reads from `loadedTests[name]`. */
+  async function openPreview(test: TestSummary) {
+    if (!loadedTests[test.name]) {
+      setLoadingName(test.name);
       try {
-        const trace = await getTrace(name);
-        setLoadedTests((prev) => ({ ...prev, [name]: trace }));
+        const trace = await getTrace(test.name);
+        setLoadedTests((prev) => ({ ...prev, [test.name]: trace }));
       } catch (e) {
         setError((e as Error).message);
-        const undo = new Set(next);
-        undo.delete(name);
-        setExpanded(undo);
+        return;
       } finally {
         setLoadingName(null);
       }
     }
+    setInspectingTest(test);
   }
 
   async function handleRun(name: string, mode: "auto" | "step" = "auto") {
@@ -935,25 +991,6 @@ export function TestsPage({ open, onOpenChange }: Props) {
                   </>
                 )}
               </Button>
-              {!showHistory && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setHideObservations((v) => !v)}
-                  title={
-                    hideObservations
-                      ? "Showing inputs only - click to also show observations"
-                      : "Showing all actions - click to hide observations"
-                  }
-                >
-                  {hideObservations ? (
-                    <EyeOff className="h-3.5 w-3.5 mr-1.5" />
-                  ) : (
-                    <Eye className="h-3.5 w-3.5 mr-1.5" />
-                  )}
-                  {hideObservations ? "Inputs only" : "All actions"}
-                </Button>
-              )}
               {!showHistory && (
                 <Button
                   variant="outline"
@@ -1062,26 +1099,15 @@ export function TestsPage({ open, onOpenChange }: Props) {
               </p>
             ) : (
               filteredTests.map((t) => {
-                const isOpen = expanded.has(t.name);
-                const loaded = loadedTests[t.name];
-                const isLoading = loadingName === t.name;
                 return (
                   <div key={t.name} className="border-b border-border/30">
                     <div className="px-4 py-3 hover:bg-secondary/20">
                       <div className="flex items-start gap-2">
                         <button
                           type="button"
-                          onClick={() => toggleExpanded(t.name)}
-                          className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground transition-transform"
-                          title={isOpen ? "Collapse actions" : "Show actions"}
-                          style={{ transform: isOpen ? "rotate(90deg)" : "" }}
-                        >
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => toggleExpanded(t.name)}
+                          onClick={() => openPreview(t)}
                           className="min-w-0 flex-1 text-left"
+                          title="Preview inputs and assertions before running"
                         >
                           <div className="flex items-baseline gap-2">
                             <span className="font-semibold truncate">
@@ -1093,16 +1119,6 @@ export function TestsPage({ open, onOpenChange }: Props) {
                           </div>
                           <ActionCountLabel
                             total={t.totalActions ?? 0}
-                            visible={
-                              loaded
-                                ? loaded.steps.filter(
-                                    (s) =>
-                                      !hideObservations ||
-                                      !isObservation(s.action),
-                                  ).length
-                                : null
-                            }
-                            hideObservations={hideObservations}
                             savedAt={t.modifiedMs}
                           />
                           {t.description && (
@@ -1138,6 +1154,18 @@ export function TestsPage({ open, onOpenChange }: Props) {
                           )}
                         </button>
                         <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openPreview(t)}
+                            disabled={
+                              busyName === t.name || loadingName === t.name
+                            }
+                            title="Preview inputs and assertions before running"
+                          >
+                            <Eye className="h-3.5 w-3.5 mr-1.5" />
+                            Preview
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -1197,22 +1225,6 @@ export function TestsPage({ open, onOpenChange }: Props) {
                         </div>
                       </div>
                     </div>
-                    {isOpen && (
-                      <div className="bg-muted/10 border-t border-border/30">
-                        {isLoading && (
-                          <div className="px-4 py-3 text-xs text-muted-foreground flex items-center gap-2">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            Loading actions…
-                          </div>
-                        )}
-                        {!isLoading && loaded && (
-                          <ActionList
-                            steps={loaded.steps}
-                            hideObservations={hideObservations}
-                          />
-                        )}
-                      </div>
-                    )}
                   </div>
                 );
               })
@@ -1372,6 +1384,20 @@ export function TestsPage({ open, onOpenChange }: Props) {
           onClose={() => setViewingRulesFor(null)}
         />
       )}
+      <TestInspectorDialog
+        open={inspectingTest !== null}
+        onOpenChange={(v) => {
+          if (!v) setInspectingTest(null);
+        }}
+        trace={
+          inspectingTest ? (loadedTests[inspectingTest.name] ?? null) : null
+        }
+        onRun={
+          inspectingTest
+            ? (mode) => handleRun(inspectingTest.name, mode)
+            : undefined
+        }
+      />
     </Dialog>
   );
 }

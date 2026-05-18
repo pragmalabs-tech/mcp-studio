@@ -8,6 +8,7 @@
  */
 
 import type { Driver, State, WidgetAction } from "../types";
+import { stripUndefined } from "../util/strip-undefined";
 
 const VOLATILE = [
   "open[*].data.id",
@@ -161,6 +162,12 @@ export function widgetAttach(deps: WidgetRuntimeDeps) {
       // Widget→host intent (sendFollowUpMessage, ui/message, etc.)
       // surfaces as a state-folding action so the differ can assert on
       // the intent name + params.
+      //
+      // postMessage / structuredClone preserves `undefined`-valued keys
+      // that JSON storage drops. Strip them at capture so live replay
+      // and JSON-round-tripped recordings produce identical params for
+      // the differ. Without this, the differ flags phantom EXTRA drifts
+      // that render as "expected: -, got: -" in the UI.
       if (entry.kind === "widget.intent") {
         emit({
           driver: "widget",
@@ -168,7 +175,7 @@ export function widgetAttach(deps: WidgetRuntimeDeps) {
           source: "widget",
           payload: {
             name: typeof entry.name === "string" ? entry.name : "(unknown)",
-            params: entry.params,
+            params: stripUndefined(entry.params),
           },
         });
         return;

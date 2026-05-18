@@ -111,8 +111,22 @@ export async function run(trace: Trace, deps: EngineDeps): Promise<Trace> {
         };
         steps.push(pushed);
         deps.onStepDone?.(i, pushed);
+      } else {
+        // Timeout: push a synthetic placeholder so replayed.steps stays
+        // aligned with recorded.steps. Subsequent dispatches land at
+        // the right index, the trace modal renders this row inline
+        // (instead of a trailing MISSING card), and the differ surfaces
+        // a warn step_missing on this position. stateAfter mirrors the
+        // current state — no actual change happened.
+        const placeholder: Step = {
+          relMs: performance.now() - t0,
+          action: expected.action,
+          stateAfter: state,
+          synthetic: true,
+        };
+        steps.push(placeholder);
+        deps.onStepDone?.(i, placeholder);
       }
-      // No match: leave a gap; the differ will surface step_missing.
     }
   } finally {
     for (const off of detachers) off?.();

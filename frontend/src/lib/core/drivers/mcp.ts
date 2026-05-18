@@ -1,12 +1,23 @@
 /**
- * mcp driver — owns state.tools (per-tool stats); shares state.network
- * counters with widget driver.
+ * mcp driver — owns state.tools (per-tool stats) and state.resources
+ * (per-uri stats for `resources/read`); shares state.network counters
+ * with widget driver.
  *
- * `mcp.response.payload.tool` is set at capture time for tools/call
- * responses so transitions attribute results without heuristic matching.
+ * `mcp.response.payload.{method, tool, resourceUri}` are set at capture
+ * time from the matching request so transitions attribute results
+ * without walking the trace.
  */
 
-import type { Driver, Matcher, McpAction, State, ToolStats } from "../types";
+import type {
+  Driver,
+  Matcher,
+  McpAction,
+  ResourceResultProjection,
+  ResourceStats,
+  ResourceWidgetMeta,
+  State,
+  ToolStats,
+} from "../types";
 
 const VOLATILE = [
   "*.lastResult.id",
@@ -30,9 +41,11 @@ const MATCH: Record<string, Matcher> = {
 function apply(state: State, action: McpAction): State {
   if (action.kind === "request") {
     const name = toolsCallName(action.payload.method, action.payload.params);
+    const uri = resourcesReadUri(action.payload.method, action.payload.params);
     return {
       ...state,
       tools: name ? bump(state.tools, name) : state.tools,
+      resources: uri ? bumpResource(state.resources, uri) : state.resources,
       network: {
         ...state.network,
         requestCount: state.network.requestCount + 1,
@@ -51,9 +64,24 @@ function apply(state: State, action: McpAction): State {
         : { ...prev, lastResult: projectResult(action.payload.result) },
     };
   }
+  const uri = action.payload.resourceUri;
+  let resources = state.resources;
+  if (uri) {
+    const prev: ResourceStats = resources[uri] ?? { readCount: 0 };
+    resources = {
+      ...resources,
+      [uri]: action.payload.error
+        ? { ...prev, lastError: action.payload.error }
+        : {
+            ...prev,
+            lastResult: projectResourceResult(action.payload.result),
+          },
+    };
+  }
   return {
     ...state,
     tools,
+    resources,
     network: {
       ...state.network,
       responseCount: state.network.responseCount + 1,
@@ -82,9 +110,77 @@ function toolsCallName(method: string, params: unknown): string | null {
   return typeof n === "string" && n.length > 0 ? n : null;
 }
 
+function resourcesReadUri(method: string, params: unknown): string | null {
+  if (method !== "resources/read") return null;
+  const u = (params as { uri?: unknown } | null | undefined)?.uri;
+  return typeof u === "string" && u.length > 0 ? u : null;
+}
+
 function bump(tools: State["tools"], name: string): State["tools"] {
   const prev = tools[name] ?? { callCount: 0 };
   return { ...tools, [name]: { ...prev, callCount: prev.callCount + 1 } };
+}
+
+function bumpResource(
+  resources: State["resources"],
+  uri: string,
+): State["resources"] {
+  const prev = resources[uri] ?? { readCount: 0 };
+  return { ...resources, [uri]: { ...prev, readCount: prev.readCount + 1 } };
+}
+
+/** Project a resources/read result into the contract surface we want
+ *  the differ to assert on: number of content entries, MIME type, HTML
+ *  flag, and widget metadata (CSP domains + widget domain from the
+ *  OpenAI Apps SDK `_meta` block). The raw HTML body is intentionally
+ *  dropped — it would drift on every whitespace change and isn't a
+ *  useful assertion target. */
+function projectResourceResult(result: unknown): ResourceResultProjection {
+  const contents = readContents(result);
+  const first = contents[0] as Record<string, unknown> | undefined;
+  const meta =
+    first && typeof first._meta === "object" && first._meta !== null
+      ? (first._meta as Record<string, unknown>)
+      : {};
+  const widget = extractWidgetMeta(meta);
+  return {
+    contentCount: contents.length,
+    mimeType: typeof first?.mimeType === "string" ? first.mimeType : undefined,
+    hasHtml: typeof first?.text === "string" && looksLikeHtml(first.text),
+    ...(widget ? { widget } : {}),
+  };
+}
+
+function readContents(result: unknown): unknown[] {
+  if (!result || typeof result !== "object") return [];
+  const c = (result as { contents?: unknown }).contents;
+  return Array.isArray(c) ? c : [];
+}
+
+function extractWidgetMeta(
+  meta: Record<string, unknown>,
+): ResourceWidgetMeta | null {
+  const csp = meta["openai/widgetCSP"];
+  const domain = meta["openai/widgetDomain"];
+  const hasCsp = csp && typeof csp === "object";
+  const hasDomain = typeof domain === "string";
+  if (!hasCsp && !hasDomain) return null;
+  const cspObj = (hasCsp ? csp : {}) as Record<string, unknown>;
+  return {
+    domain: hasDomain ? (domain as string) : undefined,
+    cspConnect: stringArray(cspObj.connect_domains),
+    cspResource: stringArray(cspObj.resource_domains),
+    cspFrame: stringArray(cspObj.frame_domains),
+  };
+}
+
+function stringArray(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === "string");
+}
+
+function looksLikeHtml(s: string): boolean {
+  return /<html|<!doctype|<body|<head/i.test(s.slice(0, 2000));
 }
 
 export const mcpDriver: Driver<McpAction> = {
@@ -128,20 +224,30 @@ export function mcpDispatch(
 
 export function mcpAttach(deps: McpRuntimeDeps) {
   return (emit: (a: McpAction) => void): (() => void) => {
-    // Pair responses to their request's tool name. The bus emits user-,
-    // engine-, and widget-source requests on the same channel; track all
-    // tools/call ids regardless of source so a server response can be
-    // attributed to the right state.tools.{name} row.
-    const toolByReqId = new Map<number, string>();
+    // Pair responses to their request. The bus emits user-, engine-, and
+    // widget-source requests on the same channel; track every request id
+    // regardless of source so a server response carries the method (and
+    // tool name / resource uri when applicable) for attribution.
+    const requestMetaByReqId = new Map<
+      number,
+      { method: string; tool?: string; resourceUri?: string }
+    >();
 
     return deps.onBusEmit((entry) => {
       if (entry.kind === "mcp.request") {
-        if (entry.method === "tools/call") {
+        const reqId = Number(entry.id);
+        const method = String(entry.method);
+        const meta: { method: string; tool?: string; resourceUri?: string } = {
+          method,
+        };
+        if (method === "tools/call") {
           const name = (entry.params as { name?: unknown } | null)?.name;
-          if (typeof name === "string") {
-            toolByReqId.set(Number(entry.id), name);
-          }
+          if (typeof name === "string") meta.tool = name;
+        } else if (method === "resources/read") {
+          const uri = (entry.params as { uri?: unknown } | null)?.uri;
+          if (typeof uri === "string") meta.resourceUri = uri;
         }
+        requestMetaByReqId.set(reqId, meta);
         // Only widget-source requests need to be appended to the
         // captured trace — user/engine ones were already pushed by
         // the engine's own dispatch loop.
@@ -151,8 +257,8 @@ export function mcpAttach(deps: McpRuntimeDeps) {
             kind: "request",
             source: "widget",
             payload: {
-              id: Number(entry.id),
-              method: String(entry.method),
+              id: reqId,
+              method,
               params: entry.params,
             },
           });
@@ -161,13 +267,16 @@ export function mcpAttach(deps: McpRuntimeDeps) {
       }
       if (entry.kind === "mcp.response") {
         const requestId = Number(entry.requestId);
+        const meta = requestMetaByReqId.get(requestId);
         emit({
           driver: "mcp",
           kind: "response",
           source: "server",
           payload: {
             requestId,
-            tool: toolByReqId.get(requestId),
+            method: meta?.method,
+            tool: meta?.tool,
+            resourceUri: meta?.resourceUri,
             durationMs: Number(entry.durationMs ?? 0),
             result: entry.result,
             error: entry.error as { message: string } | undefined,

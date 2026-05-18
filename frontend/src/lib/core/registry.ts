@@ -40,6 +40,10 @@ export function buildInitialState(): State {
   return {
     studio: studioDriver.initialSlice() as State["studio"],
     tools: mcpDriver.initialSlice() as State["tools"],
+    // resources is a secondary mcp-owned slice (parallel to tools, for
+    // `resources/read` widget delivery). Registry owns init for the same
+    // reason as `network` — drivers write, registry seeds.
+    resources: {} as State["resources"],
     widgets: widgetDriver.initialSlice() as State["widgets"],
     // network is shared (mcp + widget both write to it); registry owns init.
     network: { requestCount: 0, responseCount: 0, errorCount: 0 },

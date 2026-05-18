@@ -49,15 +49,19 @@ export type McpAction =
       source: "user" | "widget" | "engine";
       payload: { id: number; method: string; params: unknown };
     }
-  // `tool` is set at capture time when the request was tools/call so the
-  // transition attributes the result to the right tools.{name} row.
+  // `method`, `tool`, and `resourceUri` are stamped at capture time from
+  // the matching request so the transition can attribute the result to
+  // the right row without walking the trace. `method` is set for every
+  // request; `tool` for tools/call; `resourceUri` for resources/read.
   | {
       driver: "mcp";
       kind: "response";
       source: "server";
       payload: {
         requestId: number;
+        method?: string;
         tool?: string;
+        resourceUri?: string;
         durationMs: number;
         result?: unknown;
         error?: { message: string };
@@ -140,6 +144,7 @@ export interface WidgetMock {
 export interface State {
   studio: StudioSlice;
   tools: ToolsSlice;
+  resources: ResourcesSlice;
   widgets: WidgetsSlice;
   network: NetworkSlice;
 }
@@ -164,6 +169,32 @@ export interface ToolStats {
   callCount: number;
   lastResult?: unknown;
   lastError?: { message: string };
+}
+
+export type ResourcesSlice = Record<string, ResourceStats>;
+
+export interface ResourceStats {
+  readCount: number;
+  lastResult?: ResourceResultProjection;
+  lastError?: { message: string };
+}
+
+// Projection of a `resources/read` result: the contract surface (URI
+// count, MIME, widget meta, CSP domains) without the raw HTML body.
+// Body would drift on every whitespace change and isn't a meaningful
+// assertion target; the metadata is what the host actually contracts on.
+export interface ResourceResultProjection {
+  contentCount: number;
+  mimeType?: string;
+  hasHtml: boolean;
+  widget?: ResourceWidgetMeta;
+}
+
+export interface ResourceWidgetMeta {
+  domain?: string;
+  cspConnect: string[];
+  cspResource: string[];
+  cspFrame: string[];
 }
 
 export interface WidgetsSlice {
@@ -217,6 +248,16 @@ export interface Step {
    *  allowing leaf values and array lengths to differ. Use for tool
    *  responses with content that legitimately varies across envs. */
   compare?: "exact" | "shape";
+  /** Placeholder step inserted by the engine on `waitForKind` timeout
+   *  when an expected widget/server action didn't arrive in time. The
+   *  `action` field is copied from the recorded counterpart (so the
+   *  UI renders the right label), `stateAfter` mirrors the previous
+   *  step's state (no actual state change happened on the replay
+   *  side). The differ treats this as a warn step_missing instead of
+   *  comparing the empty-state placeholder against the recorded state.
+   *  Keeps replayed.steps.length aligned with recorded so the trace
+   *  modal renders inline rather than as a trailing MISSING card. */
+  synthetic?: boolean;
 }
 
 export interface Trace {

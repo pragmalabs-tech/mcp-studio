@@ -5,8 +5,9 @@
 
 import type { TestSummary } from "@/lib/recorder/schema";
 import { loadTrace, saveTrace as serializeTrace } from "@/lib/core/trace-io";
-import type { Trace } from "@/lib/core/types";
+import type { Trace, Verdict } from "@/lib/core/types";
 import type { RunFile, RunFileSummary } from "./run-result-schema";
+import { summarize } from "./run-result-schema";
 
 interface BackendSummary {
   name: string;
@@ -141,4 +142,32 @@ export async function deleteRunResult(id: string): Promise<void> {
     { method: "DELETE" },
   );
   await unwrap<void>(resp);
+}
+
+/** Patch a single test entry inside a saved run-result file with an
+ *  updated recorded trace + verdict (after the user applied a rule from
+ *  within the trace viewer). Loads the file, mutates the matching entry,
+ *  re-aggregates the summary, and writes back. Throws if the file or
+ *  matching entry is missing. */
+export async function updateRunResultEntry(
+  fileId: string,
+  testFsName: string,
+  recorded: Trace,
+  verdict: Verdict,
+): Promise<void> {
+  const file = await getRunResult(fileId);
+  const idx = file.results.findIndex((e) => e.testFsName === testFsName);
+  if (idx === -1) {
+    throw new Error(
+      `Run-result ${fileId} has no entry for testFsName ${testFsName}`,
+    );
+  }
+  file.results[idx] = {
+    ...file.results[idx],
+    recorded,
+    verdict,
+    status: verdict.ok ? "passed" : "failed",
+  };
+  file.summary = summarize(file.results);
+  await saveRunResult(file);
 }

@@ -165,4 +165,135 @@ describe("mcp driver", () => {
       match["*.lastResult.structuredContent.context.current_date_human"],
     ).toBe("@any");
   });
+
+  it("apply_request__creates_resource_row_on_resources_read", () => {
+    const after = mcpDriver.apply(
+      emptyState(),
+      mcpAction("request", {
+        id: 1,
+        method: "resources/read",
+        params: { uri: "ui://w.html" },
+      }),
+    );
+    expect(after.resources["ui://w.html"]).toEqual({ readCount: 1 });
+  });
+
+  it("apply_request__bumps_existing_resource_readcount", () => {
+    const before = makeState({
+      resources: { "ui://w.html": { readCount: 1 } },
+    });
+    const after = mcpDriver.apply(
+      before,
+      mcpAction("request", {
+        id: 2,
+        method: "resources/read",
+        params: { uri: "ui://w.html" },
+      }),
+    );
+    expect(after.resources["ui://w.html"].readCount).toBe(2);
+  });
+
+  it("apply_request__leaves_resources_untouched_for_non_resources_read", () => {
+    const before = emptyState();
+    const after = mcpDriver.apply(
+      before,
+      mcpAction("request", { id: 1, method: "tools/list", params: {} }),
+    );
+    expect(after.resources).toBe(before.resources);
+  });
+
+  it("apply_response__projects_widget_shape_into_resources_lastResult", () => {
+    const result = {
+      contents: [
+        {
+          uri: "ui://w.html",
+          mimeType: "text/html+skybridge",
+          text: "<!doctype html><html><body>hi</body></html>",
+          _meta: {
+            "openai/widgetCSP": {
+              connect_domains: ["https://api.example.com"],
+              resource_domains: ["https://assets.example.com"],
+              frame_domains: [],
+            },
+            "openai/widgetDomain": "https://widget.example.com",
+          },
+        },
+      ],
+    };
+    const after = mcpDriver.apply(
+      makeState({ resources: { "ui://w.html": { readCount: 1 } } }),
+      mcpAction("response", {
+        requestId: 1,
+        method: "resources/read",
+        resourceUri: "ui://w.html",
+        durationMs: 5,
+        result,
+      }),
+    );
+    const stats = after.resources["ui://w.html"];
+    expect(stats.readCount).toBe(1);
+    expect(stats.lastResult).toEqual({
+      contentCount: 1,
+      mimeType: "text/html+skybridge",
+      hasHtml: true,
+      widget: {
+        domain: "https://widget.example.com",
+        cspConnect: ["https://api.example.com"],
+        cspResource: ["https://assets.example.com"],
+        cspFrame: [],
+      },
+    });
+  });
+
+  it("apply_response__projects_resource_lastError_on_error_envelope", () => {
+    const after = mcpDriver.apply(
+      makeState({ resources: { "ui://w.html": { readCount: 1 } } }),
+      mcpAction("response", {
+        requestId: 1,
+        method: "resources/read",
+        resourceUri: "ui://w.html",
+        durationMs: 3,
+        error: { message: "not found" },
+      }),
+    );
+    expect(after.resources["ui://w.html"].lastError).toEqual({
+      message: "not found",
+    });
+    expect(after.network.errorCount).toBe(1);
+  });
+
+  it("apply_response__without_resourceUri_leaves_resources_untouched", () => {
+    const before = makeState({
+      resources: { "ui://w.html": { readCount: 1 } },
+    });
+    const after = mcpDriver.apply(
+      before,
+      mcpAction("response", {
+        requestId: 1,
+        method: "tools/list",
+        durationMs: 1,
+        result: { tools: [] },
+      }),
+    );
+    expect(after.resources).toBe(before.resources);
+  });
+
+  it("apply_response__omits_widget_when_meta_absent", () => {
+    const after = mcpDriver.apply(
+      emptyState(),
+      mcpAction("response", {
+        requestId: 1,
+        method: "resources/read",
+        resourceUri: "ui://plain.txt",
+        durationMs: 1,
+        result: {
+          contents: [{ uri: "ui://plain.txt", text: "just text" }],
+        },
+      }),
+    );
+    const proj = after.resources["ui://plain.txt"].lastResult!;
+    expect(proj.widget).toBeUndefined();
+    expect(proj.hasHtml).toBe(false);
+    expect(proj.contentCount).toBe(1);
+  });
 });

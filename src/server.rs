@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::Router;
-use axum::extract::{MatchedPath, Request, State};
+use axum::extract::{DefaultBodyLimit, MatchedPath, Request, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
@@ -75,6 +75,9 @@ pub fn router(state: AppState) -> Router {
         )
         .with_state(state)
         .fallback(crate::assets::handler)
+        // Local-only tool: raise axum's 2 MiB default so saved test fixtures
+        // (widget HTML, mock data) don't 413. 50 MiB keeps a sane ceiling.
+        .layer(DefaultBodyLimit::max(50 * 1024 * 1024))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|req: &Request| {

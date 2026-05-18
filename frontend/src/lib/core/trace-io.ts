@@ -9,6 +9,7 @@
 import { foldTrace } from "./fold";
 import { buildInitialState } from "./registry";
 import type { Action, Trace, TraceSetup } from "./types";
+import { stripUndefined } from "./util/strip-undefined";
 import type { Recorded } from "@/lib/recorder/schema";
 
 export const SCHEMA_VERSION = 1;
@@ -31,7 +32,7 @@ export function toTrace(opts: {
   tags?: string[];
 }): Trace {
   const actions = opts.timeline.flatMap((r) => legacyToAction(r));
-  pairResponseToolNames(actions);
+  pairResponseToRequest(actions);
   return foldTrace({
     schemaVersion: SCHEMA_VERSION,
     id: opts.id ?? cryptoRandomId(),
@@ -83,6 +84,12 @@ function loadCurrent(v: Record<string, unknown>): Trace {
   if (!v.setup || !v.initialState || !Array.isArray(v.steps)) {
     throw new Error("loadTrace: missing setup/initialState/steps");
   }
+  // Back-fill response attribution fields on previously-saved traces:
+  // older recordings only stamped `tool`; `method` and `resourceUri`
+  // arrived later. Re-fold after the patch so step.stateAfter reflects
+  // the new resources slice projections.
+  const steps = v.steps as Array<{ action: Action }>;
+  pairResponseToRequest(steps.map((s) => s.action));
   return foldTrace(v as unknown as Trace);
 }
 
@@ -106,21 +113,44 @@ function loadLegacyTest(v: Record<string, unknown>): Trace {
   });
 }
 
-/** Back-fill `mcp.response.payload.tool` from the matching request id.
- *  The legacy recorder paired responses to requests via requestId but
- *  didn't carry the tool name on the response — needed for the diff to
- *  attribute results to the right `state.tools` row. */
-function pairResponseToolNames(actions: readonly Action[]): void {
-  const toolByReqId: Record<number, string> = {};
+/** Back-fill `mcp.response.payload.{method, tool, resourceUri}` from the
+ *  matching request id. Required for legacy traces (the old recorder
+ *  paired by id but didn't stamp the response) and for previously-saved
+ *  current-shape traces (recorded before `method`/`resourceUri` were
+ *  stamped). Without this, response steps can't attribute to the right
+ *  `tools.{name}` / `resources["uri"]` row. Mutates in place. */
+function pairResponseToRequest(actions: readonly Action[]): void {
+  const reqById = new Map<
+    number,
+    { method: string; params: unknown; toolName?: string }
+  >();
   for (const a of actions) {
     if (a.driver !== "mcp") continue;
-    if (a.kind === "request" && a.payload.method === "tools/call") {
-      const name = (a.payload.params as { name?: unknown } | null)?.name;
-      if (typeof name === "string") toolByReqId[a.payload.id] = name;
-    } else if (a.kind === "response") {
-      const tool = toolByReqId[a.payload.requestId];
-      if (tool && !a.payload.tool) {
-        (a.payload as { tool?: string }).tool = tool;
+    if (a.kind === "request") {
+      const toolName =
+        a.payload.method === "tools/call"
+          ? (a.payload.params as { name?: unknown } | null)?.name
+          : undefined;
+      reqById.set(a.payload.id, {
+        method: a.payload.method,
+        params: a.payload.params,
+        toolName: typeof toolName === "string" ? toolName : undefined,
+      });
+      continue;
+    }
+    if (a.kind === "response") {
+      const req = reqById.get(a.payload.requestId);
+      if (!req) continue;
+      const p = a.payload as {
+        method?: string;
+        tool?: string;
+        resourceUri?: string;
+      };
+      if (!p.method) p.method = req.method;
+      if (!p.tool && req.toolName) p.tool = req.toolName;
+      if (!p.resourceUri && req.method === "resources/read") {
+        const uri = (req.params as { uri?: unknown } | null)?.uri;
+        if (typeof uri === "string") p.resourceUri = uri;
       }
     }
   }
@@ -236,7 +266,9 @@ function legacyToAction(raw: unknown): Action[] {
         source: "widget",
         payload: {
           name: typeof r.name === "string" ? r.name : "(unknown)",
-          params: r.params,
+          // Mirror JSON storage semantics so live + saved traces match.
+          // See drivers/widget.ts widgetAttach for the symmetric strip.
+          params: stripUndefined(r.params),
         },
       },
     ];

@@ -125,7 +125,7 @@ describe("engine.run", () => {
     ]);
   });
 
-  it("run__times_out_when_awaited_action_does_not_arrive", async () => {
+  it("run__times_out_with_synthetic_placeholder_when_awaited_action_does_not_arrive", async () => {
     const drivers = driversWith({ dispatch: () => undefined });
     // A trace expecting a server-source response that never comes.
     const trace = makeTrace({
@@ -146,9 +146,14 @@ describe("engine.run", () => {
       drivers,
       awaitMs: 30,
     });
-    // Step never landed; the captured trace is shorter than the expected
-    // recorded one. Differ will catch it as step_missing.
-    expect(out.steps).toEqual([]);
+    // Engine pushes a synthetic placeholder so subsequent indices stay
+    // aligned with the recorded trace. The differ recognizes
+    // synthetic=true and surfaces this as a warn step_missing.
+    expect(out.steps).toHaveLength(1);
+    expect(out.steps[0]).toMatchObject({
+      action: { driver: "mcp", kind: "response" },
+      synthetic: true,
+    });
   });
 
   it("run__aborts_cleanly_when_signal_fires_between_steps", async () => {

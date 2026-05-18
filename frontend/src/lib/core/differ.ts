@@ -21,12 +21,20 @@
 import { classify } from "./classify";
 import { checkMatcher, findIgnore, findMatch } from "./rules";
 import type {
+  Action,
   Drift,
   DriftReason,
   ResolvedRules,
+  Step,
   Trace,
   Verdict,
 } from "./types";
+
+/** Look-ahead window for action-kind alignment. Small misalignments
+ *  (1-2 step drift between record and replay) re-sync inside this
+ *  window without cascading. Larger drift falls through to a parallel
+ *  mismatch (one step_missing + one step_extra) at the boundary. */
+const ALIGN_LOOKAHEAD = 10;
 
 export function diff(
   recorded: Trace,
@@ -34,47 +42,157 @@ export function diff(
   rules: ResolvedRules,
 ): Verdict {
   const drifts: Drift[] = [];
-  const n = Math.max(recorded.steps.length, replayed.steps.length);
+  const recSteps = recorded.steps;
+  const repSteps = replayed.steps;
 
-  for (let i = 0; i < n; i++) {
-    const rec = recorded.steps[i];
-    const rep = replayed.steps[i];
-    if (!rec) {
-      drifts.push(d(i, "", undefined, rep.action, "step_extra"));
+  // Two-pointer alignment by (driver, kind). When the heads diverge,
+  // look ahead a window on each side for the missing/extra step and
+  // skip past it as step_missing or step_extra. Prevents a single
+  // missed step from cascading state drifts onto every subsequent step.
+  let i = 0;
+  let j = 0;
+  // Track the previous COMPARED states per side so the `walk` short-
+  // circuit (cell didn't move on either side) keeps working across
+  // alignment skips.
+  let prevRec: unknown = recorded.initialState;
+  let prevRep: unknown = replayed.initialState;
+
+  while (i < recSteps.length || j < repSteps.length) {
+    if (i >= recSteps.length) {
+      drifts.push(d(j, "", undefined, repSteps[j].action, "step_extra"));
+      prevRep = repSteps[j].stateAfter;
+      j++;
       continue;
     }
-    if (!rep) {
-      drifts.push(d(i, "", rec.action, undefined, "step_missing"));
+    if (j >= repSteps.length) {
+      drifts.push(stepMissingDrift(i, recSteps[i].action));
+      prevRec = recSteps[i].stateAfter;
+      i++;
       continue;
     }
-    if (rec.stateAfter === rep.stateAfter) continue;
-    // Drift is reported AT THE STEP WHERE IT AROSE. If neither side
-    // changed a cell since the previous step, the drift (if any) was
-    // already reported there — skip to avoid noise. `prevRec`/`prevRep`
-    // are the previous step's stateAfter on each side (or initialState
-    // at step 0).
-    const prevRec =
-      i === 0 ? recorded.initialState : recorded.steps[i - 1].stateAfter;
-    const prevRep =
-      i === 0 ? replayed.initialState : replayed.steps[i - 1].stateAfter;
-    const mode: CompareMode = rec.compare ?? "exact";
-    walk(
-      rec.stateAfter,
-      rep.stateAfter,
-      prevRec,
-      prevRep,
-      "",
-      i,
-      rules,
-      mode,
-      drifts,
-    );
+    if (sameKind(recSteps[i].action, repSteps[j].action)) {
+      // A synthetic replay step is the engine's "I waited and the
+      // widget/server didn't emit this in time" marker — its action is
+      // copied from recorded for label purposes and its stateAfter is
+      // the previous state. Comparing it cell-by-cell would surface
+      // the absent state change as N spurious drifts. Surface once as
+      // a warn step_missing instead.
+      if (repSteps[j].synthetic) {
+        drifts.push(stepMissingDrift(i, recSteps[i].action));
+      } else {
+        comparePair(
+          recSteps[i],
+          repSteps[j],
+          i,
+          prevRec,
+          prevRep,
+          rules,
+          drifts,
+        );
+      }
+      prevRec = recSteps[i].stateAfter;
+      prevRep = repSteps[j].stateAfter;
+      i++;
+      j++;
+      continue;
+    }
+
+    // Heads differ. Find the nearest match in each side's lookahead;
+    // whichever side has the closer match (or only one has one) is
+    // assumed to be the side that needs to skip forward.
+    const recAhead = findKindAhead(recSteps, i + 1, repSteps[j].action);
+    const repAhead = findKindAhead(repSteps, j + 1, recSteps[i].action);
+
+    const advanceRec =
+      recAhead !== -1 && (repAhead === -1 || recAhead - i <= repAhead - j);
+    const advanceRep = !advanceRec && repAhead !== -1;
+
+    if (advanceRec) {
+      // recSteps[recAhead] matches repSteps[j]; everything in between
+      // on the recorded side is "missing" from the replay.
+      while (i < recAhead) {
+        drifts.push(stepMissingDrift(i, recSteps[i].action));
+        prevRec = recSteps[i].stateAfter;
+        i++;
+      }
+    } else if (advanceRep) {
+      // repSteps[repAhead] matches recSteps[i]; everything in between
+      // on the replay side is "extra" relative to the recording.
+      while (j < repAhead) {
+        drifts.push(d(j, "", undefined, repSteps[j].action, "step_extra"));
+        prevRep = repSteps[j].stateAfter;
+        j++;
+      }
+    } else {
+      // No alignment found within window — emit a parallel mismatch
+      // and advance both. Better than cascading; keeps the loop honest.
+      drifts.push(stepMissingDrift(i, recSteps[i].action));
+      drifts.push(d(i, "", undefined, repSteps[j].action, "step_extra"));
+      prevRec = recSteps[i].stateAfter;
+      prevRep = repSteps[j].stateAfter;
+      i++;
+      j++;
+    }
   }
 
   drifts.sort(
     (a, b) => a.stepIndex - b.stepIndex || a.path.localeCompare(b.path),
   );
   return { ok: drifts.every(isSurfacedOk), drifts };
+}
+
+function comparePair(
+  rec: Step,
+  rep: Step,
+  stepIndex: number,
+  prevRec: unknown,
+  prevRep: unknown,
+  rules: ResolvedRules,
+  drifts: Drift[],
+): void {
+  if (rec.stateAfter === rep.stateAfter) return;
+  const mode: CompareMode = rec.compare ?? "exact";
+  walk(
+    rec.stateAfter,
+    rep.stateAfter,
+    prevRec,
+    prevRep,
+    "",
+    stepIndex,
+    rules,
+    mode,
+    drifts,
+  );
+}
+
+function sameKind(a: Action, b: Action): boolean {
+  return a.driver === b.driver && a.kind === b.kind;
+}
+
+/** Index of the first step in `steps` from `start` (inclusive) onward
+ *  whose action matches `target` by (driver, kind), within
+ *  `ALIGN_LOOKAHEAD` slots. Returns -1 if not found. */
+function findKindAhead(
+  steps: readonly Step[],
+  start: number,
+  target: Action,
+): number {
+  const end = Math.min(steps.length, start + ALIGN_LOOKAHEAD);
+  for (let k = start; k < end; k++) {
+    if (sameKind(steps[k].action, target)) return k;
+  }
+  return -1;
+}
+
+/** Build a step_missing drift, demoting severity to "warn" when the
+ *  missing action is async (widget/server source) — those misses are
+ *  typically the engine's 2s `awaitMs` budget elapsing before the
+ *  widget/server emitted the expected action, not a real regression. */
+function stepMissingDrift(stepIndex: number, action: Action): Drift {
+  const drift = d(stepIndex, "", action, undefined, "step_missing");
+  const src = action.source;
+  if (src === "widget" || src === "server") drift.severity = "warn";
+  return drift;
 }
 
 function isSurfacedOk(drift: Drift): boolean {
