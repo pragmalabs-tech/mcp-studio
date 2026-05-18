@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import { useStudioStore } from "@/lib/studio/store";
 import type { SelectedItem } from "@/lib/studio/store";
+import type { McpToolInfo } from "@/lib/studio/api";
+import {
+  ToolCategory,
+  TOOL_CATEGORY_META,
+  TOOL_CATEGORY_ORDER,
+  classifyTool,
+} from "@/lib/studio/tool-category";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -30,8 +38,13 @@ export function Sidebar() {
   const [sections, setSections] = useState({
     tools: true,
     resources: true,
+    [ToolCategory.Interactive]: true,
+    [ToolCategory.ReadOnly]: true,
+    [ToolCategory.Destructive]: true,
+    [ToolCategory.Other]: true,
   });
-  const toggleSection = (key: keyof typeof sections) =>
+  type SectionKey = keyof typeof sections;
+  const toggleSection = (key: SectionKey) =>
     setSections((s) => ({ ...s, [key]: !s[key] }));
 
   useEffect(() => {
@@ -106,21 +119,52 @@ export function Sidebar() {
     </button>
   );
 
+  const groupedTools = useMemo(() => {
+    const groups = new Map<ToolCategory, McpToolInfo[]>();
+    for (const t of filteredTools) {
+      const cat = classifyTool(t);
+      const bucket = groups.get(cat) ?? [];
+      bucket.push(t);
+      groups.set(cat, bucket);
+    }
+    return TOOL_CATEGORY_ORDER.map((cat) => ({
+      cat,
+      tools: groups.get(cat) ?? [],
+    })).filter((g) => g.tools.length > 0);
+  }, [filteredTools]);
+
   const sectionHeader = (
-    key: keyof typeof sections,
+    key: SectionKey,
     label: string,
     count: number,
-  ) => (
-    <button
-      onClick={() => toggleSection(key)}
-      className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:bg-secondary/30 transition-colors"
-    >
-      <span>
-        {label} <span className="normal-case font-normal">{count}</span>
-      </span>
-      <span className="text-[8px]">{sections[key] ? "▼" : "▶"}</span>
-    </button>
-  );
+    opts?: {
+      icon?: LucideIcon | null;
+      description?: string;
+      tone?: "default" | "warm";
+    },
+  ) => {
+    const Icon = opts?.icon ?? null;
+    const isWarm = opts?.tone === "warm";
+    const toneClass = isWarm
+      ? "text-amber-500/80 hover:text-amber-400"
+      : "text-muted-foreground";
+    const expanded = filter ? true : sections[key];
+    return (
+      <button
+        onClick={() => toggleSection(key)}
+        title={opts?.description}
+        aria-expanded={expanded}
+        className={`w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider ${toneClass} hover:bg-secondary/30 transition-colors`}
+      >
+        <span className="flex items-center gap-1.5">
+          {Icon && <Icon className="h-3 w-3" />}
+          {label}{" "}
+          <span className="normal-case font-normal opacity-70">{count}</span>
+        </span>
+        <span className="text-[8px]">{expanded ? "▼" : "▶"}</span>
+      </button>
+    );
+  };
 
   const totalItems = tools.length + resources.length;
 
@@ -156,26 +200,51 @@ export function Sidebar() {
           </div>
         )}
 
-        {filteredTools.length > 0 && (
-          <div>
-            {sectionHeader("tools", "Tools", filteredTools.length)}
-            {sections.tools &&
-              filteredTools.map((t) => (
-                <div key={t.name}>
-                  {itemBtn(
-                    { type: "tool", tool: t },
-                    displayName(t.name),
-                    t.description,
-                  )}
+        {filteredTools.length > 0 &&
+          (groupedTools.length === 1 ? (
+            <div>
+              {sectionHeader("tools", "Tools", filteredTools.length)}
+              {(filter ? true : sections.tools) &&
+                filteredTools.map((t) => (
+                  <div key={t.name}>
+                    {itemBtn(
+                      { type: "tool", tool: t },
+                      displayName(t.name),
+                      t.description,
+                    )}
+                  </div>
+                ))}
+            </div>
+          ) : (
+            groupedTools.map(({ cat, tools: bucketTools }) => {
+              const meta = TOOL_CATEGORY_META[cat];
+              const expanded = filter ? true : sections[cat];
+              return (
+                <div key={cat}>
+                  {sectionHeader(cat, meta.label, bucketTools.length, {
+                    icon: meta.icon,
+                    description: meta.description,
+                    tone: meta.tone,
+                  })}
+                  {expanded &&
+                    bucketTools.map((t) => (
+                      <div key={t.name}>
+                        {itemBtn(
+                          { type: "tool", tool: t },
+                          displayName(t.name),
+                          t.description,
+                        )}
+                      </div>
+                    ))}
                 </div>
-              ))}
-          </div>
-        )}
+              );
+            })
+          ))}
 
         {filteredResources.length > 0 && (
           <div>
             {sectionHeader("resources", "Resources", filteredResources.length)}
-            {sections.resources &&
+            {(filter ? true : sections.resources) &&
               filteredResources.map((r) => (
                 <div key={r.uri}>
                   {itemBtn(

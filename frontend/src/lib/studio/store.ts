@@ -26,6 +26,7 @@ import {
   type McpResourceInfo,
 } from "./api";
 import { DEFAULT_MOCK, type MockData } from "./mock-openai";
+import { extractWidgetUri } from "./tool-category";
 import { validateToolResult, type ResultIssue } from "./validate-tool-result";
 import type { Action, WidgetMock } from "@/lib/core/types";
 import { createClaudeMock } from "./mock-claude";
@@ -330,37 +331,6 @@ function toolArgsFromSchema(schema?: Record<string, unknown>): string {
   const props = schema.properties as Record<string, JsonSchemaProperty>;
   const required = schema.required as string[] | undefined;
   return JSON.stringify(sampleFromProperties(props, required), null, 2);
-}
-
-/** Extract widget name from ui:// URI pattern in meta.
- *  Supports both `ui://widget/{name}` (mcpr convention) and
- *  `ui://{app}/{path}` (MCP Apps spec). */
-function extractWidgetUri(meta: Record<string, unknown>): string | null {
-  const candidates: string[] = [];
-
-  // Claude: meta.ui.resourceUri
-  const ui = meta.ui as Record<string, unknown> | undefined;
-  if (ui?.resourceUri && typeof ui.resourceUri === "string")
-    candidates.push(ui.resourceUri as string);
-  // Also check ui.uri (from tools/list meta)
-  if (ui?.uri && typeof ui.uri === "string") candidates.push(ui.uri as string);
-  // OpenAI: openai/outputTemplate
-  const tmpl = meta["openai/outputTemplate"];
-  if (typeof tmpl === "string") candidates.push(tmpl);
-
-  for (const uri of candidates) {
-    // ui://widget/{name}(.html)? — existing convention
-    const m = uri.match(/^ui:\/\/widget\/(.+?)(?:\.html)?$/);
-    if (m) return m[1];
-    // ui://{app}/{path}(.html)? — MCP Apps spec
-    // Use app name (first segment) as the widget name since the path is often generic (index.html)
-    const g = uri.match(/^ui:\/\/([^/]+)\/([^/]+?)(?:\.html)?$/);
-    if (g) {
-      const [, app, file] = g;
-      return file === "index" ? app : file;
-    }
-  }
-  return null;
 }
 
 function simpleHash(input: string): string {
