@@ -3,84 +3,65 @@
 All notable changes to mcp-studio. Format roughly follows Keep a Changelog;
 versions correspond to release tags in git.
 
-## [Unreleased]
+## [0.2.2] – 2026-05-18
 
 ### Added
-- **Per-test tag system.** Tag tests in the catalog (e.g. `smoke`, `auth`,
-  `study-kit`) and filter the list by tag. Tags are stored on the trace's
-  `tags?: string[]` field and surface in `TestSummary` for catalog UX.
-- **Per-step compare mode (`exact` vs `shape`).** Flip any step from exact
-  comparison to shape-only via the result modal's Compare control. Shape
-  mode asserts JSON structure (types + key presence) and ignores leaf
-  values + array lengths — the fix for env-flaky tool responses (UUIDs,
-  timestamps, generated content).
-- **Widget intent action (`widget.intent`).** Widget → host messages
-  (`sendFollowUpMessage`, `setWidgetState`, `openExternal`, `ui/message`,
-  `ui/open-link`, etc.) are now first-class actions. They append to
-  `state.widgets.intents[]`, so tests can assert which intents fire and
-  in what order.
-- **Widget render action (`widget.render`).** What was previously a side
-  effect of `store.execute()` is now an action with `{widgetName, mock}`
-  payload. State cell `state.widgets.activeRender` records what data
-  the widget was rendered against; the differ asserts on it.
-- **View Rules dialog** on every test row. Inspect and edit the
-  per-trace `ignore` / `match` rules without running the test first.
-- **Step-by-step replay** with a top-header overlay. Replay shows a
-  live progress bar, current action, and Next / Auto / Stop controls.
-  Engine adds `onStepStart`, `onStepDone`, and `beforeStep` hooks.
-- **Action descriptions in the catalog** (and richer expectation hints):
-  `mcp.request` shows `call get_course { course_id }`; `mcp.response`
-  shows `get_course → ok (143ms)`; `widget.dom.input` shows
-  `input <selector> = "value"`; etc.
-- **Result modal: tested-methods + step count + capture time** in a
-  subline under the trace title. Missing-step rows render with a red
-  "MISSING" badge so step_missing failures are visible in the rail.
-- **Debug flag**: set `window.__studioDebug = true` in DevTools to enable
-  `[studio]` / `[bridge]` traces. Iframe logs are piped to the parent so
-  they appear regardless of console context filter. Off by default.
+- **Resources slice in state (`state.resources[uri]`).** `resources/read`
+  requests now project the result into a stable shape: `contentCount`,
+  `mimeType`, `hasHtml`, and (when the resource is a widget) the
+  `openai/widgetCSP` connect/resource/frame domain lists plus
+  `openai/widgetDomain`. The raw HTML body is intentionally excluded -
+  it drifts on every whitespace change and isn't a meaningful assertion
+  target; the metadata is what the host actually contracts on.
+- **Warning step severity (`DriftSeverity = "fail" | "warn"`).** Drifts
+  can now degrade to warn instead of failing the verdict. Wired up for
+  `step_missing` placeholders so a missing widget/server action shows
+  inline as a yellow card rather than collapsing the whole replay.
+- **Synthetic placeholder steps.** When the engine's `waitForKind` times
+  out, it inserts a `Step { synthetic: true }` carrying the recorded
+  action's label and the prior `stateAfter`. Keeps `replayed.steps.length`
+  aligned with `recorded.steps.length` so the trace modal renders the
+  missing step inline; the differ recognises the placeholder and emits a
+  single warn `step_missing` instead of comparing empty state against
+  recorded state.
+- **Step inspector and test inspector panes.** New side panels
+  (`step-inspector-detail.tsx`, `test-inspector.tsx`) for drilling into a
+  single step's action / state-delta / drift list without leaving the
+  catalog view.
+- **State-changes view (`state-changes.ts`).** Computes the leaf-level
+  delta between consecutive `stateAfter`s and renders it as a compact
+  added/removed/changed list - the "what this step actually mutated"
+  view that previously required diffing two JSON blobs by eye.
+- **Sidebar groups tools by category (`tool-category.ts`).** Tools are
+  bucketed by hint (read / write / destructive / etc.) so the sidebar
+  shows them organized rather than as one flat list.
+- **`docs/actions-and-assertions.md`** - single reference for every
+  recordable action, per-slice state effects, volatile/match paths, and
+  per-step compare modes. Replaces the older split docs.
+- **`docs/widget-assertions-plan.md`** - parked design doc for the next
+  generation of widget assertions (contract / semantic-DOM / ARIA /
+  smoke). Captured now so the research doesn't have to be redone when we
+  pick the work up.
+- **`strip-undefined` utility.** Drops `undefined` leaves before JSON
+  serialization so traces don't accumulate noise keys that round-trip as
+  drift candidates.
+- **Replay-gating tests for the studio store** - regression coverage for
+  the "don't dispatch into a half-loaded iframe" path.
 
 ### Changed
-- **Widget iframe lifecycle.** Iframe mounts once per widget URL; mock
-  updates flow via `postMessage({type: "studio_set_mock", mock})`. The
-  injected mock-openai shim mutates `window.openai.toolOutput / toolInput
-  / widgetState` in place and dispatches `openai:set_globals` so the
-  widget re-renders without an iframe reload. Eliminates the
-  reload-wipes-listeners class of bug.
-- **`renderWidget` is action-driven.** Record and replay run the SAME
-  code paths through the recorder bus. No more `recorder.suspend()`
-  workarounds.
-- **Synthetic clicks dispatch the full pointer sequence**
-  (`pointerover → mouseover → pointerdown → mousedown → focus →
-  pointerup → mouseup → click`), matching what `@testing-library/user-event`
-  does. Fixes replays where React/Radix handlers wired to `mousedown` or
-  `pointerdown` ignored bare `click` events.
-- **Engine `waitFor` matches by `(driver, kind)`** instead of consuming
-  the first ambient action. Prevents leftover `widget.dom.click` echoes
-  from being mistakenly consumed in place of a `widget.intent`.
-- **Bridge selector resolution retries for 500ms** (polls every 16ms)
-  to cover post-React-commit timing.
-- **`mcp-studio` CHANGELOG, testing-logic, and test-recorder-and-replay
-  docs** updated to reflect the new render lifecycle and action set.
-
-### Fixed
-- **Kind prefix mismatch** in the iframe bridge: `dispatchSynthetic`
-  expected `widget.dom.click` but the engine sent `dom.click`. Every
-  click dispatch silently no-op'd (ack returned OK but no event fired).
-- **Race between widget render and next dispatch.** Engine now awaits
-  the iframe's `render.complete` on the first mount of a new widget
-  before the next dispatch can race a half-loaded iframe.
-- **`foldTrace` dropped extra step fields** like `compare`. Fixed by
-  spreading the source step (`{...s, stateAfter}`) so new fields
-  round-trip on every load.
-- **`event.isTrusted` spoof** on synthetic mouse/pointer events
-  (`Object.defineProperty(e, "isTrusted", {value: true})`) so widget
-  libraries that gate on it still run.
-
-### Removed
-- **`recorder.suspend()` callers** — all gone. The bus retains the
-  primitive but no caller invokes it outside the bus implementation.
-- The verbose chain logs (`step1/step2/step3/step5/host RX`) that
-  accumulated during debugging - replaced with the `__studioDebug` flag.
+- **`resources/read` is a first-class action target.** The mcp driver
+  bumps `state.resources[uri].readCount` on every read and projects the
+  response into `state.resources[uri].lastResult`. Tests that read
+  widget HTML now have a stable contract to assert on (URI + MIME + CSP
+  + widget domain), independent of HTML byte content.
+- **Engine emits synthetic step on `waitForKind` timeout** instead of
+  bailing out of the replay loop, so the trace modal still renders the
+  missing slot inline rather than as a trailing MISSING card.
+- **Removed `docs/core-contract.md`, `docs/cue-spec.md`,
+  `docs/system-design.md`, `docs/test-recorder-and-replay.md`, and
+  `docs/testing-logic.md`** - consolidated into
+  `actions-and-assertions.md`. The split docs had drifted out of sync
+  with `types.ts`; one source of truth is easier to keep honest.
 
 ## [0.2.1] – 2026-05-17
 
@@ -167,6 +148,8 @@ versions correspond to release tags in git.
   CSP runtime, recorder bus.
 
 [Unreleased]: ../#unreleased
+[0.2.2]: ../#022---2026-05-18
+[0.2.1]: ../#021---2026-05-17
 [0.2.0]: ../#020---2026-05-12
 [0.1.9]: ../#019---2026-05
 [0.1.8]: ../#018---2026-04
