@@ -16,11 +16,17 @@ export const TOOL_CATEGORY_ORDER: ToolCategory[] = [
   ToolCategory.Other,
 ];
 
+export type ToolCategoryTone =
+  | "interactive"
+  | "readonly"
+  | "destructive"
+  | "other";
+
 export interface ToolCategoryMeta {
   label: string;
   description: string;
   icon: LucideIcon | null;
-  tone: "default" | "warm";
+  tone: ToolCategoryTone;
 }
 
 export const TOOL_CATEGORY_META: Record<ToolCategory, ToolCategoryMeta> = {
@@ -28,25 +34,25 @@ export const TOOL_CATEGORY_META: Record<ToolCategory, ToolCategoryMeta> = {
     label: "Interactive Tools",
     description: "Tools that render a UI widget when invoked.",
     icon: Sparkles,
-    tone: "default",
+    tone: "interactive",
   },
   [ToolCategory.ReadOnly]: {
     label: "Read-only Tools",
     description: "Tools the server declared as side-effect-free.",
     icon: Eye,
-    tone: "default",
+    tone: "readonly",
   },
   [ToolCategory.Destructive]: {
     label: "Write/Delete Tools",
     description: "Tools the server declared as making writes or deletions.",
     icon: Pencil,
-    tone: "warm",
+    tone: "destructive",
   },
   [ToolCategory.Other]: {
     label: "Other Tools",
     description: "Tools without read-only or write/delete annotations.",
     icon: Wrench,
-    tone: "default",
+    tone: "other",
   },
 };
 

@@ -136,6 +136,26 @@ export function findActiveWidget(
 ): ActiveWidget | null {
   const upper = Math.min(selectedIdx, steps.length - 1);
 
+  // Suppress the widget pane when the selected step isn't about widget
+  // delivery or interaction:
+  //   - `mcp.request resources/read` — the HTML hasn't been delivered
+  //     yet at this step; showing a previously-rendered widget is
+  //     misleading.
+  //   - `mcp.response tools/call` — the response carries the tool's
+  //     JSON data, not the widget itself. Re-rendering the widget here
+  //     against the new tool data has caused user confusion in review
+  //     (apparent random reshuffles per click for non-deterministic
+  //     widget code); the JSON pane already shows what landed.
+  // Widget rendering still surfaces on `mcp.response resources/read`
+  // (the actual HTML delivery), on `widget.*` steps, and on `studio.*`
+  // steps where the previous render is the relevant view.
+  const sel = steps[upper]?.action;
+  if (sel?.driver === "mcp") {
+    if (sel.kind === "request" && sel.payload.method === "resources/read")
+      return null;
+    if (sel.kind === "response" && sel.payload.tool) return null;
+  }
+
   // Walk back from the selected step to find the latest MCP response that
   // carried widget HTML directly inside its result. We read the URI out of
   // `result.contents[i].uri` rather than pairing with a request, because the

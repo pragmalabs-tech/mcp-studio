@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  History,
   Settings,
   XCircle,
   XIcon,
@@ -89,6 +90,14 @@ export function TraceModal({
   const finalState = replayed.steps.at(-1)?.stateAfter ?? replayed.initialState;
   const [showIgnored, setShowIgnored] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  // Default to the replay outcome — that's what the user is reviewing.
+  // Toggle to "recorded" surfaces the saved test data for the same step,
+  // useful for spot-checking what the test expected vs what the run got.
+  const [dataSource, setDataSource] = useState<"replayed" | "recorded">(
+    "replayed",
+  );
+  const detailSteps =
+    dataSource === "recorded" ? recorded.steps : replayed.steps;
 
   // Counts: surfaced (non-ignored) by severity; ignored separately.
   const counts = useMemo(() => countDrifts(verdict.drifts), [verdict.drifts]);
@@ -230,6 +239,25 @@ export function TraceModal({
                   </span>
                 </Button>
               )}
+              <Button
+                variant={dataSource === "recorded" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() =>
+                  setDataSource((s) =>
+                    s === "replayed" ? "recorded" : "replayed",
+                  )
+                }
+                title={
+                  dataSource === "replayed"
+                    ? "Currently showing the replay result. Click to view the recorded (saved) test data for the same step."
+                    : "Currently showing recorded test data. Click to return to the replay result."
+                }
+              >
+                <History className="h-3.5 w-3.5" />
+                <span className="ml-1 text-xs">
+                  {dataSource === "replayed" ? "View recorded" : "Recorded"}
+                </span>
+              </Button>
               {onRulesChange && (
                 <Button
                   variant="ghost"
@@ -275,7 +303,7 @@ export function TraceModal({
                     key={i}
                     index={i}
                     step={step}
-                    allSteps={replayed.steps}
+                    allSteps={detailSteps}
                     drifts={driftsByStep.get(i) ?? []}
                     severity={stepSeverities[i]}
                     showIgnored={showIgnored}
@@ -316,7 +344,7 @@ export function TraceModal({
               </div>
             ) : (
               <StepDetail
-                steps={replayed.steps}
+                steps={detailSteps}
                 selectedStepIdx={selectedIdx}
                 drifts={selectedDrifts}
                 scrollToDriftIdx={scrollToDriftIdx}

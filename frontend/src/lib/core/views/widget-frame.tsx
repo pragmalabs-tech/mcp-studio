@@ -153,12 +153,12 @@ export function WidgetFrame(props: WidgetFrameProps) {
     }
     document.addEventListener("securitypolicyviolation", cb);
     const el = ref.current;
-    const onLoad = () => attachIframeDoc();
-    el?.addEventListener("load", onLoad);
+    const reattach = () => attachIframeDoc();
+    el?.addEventListener("load", reattach);
     attachIframeDoc();
     return () => {
       document.removeEventListener("securitypolicyviolation", cb);
-      el?.removeEventListener("load", onLoad);
+      el?.removeEventListener("load", reattach);
       try {
         el?.contentDocument?.removeEventListener(
           "securitypolicyviolation",

@@ -8,6 +8,7 @@ import {
   TOOL_CATEGORY_META,
   TOOL_CATEGORY_ORDER,
   classifyTool,
+  type ToolCategoryTone,
 } from "@/lib/studio/tool-category";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -19,6 +20,18 @@ import { ProfilePanel } from "./profile-panel";
 function displayName(name: string) {
   return name.replace(/_/g, " ");
 }
+
+const SECTION_TONE_CLASS: Record<
+  ToolCategoryTone | "resource" | "neutral",
+  string
+> = {
+  interactive: "text-violet-500/90 hover:text-violet-400",
+  readonly: "text-sky-500/90 hover:text-sky-400",
+  destructive: "text-amber-500/90 hover:text-amber-400",
+  other: "text-slate-400/90 hover:text-slate-300",
+  resource: "text-emerald-500/90 hover:text-emerald-400",
+  neutral: "text-muted-foreground hover:text-foreground",
+};
 
 export function Sidebar() {
   const {
@@ -140,14 +153,11 @@ export function Sidebar() {
     opts?: {
       icon?: LucideIcon | null;
       description?: string;
-      tone?: "default" | "warm";
+      tone?: ToolCategoryTone | "resource" | "neutral";
     },
   ) => {
     const Icon = opts?.icon ?? null;
-    const isWarm = opts?.tone === "warm";
-    const toneClass = isWarm
-      ? "text-amber-500/80 hover:text-amber-400"
-      : "text-muted-foreground";
+    const toneClass = SECTION_TONE_CLASS[opts?.tone ?? "neutral"];
     const expanded = filter ? true : sections[key];
     return (
       <button
@@ -243,7 +253,9 @@ export function Sidebar() {
 
         {filteredResources.length > 0 && (
           <div>
-            {sectionHeader("resources", "Resources", filteredResources.length)}
+            {sectionHeader("resources", "Resources", filteredResources.length, {
+              tone: "resource",
+            })}
             {(filter ? true : sections.resources) &&
               filteredResources.map((r) => (
                 <div key={r.uri}>
@@ -285,38 +297,39 @@ export function Sidebar() {
       </div>
 
       {/* Bottom meta cluster: cloud account + publish, profile (MCP server
-          target), and theme/credit. All sit below the per-server work
-          (auth + tools/resources) so the top of the sidebar stays
-          MCP-focused. */}
-      <CloudPanel />
-      <ProfilePanel />
+          target), and theme/credit. Lifted onto a subtle muted background
+          so it reads as a distinct footer zone vs. the scrolling
+          tools/resources list above. */}
+      <div className="bg-muted/40 border-t shrink-0">
+        <CloudPanel />
+        <ProfilePanel />
 
-      {/* Footer */}
-      <div className="px-4 py-3 border-t shrink-0 text-[10px] text-muted-foreground flex items-center justify-between gap-2">
-        <a
-          href="https://pragmalabs.tech/studio"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-foreground transition-colors truncate"
-        >
-          pragmalabs.tech/studio
-        </a>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <Switch
-            size="sm"
-            checked={studioTheme === "dark"}
-            onCheckedChange={(checked) =>
-              setStudioTheme(checked ? "dark" : "light")
-            }
-          />
-          <Label
-            className="text-[10px] text-muted-foreground cursor-pointer"
-            onClick={() =>
-              setStudioTheme(studioTheme === "dark" ? "light" : "dark")
-            }
+        <div className="px-4 py-3 border-t text-[10px] text-muted-foreground flex items-center justify-between gap-2">
+          <a
+            href="https://pragmalabs.tech/studio"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-foreground transition-colors truncate"
           >
-            Dark
-          </Label>
+            pragmalabs.tech/studio
+          </a>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Switch
+              size="sm"
+              checked={studioTheme === "dark"}
+              onCheckedChange={(checked) =>
+                setStudioTheme(checked ? "dark" : "light")
+              }
+            />
+            <Label
+              className="text-[10px] text-muted-foreground cursor-pointer"
+              onClick={() =>
+                setStudioTheme(studioTheme === "dark" ? "light" : "dark")
+              }
+            >
+              Dark
+            </Label>
+          </div>
         </div>
       </div>
     </div>
