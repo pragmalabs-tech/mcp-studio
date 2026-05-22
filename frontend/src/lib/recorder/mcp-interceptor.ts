@@ -1,5 +1,7 @@
+import { mcpEventBus } from "@/lib/mcp/events";
 import { recorder } from "./bus";
-import type { Source } from "./schema";
+import { ToolCallAction } from "@/lib/action/tool_call";
+import { ResourceReadAction } from "@/lib/action/resource_read";
 
 let nextId = 1;
 
@@ -41,42 +43,55 @@ export async function recordedMcpCall(
   raw: RawCall,
   method: string,
   params: Record<string, unknown> = {},
-  source: Source = "user",
+  _source?: any, // Backward compatibility param (not used)
 ): Promise<unknown> {
-  // Always emit. The bus gates buffer persistence on its own state
-  // (`_mode === "recording" && !suspended`); listeners fire regardless,
-  // which is what the engine's replay observation pipeline depends on.
   flushPending();
-  const id = nextId++;
-  recorder.emit({ kind: "mcp.request", id, source, method, params });
-  const t0 =
-    typeof performance !== "undefined" && performance.now
-      ? performance.now()
-      : Date.now();
+  const requestId = nextId++;
+
+  // Extract tool name or resource URI from params
+  let tool: string | undefined;
+  let resourceUri: string | undefined;
+
+  if (method === "tools/call" && typeof (params as any).name === "string") {
+    tool = (params as any).name;
+  } else if (method === "resources/read" && typeof (params as any).uri === "string") {
+    resourceUri = (params as any).uri;
+  }
+
+  // Record action if recorder is active
+  if (recorder.mode === "recording") {
+    if (method === "tools/call" && tool) {
+      const action = new ToolCallAction(tool, (params as any).arguments || {});
+      recorder.record(action);
+    } else if (method === "resources/read" && resourceUri) {
+      const action = new ResourceReadAction(resourceUri);
+      recorder.record(action);
+    }
+  }
+
   try {
     const result = await raw(method, params);
-    const t1 =
-      typeof performance !== "undefined" && performance.now
-        ? performance.now()
-        : Date.now();
-    recorder.emit({
-      kind: "mcp.response",
-      requestId: id,
+
+    // Emit response event to MCP event bus
+    mcpEventBus.emitResponse({
+      requestId,
+      method,
+      tool,
+      resourceUri,
       result,
-      durationMs: t1 - t0,
     });
+
     return result;
   } catch (err) {
-    const t1 =
-      typeof performance !== "undefined" && performance.now
-        ? performance.now()
-        : Date.now();
-    recorder.emit({
-      kind: "mcp.response",
-      requestId: id,
+    // Emit error response to MCP event bus
+    mcpEventBus.emitResponse({
+      requestId,
+      method,
+      tool,
+      resourceUri,
       error: serializeError(err),
-      durationMs: t1 - t0,
     });
+
     throw err;
   }
 }

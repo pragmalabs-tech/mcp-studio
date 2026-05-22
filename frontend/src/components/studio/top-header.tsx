@@ -8,9 +8,10 @@ import {
   SkipForward,
   Square,
 } from "lucide-react";
-import { RecordingHistoryDialog } from "@/components/studio/recording-history-dialog";
+// TODO: Re-enable when updated for new system
+// import { RecordingHistoryDialog } from "@/components/studio/recording-history-dialog";
 import { TestsPage } from "@/components/studio/tests-page";
-import { RunsPage } from "@/components/studio/runs-page";
+// import { RunsPage } from "@/components/studio/runs-page";
 import { SaveTestModal } from "@/components/studio/save-test-modal";
 import { Button } from "@/components/ui/button";
 import {
@@ -151,14 +152,38 @@ export function TopHeader() {
         </>
       )}
 
+      {/* TODO: Re-enable when updated for new system
       <RecordingHistoryDialog
         open={historyOpen}
         onOpenChange={setHistoryOpen}
       />
+      */}
 
       <TestsPage open={testsOpen} onOpenChange={setTestsOpen} />
 
+      {/* TODO: Re-enable when updated for new system
       <RunsPage open={runsOpen} onOpenChange={setRunsOpen} />
+      */}
+
+      {saveRange && (
+        <SaveTestModal
+          open={saveTestOpen}
+          startIndex={saveRange.start}
+          endIndex={saveRange.end}
+          onOpenChange={(v) => {
+            setSaveTestOpen(v);
+            if (!v) {
+              setSaveRange(null);
+              setSlicingState(null);
+            }
+          }}
+          onSaved={() => {
+            setSaveTestOpen(false);
+            setSaveRange(null);
+            setSlicingState(null);
+          }}
+        />
+      )}
 
       <Dialog open={recordExplainerOpen} onOpenChange={setRecordExplainerOpen}>
         <DialogContent className="sm:max-w-md">
@@ -217,6 +242,7 @@ export function TopHeader() {
         </DialogContent>
       </Dialog>
 
+      {/* TODO: Re-enable when updated for new system
       {saveRange && (
         <SaveTestModal
           open={saveTestOpen}
@@ -236,6 +262,7 @@ export function TopHeader() {
           }}
         />
       )}
+      */}
     </header>
   );
 }

@@ -1,29 +1,25 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { TagInput } from "@/components/ui/tag-input";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { recorder } from "@/lib/recorder/bus";
-import { slugify } from "@/lib/tests/format";
-import { listTests, saveTrace } from "@/lib/tests/api";
-import { collectTags } from "@/lib/tests/tags";
-import { toTrace } from "@/lib/core/trace-io";
-import { useStudioStore } from "@/lib/studio/store";
+import { saveTest } from "@/lib/tests/storage";
 
-interface Props {
+interface SaveTestModalProps {
   open: boolean;
   startIndex: number;
   endIndex: number;
   onOpenChange: (open: boolean) => void;
-  onSaved: (slug: string) => void;
+  onSaved?: () => void;
 }
 
 export function SaveTestModal({
@@ -32,137 +28,94 @@ export function SaveTestModal({
   endIndex,
   onOpenChange,
   onSaved,
-}: Props) {
+}: SaveTestModalProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const activeProfile = useStudioStore((s) =>
-    s.profiles.find((p) => p.id === s.activeProfileId),
-  );
 
-  useEffect(() => {
-    if (open) {
-      setName("");
-      setDescription("");
-      setTags([]);
-      setError(null);
-      listTests()
-        .then((t) => setSuggestions(collectTags(t)))
-        .catch(() => setSuggestions([]));
-    }
-  }, [open]);
+  const handleSave = async () => {
+    if (!name.trim()) return;
 
-  const slug = slugify(name);
-  const count = Math.max(0, endIndex - startIndex);
-  const preview = recorder
-    .snapshot()
-    .slice(startIndex, endIndex)
-    .slice(0, 3)
-    .map((e) => e.kind)
-    .join(", ");
-
-  async function handleSave() {
-    if (!name.trim()) {
-      setError("Name is required");
-      return;
-    }
     setSaving(true);
-    setError(null);
     try {
+      // Get the session slice
       const session = recorder.serializeRange(startIndex, endIndex);
-      const trace = toTrace({
-        timeline: session.timeline,
+
+      // Create test object
+      const test = {
+        id: crypto.randomUUID(),
         name: name.trim(),
         description: description.trim() || undefined,
-        tags: tags.length > 0 ? tags : undefined,
-      });
-      await saveTrace(slug, trace);
-      onSaved(slug);
-    } catch (e) {
-      setError((e as Error).message);
+        createdAt: new Date().toISOString(),
+        session,
+      };
+
+      // Save to localStorage
+      saveTest(test);
+      console.log("Test saved:", test.name);
+
+      // Reset and close
+      setName("");
+      setDescription("");
+      onSaved?.();
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Failed to save test:", error);
     } finally {
       setSaving(false);
     }
-  }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Save test</DialogTitle>
+          <DialogTitle>Save Test</DialogTitle>
+          <DialogDescription>
+            Save this recorded session as a test. You can replay it later.
+          </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3 py-2">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-muted-foreground">
-              Name
-            </Label>
+
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="test-name">Test Name</Label>
             <Input
-              autoFocus
-              placeholder="e.g. Search flow"
+              id="test-name"
+              placeholder="e.g., User login flow"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleSave();
-              }}
-              className="h-9"
+              autoFocus
             />
-            {name && (
-              <p className="text-[10px] text-muted-foreground font-mono">
-                file: {slug}.json
-              </p>
-            )}
           </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-muted-foreground">
-              Description (optional)
-            </Label>
+
+          <div className="space-y-2">
+            <Label htmlFor="test-description">Description (optional)</Label>
             <Textarea
-              placeholder="What does this test verify?"
+              id="test-description"
+              placeholder="Describe what this test covers..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="text-sm min-h-[60px]"
+              rows={3}
             />
           </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-muted-foreground">
-              Tags (optional)
-            </Label>
-            <TagInput
-              value={tags}
-              onChange={setTags}
-              suggestions={suggestions}
-              placeholder="e.g. smoke, auth"
-            />
+
+          <div className="text-xs text-muted-foreground">
+            <p>
+              <strong>{endIndex - startIndex}</strong> actions will be saved
+            </p>
           </div>
-          <div className="rounded-md bg-muted/30 p-2 text-[10px] font-mono text-muted-foreground">
-            {count} action{count === 1 ? "" : "s"}
-            {preview && ` - ${preview}${count > 3 ? ", …" : ""}`}
-            {activeProfile && (
-              <div className="mt-0.5">profile: {activeProfile.name}</div>
-            )}
-          </div>
-          {error && (
-            <p className="text-xs text-destructive font-mono">{error}</p>
-          )}
         </div>
+
         <DialogFooter>
           <Button
             variant="outline"
-            size="sm"
             onClick={() => onOpenChange(false)}
             disabled={saving}
           >
             Cancel
           </Button>
-          <Button
-            size="sm"
-            onClick={handleSave}
-            disabled={!name.trim() || saving || count === 0}
-          >
-            {saving ? "Saving…" : "Save"}
+          <Button onClick={handleSave} disabled={!name.trim() || saving}>
+            {saving ? "Saving..." : "Save Test"}
           </Button>
         </DialogFooter>
       </DialogContent>

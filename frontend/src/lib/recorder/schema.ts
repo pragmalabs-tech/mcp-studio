@@ -1,21 +1,21 @@
-import { ALL_KINDS } from "./kinds";
+// import type { Action as ActionType } from "@/lib/action/types";
 
-export const SCHEMA_VERSION = 1 as const;
+export const SCHEMA_VERSION = 2 as const;
 
+// Backward compatibility exports (stub types for old code)
 export type Source = "user" | "widget";
+export type Recorded = RecordedAction; // Alias for compatibility
+export type Action = any; // Stub for old code
 
-export type Platform = "openai" | "claude";
-
-export type Viewport = { preset: string } | { width: number; height: number };
-
-export interface SetupConfig {
-  platform: Platform;
-  theme: string;
-  displayMode: string;
-  locale: string;
-  viewport: Viewport;
-  strictMode: boolean;
+export interface SelectorChain {
+  testid?: string;
+  aria?: { label?: string; role?: string };
+  text?: { tag: string; value: string };
+  css?: string;
+  xpath?: string;
 }
+
+export type WidgetDomAction = any; // Stub for old widget code
 
 export type AuthBlock =
   | { method: "oauth"; token: string }
@@ -27,152 +27,53 @@ export interface SetupConnect {
   auth: AuthBlock;
 }
 
-export interface SelectorChain {
-  testid?: string;
-  aria?: { label?: string; role?: string };
-  text?: { tag: string; value: string };
-  css?: string;
-  xpath?: string;
+export type Viewport = { preset: string } | { width: number; height: number };
+
+// Setup configuration
+export interface SetupConfig {
+  url: string;
+  theme?: string;
+  locale?: string;
+  // Backward compatibility fields
+  platform?: string;
+  displayMode?: string;
+  viewport?: Viewport;
+  strictMode?: boolean;
 }
 
-export type Action =
-  | {
-      kind: "sidebar.select";
-      selection: { type: "tool" | "resource"; name: string };
-    }
-  | { kind: "editor.set_args"; value: unknown }
-  | { kind: "config.update"; patch: Partial<SetupConfig> }
-  | { kind: "auth.update"; patch: Partial<AuthBlock> }
-  | {
-      kind: "mcp.request";
-      id: number;
-      source: Source;
-      method: string;
-      params: unknown;
-    }
-  | {
-      kind: "mcp.response";
-      requestId: number;
-      result?: unknown;
-      error?: { message: string };
-      durationMs: number;
-    }
-  | { kind: "mcp.notification"; method: string; params: unknown }
-  | {
-      kind: "widget.render";
-      name: string;
-      htmlHash: string;
-      initialMock: unknown;
-    }
-  | { kind: "widget.mock.set"; value: unknown }
-  | { kind: "widget.intent"; name: string; params: unknown }
-  | {
-      kind: "widget.dom.click";
-      selectors: SelectorChain;
-      mutated: boolean;
-    }
-  | {
-      kind: "widget.dom.input";
-      selectors: SelectorChain;
-      value: string;
-      inputType: string;
-    }
-  | {
-      kind: "widget.dom.change";
-      selectors: SelectorChain;
-      value: string;
-    }
-  | { kind: "widget.dom.submit"; selectors: SelectorChain }
-  | {
-      kind: "widget.dom.keydown";
-      selectors: SelectorChain;
-      key: string;
-      code: string;
-      mods: number;
-    }
-  | {
-      kind: "widget.render.complete";
-      bodyChars: number;
-      hasRuntimeErrors: boolean;
-      handshakeOk: boolean;
-      renderDurationMs: number;
-    }
-  | {
-      kind: "csp.violation";
-      directive: string;
-      blockedUri: string;
-      severity: string;
-    };
-
-/** Subset of Action kinds the widget bridge can dispatch (host → iframe). */
-export type WidgetDomAction = Extract<
-  Action,
-  {
-    kind:
-      | "widget.dom.click"
-      | "widget.dom.input"
-      | "widget.dom.change"
-      | "widget.dom.submit"
-      | "widget.dom.keydown";
-  }
->;
-
-export type ActionKind = Action["kind"];
-
-/** A captured Action with timing. The recorder bus emits these. */
-export type Recorded = {
+// Recorded action with timing
+export interface RecordedAction {
   relMs: number;
-} & Action;
-
-export interface SessionWidget {
-  name: string;
-  html: string;
-  initialMock: unknown;
+  action: ReturnType<Action["toJSON"]>;
 }
 
+// Test session
 export interface Session {
   version: typeof SCHEMA_VERSION;
   capturedAt: string;
   studioVersion: string;
-  setup: { connect: SetupConnect; config: SetupConfig };
-  widget?: SessionWidget;
-  timeline: Recorded[];
+  setup: SetupConfig;
+  actions: RecordedAction[];
 }
 
-/** A user-saved test wrapping a Session slice with metadata. */
+// User-saved test
 export interface Test {
   id: string;
   name: string;
   description?: string;
   createdAt: string;
-  /** Profile this test was recorded against. Empty/missing on legacy tests. */
-  profileId?: string;
   session: Session;
 }
 
-/** Catalog summary returned by `GET /api/studio/tests`. */
+// Test summary for catalog
 export interface TestSummary {
-  /** Filename slug (matches the URL path component). */
   name: string;
-  /** Human-friendly name lifted from the file body, when present. */
   displayName?: string;
   description?: string;
   createdAt?: string;
-  /** Number of `steps[]` declared in the Cue. */
   totalActions?: number;
-  /** Tags lifted from the file body for filter UX. */
-  tags?: string[];
   size: number;
   modifiedMs: number;
-}
-
-export const REDACTED_TOKEN = "<<from-env>>" as const;
-
-/** Allowed kinds — sourced from ./kinds.ts (single source of truth). */
-const ALLOWED_KINDS: ReadonlySet<ActionKind> = new Set<ActionKind>(ALL_KINDS);
-
-export function isKnownActionKind(kind: string): kind is ActionKind {
-  return ALLOWED_KINDS.has(kind as ActionKind);
 }
 
 export function validateSession(value: unknown): value is Session {
@@ -182,11 +83,6 @@ export function validateSession(value: unknown): value is Session {
   if (typeof s.capturedAt !== "string") return false;
   if (typeof s.studioVersion !== "string") return false;
   if (!s.setup || typeof s.setup !== "object") return false;
-  if (!Array.isArray(s.timeline)) return false;
-  for (const a of s.timeline) {
-    if (!a || typeof a !== "object") return false;
-    if (typeof (a as Recorded).relMs !== "number") return false;
-    if (!isKnownActionKind((a as Recorded).kind)) return false;
-  }
+  if (!Array.isArray(s.actions)) return false;
   return true;
 }

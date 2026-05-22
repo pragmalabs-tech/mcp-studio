@@ -1858,7 +1858,7 @@ if (typeof window !== "undefined") {
   // Same input → same output, runs identically in record and replay so
   // there's no asymmetry between the two paths.
   const pendingUriById = new Map<number, string>();
-  recorder.onEmit((entry) => {
+  recorder.onEmit((entry: any) => {
     if (entry.kind === "mcp.request" && entry.method === "resources/read") {
       const uri = (entry.params as { uri?: unknown } | null)?.uri;
       if (typeof uri === "string" && uri.startsWith("ui://")) {
@@ -1894,25 +1894,14 @@ if (typeof window !== "undefined") {
       ),
   });
   const s = useStudioStore.getState();
-  recorder.start(
-    snapshotSetup({
-      proxyUrl: s.proxyUrl,
-      authMethod: s.authMethod,
-      token: s.token,
-      oauth: {
-        accessToken: s.oauth.accessToken,
-        selectedScopes: s.oauth.selectedScopes,
-        customHeaders: s.oauth.customHeaders,
-      },
-      platform: s.platform,
-      theme: s.theme,
-      displayMode: s.displayMode,
-      locale: s.locale,
-      viewportPreset: s.viewportPreset,
-      viewportCustom: s.viewportCustom,
-      strictMode: s.strictMode,
-      selected: s.selected,
-      editorValue: s.editorValue,
-    }),
-  );
+  recorder.start({
+    url: s.proxyUrl,
+    theme: s.theme,
+    locale: s.locale,
+    // Old fields for backward compat (ignored by new recorder)
+    platform: s.platform as any,
+    displayMode: s.displayMode as any,
+    viewport: ("preset" in (s.viewportCustom || {}) ? s.viewportCustom : { preset: s.viewportPreset }) as any,
+    strictMode: s.strictMode,
+  });
 }
