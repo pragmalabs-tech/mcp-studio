@@ -74,10 +74,8 @@ export function WidgetPreview() {
 
     // Set up ext-apps mock for Claude platform or OpenAI ext-apps mode
     if (platform === "claude" && iframe) {
-      const extAppsMock = createClaudeMock(
-        iframe,
-        mock,
-        (method, args) => logAction(method, args),
+      const extAppsMock = createClaudeMock(iframe, mock, (method, args) =>
+        logAction(method, args),
       );
       useStudioStore.setState({ _extAppsMock: extAppsMock });
     }
@@ -139,7 +137,10 @@ export function WidgetPreview() {
       {/* Tab bar */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b shrink-0">
         <div className="flex items-center gap-3">
-          <TabButton active={tab === "preview"} onClick={() => setTab("preview")}>
+          <TabButton
+            active={tab === "preview"}
+            onClick={() => setTab("preview")}
+          >
             Preview
           </TabButton>
           <TabButton active={tab === "mock"} onClick={() => setTab("mock")}>
@@ -149,14 +150,13 @@ export function WidgetPreview() {
             HTML Source
           </TabButton>
         </div>
-        {tab === "mock" && (widgetRawHtml ? (
-          <CopyButton value={mockJson} />
-        ) : lastToolResult ? (
-          <CopyButton value={lastToolResult} />
-        ) : null)}
-        {tab === "html" && widgetRawHtml && (
-          <CopyButton value={htmlSource} />
-        )}
+        {tab === "mock" &&
+          (widgetRawHtml ? (
+            <CopyButton value={mockJson} />
+          ) : lastToolResult ? (
+            <CopyButton value={lastToolResult} />
+          ) : null)}
+        {tab === "html" && widgetRawHtml && <CopyButton value={htmlSource} />}
         {tab === "preview" && !widgetRawHtml && lastToolResult && (
           <CopyButton value={lastToolResult} />
         )}

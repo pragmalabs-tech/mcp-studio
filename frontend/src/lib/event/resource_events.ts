@@ -55,7 +55,7 @@ export class ResourceReadCompletedEvent extends Event<{
     if (!resourceState) return state;
 
     const updatedReads = resourceState.reads.map((read) =>
-      read.requestId === requestId ? { ...read, result } : read
+      read.requestId === requestId ? { ...read, result } : read,
     );
 
     return {
@@ -91,7 +91,7 @@ export class ResourceReadFailedEvent extends Event<{
     if (!resourceState) return state;
 
     const updatedReads = resourceState.reads.map((read) =>
-      read.requestId === requestId ? { ...read, error } : read
+      read.requestId === requestId ? { ...read, error } : read,
     );
 
     return {

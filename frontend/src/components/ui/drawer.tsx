@@ -30,7 +30,7 @@ function DrawerOverlay({
         "fixed inset-0 z-50 bg-black/80",
         "data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[open]:opacity-100",
         "transition-opacity duration-200",
-        className
+        className,
       )}
       {...props}
     />
@@ -61,7 +61,7 @@ const DrawerContent = React.forwardRef<HTMLDivElement, DrawerContentProps>(
               "data-[starting-style]:-translate-x-full data-[ending-style]:-translate-x-full data-[open]:translate-x-0",
             ],
             "flex flex-col p-6",
-            className
+            className,
           )}
           {...props}
         >
@@ -69,7 +69,7 @@ const DrawerContent = React.forwardRef<HTMLDivElement, DrawerContentProps>(
         </DialogPrimitive.Popup>
       </DrawerPortal>
     );
-  }
+  },
 );
 DrawerContent.displayName = "DrawerContent";
 
@@ -77,10 +77,7 @@ const DrawerHeader = ({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div
-    className={cn("flex flex-col space-y-2", className)}
-    {...props}
-  />
+  <div className={cn("flex flex-col space-y-2", className)} {...props} />
 );
 DrawerHeader.displayName = "DrawerHeader";
 
@@ -89,7 +86,10 @@ const DrawerFooter = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-auto", className)}
+    className={cn(
+      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-auto",
+      className,
+    )}
     {...props}
   />
 );

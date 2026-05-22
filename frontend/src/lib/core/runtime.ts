@@ -24,7 +24,8 @@ export class Runtime {
 
     // Create MCP driver
     const mcpDeps: McpClientDeps = {
-      call: (method, params) => mcpCall(method, params as Record<string, unknown>),
+      call: (method, params) =>
+        mcpCall(method, params as Record<string, unknown>),
       onResponse: (handler) => mcpEventBus.onResponse(handler),
     };
     this.mcpDriver = new McpDriver(mcpDeps);

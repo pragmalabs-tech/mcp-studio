@@ -1,5 +1,12 @@
 import { useState, useEffect } from "react";
-import { FlaskConical, Play, Trash2, ChevronDown, ChevronRight, Download } from "lucide-react";
+import {
+  FlaskConical,
+  Play,
+  Trash2,
+  ChevronDown,
+  ChevronRight,
+  Download,
+} from "lucide-react";
 import {
   Drawer,
   DrawerContent,
@@ -48,7 +55,8 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
             Tests
           </DrawerTitle>
           <DrawerDescription>
-            Recorded test sessions. Record new tests using the Record button in the top toolbar.
+            Recorded test sessions. Record new tests using the Record button in
+            the top toolbar.
           </DrawerDescription>
         </DrawerHeader>
 

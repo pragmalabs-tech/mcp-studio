@@ -1901,7 +1901,9 @@ if (typeof window !== "undefined") {
     // Old fields for backward compat (ignored by new recorder)
     platform: s.platform as any,
     displayMode: s.displayMode as any,
-    viewport: ("preset" in (s.viewportCustom || {}) ? s.viewportCustom : { preset: s.viewportPreset }) as any,
+    viewport: ("preset" in (s.viewportCustom || {})
+      ? s.viewportCustom
+      : { preset: s.viewportPreset }) as any,
     strictMode: s.strictMode,
   });
 }

@@ -60,12 +60,12 @@ class Recorder {
     this.notify();
   }
 
-  /** Record an action */
+  /** Record an action (call this after action completes to capture result) */
   record(action: Action): void {
     const relMs = nowMs() - this.startedAt;
     const entry: RecordedAction = {
       relMs,
-      action: action.toJSON(),
+      action: action.toJSON(), // toJSON() includes result if present
     };
 
     // Only persist when recording AND not suspended
@@ -93,7 +93,7 @@ class Recorder {
     const start = Math.max(0, Math.min(startIndex, this.buffer.length));
     const end = Math.max(
       start,
-      Math.min(endIndex ?? this.buffer.length, this.buffer.length)
+      Math.min(endIndex ?? this.buffer.length, this.buffer.length),
     );
     const raw = this.buffer.slice(start, end);
 

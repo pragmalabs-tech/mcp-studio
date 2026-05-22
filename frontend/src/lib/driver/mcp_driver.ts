@@ -42,7 +42,7 @@ export class McpDriver {
               requestId: response.requestId,
               tool: response.tool || "",
               error: response.error.message,
-            })
+            }),
           );
         } else {
           eventBus.emit(
@@ -50,7 +50,7 @@ export class McpDriver {
               requestId: response.requestId,
               tool: response.tool || "",
               result: response.result,
-            })
+            }),
           );
         }
       } else if (response.method === "resources/read" || response.resourceUri) {
@@ -60,7 +60,7 @@ export class McpDriver {
               requestId: response.requestId,
               uri: response.resourceUri || "",
               error: response.error.message,
-            })
+            }),
           );
         } else {
           eventBus.emit(
@@ -68,7 +68,7 @@ export class McpDriver {
               requestId: response.requestId,
               uri: response.resourceUri || "",
               result: response.result,
-            })
+            }),
           );
         }
       }

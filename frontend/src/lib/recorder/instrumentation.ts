@@ -121,7 +121,11 @@ function diffConfig(
   if (prev.displayMode !== next.displayMode)
     patch.displayMode = next.displayMode;
   if (prev.locale !== next.locale) patch.locale = next.locale;
-  if (prev.viewport && next.viewport && diffViewport(prev.viewport, next.viewport))
+  if (
+    prev.viewport &&
+    next.viewport &&
+    diffViewport(prev.viewport, next.viewport)
+  )
     patch.viewport = next.viewport;
   if (prev.strictMode !== next.strictMode) patch.strictMode = next.strictMode;
   return Object.keys(patch).length ? patch : null;

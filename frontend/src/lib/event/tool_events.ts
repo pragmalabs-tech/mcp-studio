@@ -57,7 +57,7 @@ export class ToolCallCompletedEvent extends Event<{
     if (!toolState) return state;
 
     const updatedCalls = toolState.calls.map((call) =>
-      call.requestId === requestId ? { ...call, result } : call
+      call.requestId === requestId ? { ...call, result } : call,
     );
 
     return {
@@ -93,7 +93,7 @@ export class ToolCallFailedEvent extends Event<{
     if (!toolState) return state;
 
     const updatedCalls = toolState.calls.map((call) =>
-      call.requestId === requestId ? { ...call, error } : call
+      call.requestId === requestId ? { ...call, error } : call,
     );
 
     return {

@@ -42,6 +42,7 @@ export interface SetupConfig {
 }
 
 // Recorded action with timing
+// The action's toJSON() includes result if present
 export interface RecordedAction {
   relMs: number;
   action: ReturnType<Action["toJSON"]>;

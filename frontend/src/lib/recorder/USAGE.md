@@ -15,13 +15,9 @@ recorder.start({ url: "http://localhost:3000" });
 runtime.start();
 
 // 3. Execute actions (automatically recorded)
-await runtime.executeAction(
-  new ToolCallAction("get_weather", { city: "SF" })
-);
+await runtime.executeAction(new ToolCallAction("get_weather", { city: "SF" }));
 
-await runtime.executeAction(
-  new ResourceReadAction("widget://my-widget")
-);
+await runtime.executeAction(new ResourceReadAction("widget://my-widget"));
 
 // 4. Stop and get session
 const session = recorder.stop();
@@ -35,18 +31,18 @@ console.log(session.actions); // Array of recorded actions with timing
 ```typescript
 interface Session {
   version: 2;
-  capturedAt: string;  // ISO timestamp
+  capturedAt: string; // ISO timestamp
   studioVersion: string;
   setup: {
     url: string;
     theme?: string;
     locale?: string;
   };
-  actions: RecordedAction[];  // Your recorded actions
+  actions: RecordedAction[]; // Your recorded actions
 }
 
 interface RecordedAction {
-  relMs: number;  // Relative timestamp (ms)
+  relMs: number; // Relative timestamp (ms)
   action: {
     id: string;
     type: "TOOL_CALL" | "RESOURCE_READ";
@@ -70,7 +66,7 @@ for (const recorded of session.actions) {
   if (recorded.action.type === "TOOL_CALL") {
     const action = new ToolCallAction(
       recorded.action.data.tool,
-      recorded.action.data.params
+      recorded.action.data.params,
     );
     await runtime.executeAction(action);
   } else if (recorded.action.type === "RESOURCE_READ") {
@@ -88,9 +84,7 @@ runtime.stop();
 runtime.start();
 
 // Execute action
-await runtime.executeAction(
-  new ToolCallAction("get_weather", { city: "SF" })
-);
+await runtime.executeAction(new ToolCallAction("get_weather", { city: "SF" }));
 
 // Get state
 const state = runtime.getState();
@@ -123,7 +117,10 @@ const loaded = JSON.parse(fs.readFileSync("test-session.json", "utf8"));
 ## Simple Assertions
 
 ```typescript
-import { assertActionSucceeded, assertStateChanged } from "@/lib/assertion/assert";
+import {
+  assertActionSucceeded,
+  assertStateChanged,
+} from "@/lib/assertion/assert";
 
 const action = new ToolCallAction("get_weather", { city: "SF" });
 
@@ -143,11 +140,13 @@ assertStateChanged(before, after, "network.requestCount");
 ## What Gets Recorded?
 
 ✅ **Recorded:**
+
 - Tool call actions (MCP tools/call)
 - Resource read actions (MCP resources/read)
 - Action timing (relative timestamps)
 
 ❌ **Not Recorded (for now):**
+
 - Widget interactions (not implemented yet)
 - Studio config changes (not implemented yet)
 - MCP responses (handled by MCP event bus, not recorded)
@@ -159,11 +158,9 @@ assertStateChanged(before, after, "network.requestCount");
 recorder.start({ url: "http://localhost:3000" });
 runtime.start();
 
+await runtime.executeAction(new ToolCallAction("get_weather", { city: "SF" }));
 await runtime.executeAction(
-  new ToolCallAction("get_weather", { city: "SF" })
-);
-await runtime.executeAction(
-  new ToolCallAction("get_temperature", { location: "NYC" })
+  new ToolCallAction("get_temperature", { location: "NYC" }),
 );
 
 const session = recorder.stop();

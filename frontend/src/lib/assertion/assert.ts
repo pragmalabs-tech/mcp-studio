@@ -13,7 +13,7 @@ export function assertActionSucceeded(action: Action): void {
 export function assertStateChanged(
   before: State,
   after: State,
-  path: string
+  path: string,
 ): void {
   const beforeVal = getPath(before, path);
   const afterVal = getPath(after, path);

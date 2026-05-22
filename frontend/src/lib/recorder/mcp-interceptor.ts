@@ -54,23 +54,31 @@ export async function recordedMcpCall(
 
   if (method === "tools/call" && typeof (params as any).name === "string") {
     tool = (params as any).name;
-  } else if (method === "resources/read" && typeof (params as any).uri === "string") {
+  } else if (
+    method === "resources/read" &&
+    typeof (params as any).uri === "string"
+  ) {
     resourceUri = (params as any).uri;
   }
 
-  // Record action if recorder is active
+  // Create action if recorder is active (record it AFTER execution completes)
+  let action: ToolCallAction | ResourceReadAction | undefined;
   if (recorder.mode === "recording") {
     if (method === "tools/call" && tool) {
-      const action = new ToolCallAction(tool, (params as any).arguments || {});
-      recorder.record(action);
+      action = new ToolCallAction(tool, (params as any).arguments || {});
     } else if (method === "resources/read" && resourceUri) {
-      const action = new ResourceReadAction(resourceUri);
-      recorder.record(action);
+      action = new ResourceReadAction(resourceUri);
     }
   }
 
   try {
     const result = await raw(method, params);
+
+    // Store result in action and record it
+    if (action) {
+      action.setResult(true, result);
+      recorder.record(action); // Record after result is set
+    }
 
     // Emit response event to MCP event bus
     mcpEventBus.emitResponse({
@@ -83,6 +91,12 @@ export async function recordedMcpCall(
 
     return result;
   } catch (err) {
+    // Store error in action and record it
+    if (action) {
+      action.setResult(false, undefined, serializeError(err));
+      recorder.record(action); // Record after error is set
+    }
+
     // Emit error response to MCP event bus
     mcpEventBus.emitResponse({
       requestId,
