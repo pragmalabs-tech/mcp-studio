@@ -27,6 +27,7 @@ export function StudioLayout() {
   const oauthDebugEvents = useStudioStore((s) => s.oauthDebugEvents);
   const oauthDebugOpen = useStudioStore((s) => s.oauthDebugOpen);
   const setOAuthDebugOpen = useStudioStore((s) => s.setOAuthDebugOpen);
+  const studioMode = useStudioStore((s) => s.studioMode);
   const [bottomTab, setBottomTab] = useState<BottomTab>("logs");
 
   // Auto-switch to OAuth tab when debugger is opened from auth panel
@@ -60,7 +61,13 @@ export function StudioLayout() {
       <TopHeader />
       <SignInDialog />
       <PublishDialog />
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 relative">
+        {studioMode === "test" && (
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 z-40 bg-background/60 backdrop-blur-[1px] cursor-not-allowed"
+          />
+        )}
         <Sidebar />
 
         <ResizableHorizontalSplit

@@ -1,0 +1,40 @@
+import type { RecordedAction } from "@/lib/recorder/schema";
+
+const REPLAYS_STORAGE_KEY = "mcp-studio-replays";
+
+export type ReplayStatus = "passed" | "failed";
+
+export interface SavedReplay {
+  id: string;
+  testId: string;
+  testName: string;
+  createdAt: string;
+  durationMs: number;
+  status: ReplayStatus;
+  actions: RecordedAction[];
+}
+
+export function saveReplay(replay: SavedReplay): void {
+  const all = loadReplays();
+  all.push(replay);
+  localStorage.setItem(REPLAYS_STORAGE_KEY, JSON.stringify(all));
+}
+
+export function loadReplays(): SavedReplay[] {
+  const stored = localStorage.getItem(REPLAYS_STORAGE_KEY);
+  if (!stored) return [];
+  try {
+    return JSON.parse(stored);
+  } catch {
+    return [];
+  }
+}
+
+export function loadReplaysForTest(testId: string): SavedReplay[] {
+  return loadReplays().filter((r) => r.testId === testId);
+}
+
+export function deleteReplay(id: string): void {
+  const filtered = loadReplays().filter((r) => r.id !== id);
+  localStorage.setItem(REPLAYS_STORAGE_KEY, JSON.stringify(filtered));
+}
