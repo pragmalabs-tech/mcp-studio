@@ -80,7 +80,6 @@ import {
   type ProfileAuth,
 } from "./profiles-api";
 import { recorder } from "../recorder/bus";
-import { mcpEventBus } from "@/lib/mcp/events";
 function generateRandomString(length: number): string {
   const array = new Uint8Array(length);
   crypto.getRandomValues(array);
@@ -538,6 +537,11 @@ interface StudioState {
   // rewrites tunnels to the local proxy at render time so sandboxed iframe
   // asset requests resolve.
   widgetRawHtml: string | null;
+  /** Pre-loaded widget HTML keyed by ui:// resource URI. Populated by
+   *  `loadAll` after the resources list lands so a `tools/call` that
+   *  surfaces a UI ref can render synchronously without a second
+   *  `resources/read` round-trip — same shape as Claude / ChatGPT. */
+  widgetCache: Record<string, string>;
   // Last mock used to render. WidgetFrame re-renders srcdoc when this
   // changes; applyMock hot-updates window.openai in place without changing
   // this field, so the iframe is not reloaded.
@@ -620,9 +624,9 @@ interface StudioState {
   resolveWidgetName: (responseMeta?: Record<string, unknown>) => string | null;
   renderWidget: (mock: MockData, overrideWidgetName?: string) => Promise<void>;
   /** Updates `currentMock` and triggers protocol detection. The HTML
-   *  side-effects (`widgetSourceHtml`, `widgetRawHtml`) are populated by
-   *  the `mcpEventBus` subscriber at module init when the matching
-   *  `resources/read` response arrives — not by this method. */
+   *  side-effects (`widgetSourceHtml`, `widgetRawHtml`) are set by
+   *  `renderWidget` from the prefetched `widgetCache` (or an on-demand
+   *  fallback fetch), not by this method. */
   applyWidgetMock: (widgetName: string, mock: WidgetMock) => Promise<void>;
   loadWidget: () => Promise<void>;
   applyMock: () => void;
@@ -840,6 +844,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   cspViolations: [],
   widgetSourceHtml: null,
   widgetRawHtml: null,
+  widgetCache: {},
   currentMock: null,
 
   // Protocol detection
@@ -903,7 +908,36 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       loading: false,
       loadingStatus: null,
       mcpError,
+      // New resource list ⇒ stale cache must go before prefetch below
+      // (and before any tool-call render can hit it).
+      widgetCache: {},
     });
+
+    // Step 3: Pre-load every ui:// widget HTML in parallel. Mirrors how
+    // Claude / ChatGPT hydrate apps up-front so a subsequent tools/call
+    // renders synchronously from cache instead of paying a second
+    // resources/read round-trip per render.
+    const widgetUris = r
+      .filter(
+        (res) =>
+          res.uri.startsWith("ui://") &&
+          res.mimeType === "text/html;profile=mcp-app",
+      )
+      .map((res) => res.uri);
+    if (widgetUris.length > 0) {
+      const settled = await Promise.allSettled(
+        widgetUris.map((uri) => readResource(uri)),
+      );
+      const cache: Record<string, string> = {};
+      for (let i = 0; i < widgetUris.length; i++) {
+        const res = settled[i];
+        if (res.status !== "fulfilled") continue;
+        const result = res.value as { contents?: { text?: string }[] };
+        const html = result?.contents?.[0]?.text ?? "";
+        if (html) cache[widgetUris[i]] = html;
+      }
+      set({ widgetCache: cache });
+    }
 
     // Auto-select first item
     const { selected } = get();
@@ -1571,7 +1605,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       currentMock: null,
     });
 
-    const { resources } = get();
+    const { resources, widgetCache } = get();
     const resUri = resources.find(
       (r) =>
         r.uri.startsWith("ui://") &&
@@ -1579,11 +1613,28 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         r.mimeType === "text/html;profile=mcp-app",
     )?.uri;
     if (!resUri) return;
-    // Fire the resource read. The bus subscriber at module init
-    // populates widgetSourceHtml/widgetRawHtml from the response.
-    await readResource(resUri);
-    const rawHtml = get().widgetRawHtml ?? "";
+
+    // Prefer the prefetched cache (loadAll fills this for every ui://
+    // widget). On miss — e.g. a server that surfaced a UI ref after
+    // loadAll, or a manually-warmed flow — fetch on demand and warm the
+    // cache so the next render is also synchronous.
+    let rawHtml = widgetCache[resUri] ?? "";
+    if (!rawHtml) {
+      const result = (await readResource(resUri)) as {
+        contents?: { text?: string }[];
+      };
+      rawHtml = result?.contents?.[0]?.text ?? "";
+      if (rawHtml) {
+        set((s) => ({
+          widgetCache: { ...s.widgetCache, [resUri]: rawHtml },
+        }));
+      }
+    }
     if (!rawHtml) return;
+    set({
+      widgetSourceHtml: stripTunnelUrls(rawHtml),
+      widgetRawHtml: rawHtml,
+    });
 
     // CSP analysis uses the tool-call meta (not the widget HTML response
     // meta), so we still run it here where we have the mock context.
@@ -1840,28 +1891,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   },
 }));
 
-// Always-on recorder: start a session and wire widget-HTML derivation as
-// soon as the store module loads. Browser-only — guard for SSR / unit tests.
+// Always-on recorder: start a session as soon as the store module loads.
+// Browser-only — guard for SSR / unit tests. Widget HTML is no longer
+// derived from the response bus; `loadAll` prefetches every ui:// resource
+// into `widgetCache`, and `renderWidget` reads from there.
 if (typeof window !== "undefined") {
-  // Pure derivation: when a `resources/read` for a `ui://` URI comes back,
-  // mirror the widget HTML into the store so WidgetFrame can render it.
-  // Subscribing to mcpEventBus keeps record and replay symmetric — both
-  // paths call mcpCall, which fans out through this bus.
-  mcpEventBus.onResponse((response) => {
-    if (response.error) return;
-    const uri = response.resourceUri;
-    if (!uri || !uri.startsWith("ui://")) return;
-    const result = response.result as
-      | { contents?: { text?: string }[] }
-      | undefined;
-    const rawHtml = result?.contents?.[0]?.text ?? "";
-    if (!rawHtml) return;
-    useStudioStore.setState({
-      widgetSourceHtml: stripTunnelUrls(rawHtml),
-      widgetRawHtml: rawHtml,
-    });
-  });
-
   const s = useStudioStore.getState();
   recorder.start({
     url: s.proxyUrl,

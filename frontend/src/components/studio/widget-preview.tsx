@@ -3,6 +3,7 @@ import { useStudioStore } from "@/lib/studio/store";
 import { renderHtml } from "@/lib/core/widget/render-html";
 import type { MockData } from "@/lib/studio/mock-openai";
 import { createClaudeMock } from "@/lib/studio/mock-claude";
+import { callTool } from "@/lib/studio/api";
 import { CopyButton } from "@/components/ui/copy-button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -17,6 +18,7 @@ export function WidgetPreview() {
   const strictMode = useStudioStore((s) => s.strictMode);
   const addConsoleEntry = useStudioStore((s) => s.addConsoleEntry);
   const logAction = useStudioStore((s) => s.logAction);
+  const addPendingMessage = useStudioStore((s) => s.addPendingMessage);
   const getViewportSize = useStudioStore((s) => s.getViewportSize);
 
   // Store iframe ref in global store so other parts can access it
@@ -24,17 +26,58 @@ export function WidgetPreview() {
     useStudioStore.setState({ _iframeRef: iframeRef.current });
   }, []);
 
-  // Forward console messages from iframe to studio console
+  // Forward console messages from iframe to studio console, and bridge
+  // legacy-OpenAI `window.openai.callTool` calls through the real MCP
+  // (the mock-openai script proxies the call out via postMessage with a
+  // `callId`; we resolve it back into the iframe with `studio_tool_result`).
   useEffect(() => {
-    const handleMessage = (e: MessageEvent) => {
-      if (e.data?.type === "studio_console") {
-        addConsoleEntry(e.data.level, e.data.args);
+    const handleMessage = async (e: MessageEvent) => {
+      const data = e.data;
+      if (!data) return;
+      if (data.type === "studio_console") {
+        addConsoleEntry(data.level, data.args);
+        return;
+      }
+      if (
+        data.type === "studio_action" &&
+        data.method === "callTool" &&
+        data.callId
+      ) {
+        const iframe = iframeRef.current;
+        const args = data.args as {
+          name?: string;
+          arguments?: Record<string, unknown>;
+        };
+        const name = args?.name || "";
+        const toolArgs = args?.arguments || {};
+        logAction("callTool", { name, arguments: toolArgs });
+        try {
+          const result = await callTool(name, toolArgs);
+          logAction("callTool:result", { name, result });
+          iframe?.contentWindow?.postMessage(
+            { type: "studio_tool_result", callId: data.callId, result },
+            "*",
+          );
+        } catch (err) {
+          logAction("callTool:error", {
+            name,
+            error: (err as Error).message,
+          });
+          iframe?.contentWindow?.postMessage(
+            {
+              type: "studio_tool_result",
+              callId: data.callId,
+              result: { error: (err as Error).message },
+            },
+            "*",
+          );
+        }
       }
     };
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [addConsoleEntry]);
+  }, [addConsoleEntry, logAction]);
 
   // Render widget when HTML or mock changes
   useEffect(() => {
@@ -72,14 +115,29 @@ export function WidgetPreview() {
       useStudioStore.setState({ _extAppsMock: null });
     }
 
-    // Set up ext-apps mock for Claude platform or OpenAI ext-apps mode
+    // Set up ext-apps mock for Claude platform or OpenAI ext-apps mode.
+    // `onToolCall` forwards `ui/call-server-tool` to the real MCP server so
+    // widgets can invoke tools and receive responses (matches ChatGPT /
+    // Claude behaviour). `onMessage` surfaces `ui/message` payloads as
+    // pending messages so the user can see what the widget sent.
     if (platform === "claude" && iframe) {
-      const extAppsMock = createClaudeMock(iframe, mock, (method, args) =>
-        logAction(method, args),
+      const extAppsMock = createClaudeMock(
+        iframe,
+        mock,
+        (method, args) => logAction(method, args),
+        (name, args) => callTool(name, args),
+        (content) => addPendingMessage("claude", content),
       );
       useStudioStore.setState({ _extAppsMock: extAppsMock });
     }
-  }, [widgetRawHtml, currentMock, platform, strictMode, logAction]);
+  }, [
+    widgetRawHtml,
+    currentMock,
+    platform,
+    strictMode,
+    logAction,
+    addPendingMessage,
+  ]);
 
   const viewportSize = getViewportSize();
   const widgetSourceHtml = useStudioStore((s) => s.widgetSourceHtml);

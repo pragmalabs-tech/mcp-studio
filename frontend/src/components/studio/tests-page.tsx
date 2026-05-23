@@ -44,10 +44,13 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
   const patchRunState = useStudioStore((s) => s.patchRunState);
   const setStudioMode = useStudioStore((s) => s.setStudioMode);
 
-  // Load tests when drawer opens
+  // Load tests when drawer opens — newest first so the most recently
+  // recorded session is at the top.
   useEffect(() => {
     if (open) {
-      setTests(loadTests());
+      setTests(
+        loadTests().sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+      );
     }
   }, [open]);
 
