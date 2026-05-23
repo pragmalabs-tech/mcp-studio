@@ -28,8 +28,17 @@ import {
 import { DEFAULT_MOCK, type MockData } from "./mock-openai";
 import { extractWidgetUri } from "./tool-category";
 import { validateToolResult, type ResultIssue } from "./validate-tool-result";
-import type { Action, WidgetMock } from "@/lib/core/types";
+import type { Action } from "@/lib/action";
 import { createClaudeMock } from "./mock-claude";
+
+/** Payload shape consumed by `applyWidgetMock`. The studio's only widget
+ *  mock surface — kept inline here so we don't reintroduce a stub types module. */
+export interface WidgetMock {
+  toolInput: unknown;
+  toolOutput: unknown;
+  meta: Record<string, unknown>;
+  widgetState: unknown | null;
+}
 import { extractCspDomains } from "@/lib/core/csp/profiles";
 import { analyze } from "@/lib/core/csp/analyze";
 import type {
@@ -71,11 +80,7 @@ import {
   type ProfileAuth,
 } from "./profiles-api";
 import { recorder } from "../recorder/bus";
-import {
-  attachInstrumentation,
-  snapshotSetup,
-  type RecordableState,
-} from "../recorder/instrumentation";
+import { mcpEventBus } from "@/lib/mcp/events";
 function generateRandomString(length: number): string {
   const array = new Uint8Array(length);
   crypto.getRandomValues(array);
@@ -90,8 +95,10 @@ export type Platform = "openai" | "claude";
 
 /**
  * Live replay state. When non-null, a test is being replayed. The
- * TopHeader subscribes to render the run banner + controls; the engine
- * reads `mode` synchronously via getState() in its `beforeStep` gate.
+ * TopHeader subscribes to render the run banner + controls. Step mode
+ * pauses between actions and resumes via `nextResolver`; the replay
+ * runner currently always uses `mode: "auto"`, with step support
+ * preserved here for future use.
  */
 export interface RunState {
   testName: string;
@@ -333,15 +340,6 @@ function toolArgsFromSchema(schema?: Record<string, unknown>): string {
   return JSON.stringify(sampleFromProperties(props, required), null, 2);
 }
 
-function simpleHash(input: string): string {
-  let h = 0;
-  for (let i = 0; i < input.length; i++) {
-    h = (h << 5) - h + input.charCodeAt(i);
-    h |= 0;
-  }
-  return (h >>> 0).toString(36);
-}
-
 function formatTimestamp(): string {
   const now = new Date();
   return (
@@ -485,10 +483,10 @@ interface StudioState {
   // Studio UI
   studioTheme: "light" | "dark";
   /**
-   * "test" while a recorded test is being replayed by the Player.
-   * UI components observe this to render the blocking overlay.
-   * Recorder instrumentation pauses emission so the player's actions don't
-   * pollute the live timeline.
+   * "test" while a recorded test is being replayed. UI components observe
+   * this to render the blocking overlay, and store setters that schedule
+   * `loadWidget` / `applyMock` skip those side effects in test mode so
+   * replay-driven state changes don't trigger duplicate MCP calls.
    */
   studioMode: "normal" | "test";
   /**
@@ -501,8 +499,8 @@ interface StudioState {
 
   /**
    * Live replay state: drives the TopHeader's run-mode indicator and
-   * step controls, and serves as the source of truth the engine's
-   * `beforeStep` gate reads to decide whether to pause. Null when no
+   * step controls, and (when step mode is wired) serves as the source
+   * of truth for whether to pause between actions. Null when no
    * replay is in flight.
    */
   runState: RunState | null;
@@ -621,11 +619,10 @@ interface StudioState {
   // Widget rendering
   resolveWidgetName: (responseMeta?: Record<string, unknown>) => string | null;
   renderWidget: (mock: MockData, overrideWidgetName?: string) => Promise<void>;
-  /** Pure setter: updates currentMock and emits the widget.render
-   *  Recorded action. Called by both store.execute() (recording path)
-   *  and the engine via runtime widgetDispatch.applyMock (replay path).
-   *  HTML side-effects (widgetSourceHtml) are derived from the recorder
-   *  bus, not from this method — see the bus subscriber at module init. */
+  /** Updates `currentMock` and triggers protocol detection. The HTML
+   *  side-effects (`widgetSourceHtml`, `widgetRawHtml`) are populated by
+   *  the `mcpEventBus` subscriber at module init when the matching
+   *  `resources/read` response arrives — not by this method. */
   applyWidgetMock: (widgetName: string, mock: WidgetMock) => Promise<void>;
   loadWidget: () => Promise<void>;
   applyMock: () => void;
@@ -1290,10 +1287,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     }
 
     // Auto-load widget if applicable (defer to let React update refs).
-    // Skipped during replay (studioMode === "test") — the engine drives
-    // widget rendering through widget.render actions, and a deferred
-    // loadWidget here would fire an unwanted resources/read that
-    // duplicates a recorded one and pollutes the replay timeline.
+    // Skipped during replay (studioMode === "test") so a deferred
+    // loadWidget here doesn't fire an extra `resources/read` on top of
+    // the one the replay runner is already executing.
     const widgetName = get().resolveWidgetName();
     if (widgetName && get().studioMode !== "test") {
       // Small delay to ensure iframe ref is set
@@ -1599,8 +1595,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       addCspViolation(toStaticViolation(finding, { sourceFile: resUri }));
     }
 
-    // Apply the mock as a real action. This is the symmetry point with
-    // replay: the engine calls this same method via runtime.applyMock.
+    // Apply the mock; the iframe re-renders against `currentMock`.
     await get().applyWidgetMock(name, {
       toolInput: mock.toolInput,
       toolOutput: mock.toolOutput,
@@ -1631,19 +1626,6 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       get().setProtocolDetected("legacy_openai");
     }
     get().setProtocolDetected("ext_apps");
-    if (recorder.mode === "recording") {
-      recorder.emit({
-        kind: "widget.render",
-        name: widgetName,
-        htmlHash: simpleHash(get().widgetSourceHtml ?? ""),
-        initialMock: fullMock,
-      });
-      recorder.setWidget({
-        name: widgetName,
-        html: get().widgetSourceHtml ?? "",
-        initialMock: fullMock,
-      });
-    }
   },
 
   loadWidget: async () => {
@@ -1850,60 +1832,32 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   },
 }));
 
-// Always-on recorder: subscribe instrumentation and start a session as soon as
-// the store module loads. Browser-only — guard for SSR / unit tests.
+// Always-on recorder: start a session and wire widget-HTML derivation as
+// soon as the store module loads. Browser-only — guard for SSR / unit tests.
 if (typeof window !== "undefined") {
-  // Pure derivation: when an mcp.response arrives for a resources/read of
-  // a ui:// URI (the widget HTML), copy the HTML into the studio store.
-  // Same input → same output, runs identically in record and replay so
-  // there's no asymmetry between the two paths.
-  const pendingUriById = new Map<number, string>();
-  recorder.onEmit((entry: any) => {
-    if (entry.kind === "mcp.request" && entry.method === "resources/read") {
-      const uri = (entry.params as { uri?: unknown } | null)?.uri;
-      if (typeof uri === "string" && uri.startsWith("ui://")) {
-        pendingUriById.set(Number(entry.id), uri);
-      }
-      return;
-    }
-    if (entry.kind === "mcp.response") {
-      const id = Number(entry.requestId);
-      const uri = pendingUriById.get(id);
-      if (!uri) return;
-      pendingUriById.delete(id);
-      const result = entry.result as
-        | { contents?: { text?: string }[] }
-        | undefined;
-      const rawHtml = result?.contents?.[0]?.text ?? "";
-      if (!rawHtml) return;
-      useStudioStore.setState({
-        widgetSourceHtml: stripTunnelUrls(rawHtml),
-        widgetRawHtml: rawHtml,
-      });
-    }
+  // Pure derivation: when a `resources/read` for a `ui://` URI comes back,
+  // mirror the widget HTML into the store so WidgetFrame can render it.
+  // Subscribing to mcpEventBus keeps record and replay symmetric — both
+  // paths call mcpCall, which fans out through this bus.
+  mcpEventBus.onResponse((response) => {
+    if (response.error) return;
+    const uri = response.resourceUri;
+    if (!uri || !uri.startsWith("ui://")) return;
+    const result = response.result as
+      | { contents?: { text?: string }[] }
+      | undefined;
+    const rawHtml = result?.contents?.[0]?.text ?? "";
+    if (!rawHtml) return;
+    useStudioStore.setState({
+      widgetSourceHtml: stripTunnelUrls(rawHtml),
+      widgetRawHtml: rawHtml,
+    });
   });
 
-  attachInstrumentation({
-    getState: () => useStudioStore.getState() as unknown as RecordableState,
-    subscribe: (listener) =>
-      useStudioStore.subscribe((s, p) =>
-        listener(
-          s as unknown as RecordableState,
-          p as unknown as RecordableState,
-        ),
-      ),
-  });
   const s = useStudioStore.getState();
   recorder.start({
     url: s.proxyUrl,
     theme: s.theme,
     locale: s.locale,
-    // Old fields for backward compat (ignored by new recorder)
-    platform: s.platform as any,
-    displayMode: s.displayMode as any,
-    viewport: ("preset" in (s.viewportCustom || {})
-      ? s.viewportCustom
-      : { preset: s.viewportPreset }) as any,
-    strictMode: s.strictMode,
   });
 }

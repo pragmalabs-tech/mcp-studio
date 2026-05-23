@@ -7,7 +7,6 @@
  */
 
 import { recordedMcpCall } from "../recorder/mcp-interceptor";
-import type { Source } from "../recorder/schema";
 import { reportHealth } from "./health";
 
 // ── Proxy URL ──
@@ -591,7 +590,7 @@ export async function mcpCall(
   method: string,
   params: Record<string, unknown> = {},
 ): Promise<unknown> {
-  return recordedMcpCall(rawMcpCall, method, params, "user");
+  return recordedMcpCall(rawMcpCall, method, params);
 }
 
 /** MCP tool annotations - behavioural hints surfaced in `tools/list` so
@@ -633,14 +632,8 @@ export async function listTools(): Promise<McpToolInfo[]> {
 export async function callTool(
   name: string,
   args: Record<string, unknown>,
-  source: Source = "user",
 ): Promise<unknown> {
-  return recordedMcpCall(
-    rawMcpCall,
-    "tools/call",
-    { name, arguments: args },
-    source,
-  );
+  return recordedMcpCall(rawMcpCall, "tools/call", { name, arguments: args });
 }
 
 /** MCP resource annotations - reading/display hints. `audience` says which

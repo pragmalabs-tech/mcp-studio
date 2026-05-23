@@ -1,6 +1,4 @@
 import type { MockData } from "./mock-openai";
-import { recorder } from "../recorder/bus";
-import { isBridgeMessage } from "../recorder/bridge-protocol";
 
 export interface ExtAppsMockOptions {
   iframe: HTMLIFrameElement;
@@ -32,13 +30,6 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
     onProtocolDetected,
   } = opts;
   let currentMock = { ...mock };
-  // Tracks whether `ui/initialize` (or `initialize`) round-tripped through
-  // this host. The widget bridge JS has no reliable way to set its own flag
-  // (the SDK that would set `window.__studioBridgeHandshakeOk` doesn't exist
-  // in studio's mock environment), so the host is the source of truth.
-  // Used to override the (always-false) `handshakeOk` in render.complete
-  // forwards to the recorder bus.
-  let protocolHandshaked = false;
 
   // Claude only accepts "inline" | "fullscreen" | "pip" as displayMode
   function toClaudeDisplayMode(mode: string): string {
@@ -84,77 +75,6 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
     if (event.source !== iframe.contentWindow) return;
     const msg = event.data;
 
-    // Recorder bridge messages bypass JSON-RPC dispatch. Capture events feed
-    // the recorder bus; ack / snapshot.result are claimed by the host-side
-    // BridgeClient and ignored here. render.complete is forwarded to the bus
-    // so it appears in the timeline as an observation action.
-    if (isBridgeMessage(msg)) {
-      if ("op" in msg) {
-        if (msg.op === "render.complete") {
-          // Always emit. The bus persists to the recorded timeline only
-          // while in recording mode; listeners fire regardless, which is
-          // how the engine's replay observation sees render.complete.
-          recorder.emit({
-            kind: "widget.render.complete",
-            bodyChars: msg.bodyChars,
-            hasRuntimeErrors: msg.hasRuntimeErrors,
-            // Host-authoritative handshake signal. `msg.handshakeOk` from
-            // the bridge JS is structurally always false in studio (the
-            // ext-apps SDK that would set the iframe global isn't present).
-            // OR with the host's own observation so the recorded timeline
-            // reflects whether `ui/initialize` actually round-tripped.
-            handshakeOk: protocolHandshaked || msg.handshakeOk,
-            renderDurationMs: msg.renderDurationMs,
-          });
-        }
-        // ack / snapshot.result handled elsewhere (BridgeClient).
-        return;
-      }
-      // DOM capture events flow to the bus on every interaction. Bus
-      // persistence is gated on its mode; listeners fire regardless so
-      // replay observation can react to them.
-      switch (msg.kind) {
-        case "widget.dom.click":
-          recorder.emit({
-            kind: "widget.dom.click",
-            selectors: msg.selectors,
-            mutated: msg.mutated,
-          });
-          break;
-        case "widget.dom.input":
-          recorder.emit({
-            kind: "widget.dom.input",
-            selectors: msg.selectors,
-            value: msg.value,
-            inputType: msg.inputType,
-          });
-          break;
-        case "widget.dom.change":
-          recorder.emit({
-            kind: "widget.dom.change",
-            selectors: msg.selectors,
-            value: msg.value,
-          });
-          break;
-        case "widget.dom.submit":
-          recorder.emit({
-            kind: "widget.dom.submit",
-            selectors: msg.selectors,
-          });
-          break;
-        case "widget.dom.keydown":
-          recorder.emit({
-            kind: "widget.dom.keydown",
-            selectors: msg.selectors,
-            key: msg.key,
-            code: msg.code,
-            mods: msg.mods,
-          });
-          break;
-      }
-      return;
-    }
-
     if (!msg || msg.jsonrpc !== "2.0") return;
 
     // Request (has id + method)
@@ -164,7 +84,6 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
       switch (method) {
         case "initialize":
         case "ui/initialize":
-          protocolHandshaked = true;
           onProtocolDetected?.();
           sendResponse(id, {
             protocolVersion: "2026-01-26",
@@ -190,11 +109,6 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
 
         case "ui/message":
           onAction("sendMessage", params);
-          recorder.emit({
-            kind: "widget.intent",
-            name: "ui/message",
-            params,
-          });
           if (onMessage) onMessage(params);
           sendResponse(id, {});
           break;
@@ -250,22 +164,12 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
         case "ui/update-model-context":
         case "ui/updateModelContext":
           onAction("updateModelContext", params);
-          recorder.emit({
-            kind: "widget.intent",
-            name: "ui/update-model-context",
-            params,
-          });
           sendResponse(id, {});
           break;
 
         case "ui/open-link":
         case "ui/openLink":
           onAction("openLink", params);
-          recorder.emit({
-            kind: "widget.intent",
-            name: "ui/open-link",
-            params,
-          });
           {
             const url = (params as { url?: string }).url;
             if (url) window.open(url, "_blank", "noopener,noreferrer");
@@ -276,11 +180,6 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
         case "ui/request-display-mode":
         case "ui/requestDisplayMode":
           onAction("requestDisplayMode", params);
-          recorder.emit({
-            kind: "widget.intent",
-            name: "ui/request-display-mode",
-            params,
-          });
           sendResponse(id, {
             mode: (params as { mode?: string }).mode || "inline",
           });
@@ -310,11 +209,6 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
     // Notification from widget
     else if (msg.method) {
       onAction("ext-apps:notify", { method: msg.method, params: msg.params });
-      recorder.emit({
-        kind: "widget.intent",
-        name: String(msg.method),
-        params: msg.params,
-      });
     }
   }
 

@@ -14,6 +14,12 @@ function nowMs(): number {
     : Date.now();
 }
 
+/**
+ * In-memory buffer of recorded Actions plus subscription hooks. The studio
+ * keeps exactly one always-on recorder (started at module load) that
+ * captures every MCP call. Slicing a Session out of the buffer is how
+ * "Save test" works.
+ */
 class Recorder {
   private _mode: Mode = "idle";
   private _suspended = false;
@@ -65,19 +71,20 @@ class Recorder {
     const relMs = nowMs() - this.startedAt;
     const entry: RecordedAction = {
       relMs,
-      action: action.toJSON(), // toJSON() includes result if present
+      action: action.toJSON() as RecordedAction["action"],
     };
 
-    // Only persist when recording AND not suspended
+    // Only persist when recording AND not suspended.
     if (this._mode === "recording" && !this._suspended) {
       this.buffer.push(entry);
     }
 
-    // Always fire listeners (for live observation)
+    // Listeners fire regardless — used for live observation during replay.
     for (const l of this.actionListeners) l(entry);
   }
 
-  /** Pause buffer persistence without resetting state. */
+  /** Pause buffer persistence without resetting state. Used by the replay
+   *  runner so re-executed actions don't pollute the live timeline. */
   suspend(): void {
     this._suspended = true;
   }
@@ -86,9 +93,7 @@ class Recorder {
     this._suspended = false;
   }
 
-  /**
-   * Build a Session over a slice `[startIndex, endIndex)` of the buffer.
-   */
+  /** Build a Session over a slice `[startIndex, endIndex)` of the buffer. */
   serializeRange(startIndex: number, endIndex?: number): Session {
     const start = Math.max(0, Math.min(startIndex, this.buffer.length));
     const end = Math.max(
@@ -97,62 +102,35 @@ class Recorder {
     );
     const raw = this.buffer.slice(start, end);
 
-    // Normalize relMs so the first action in the slice is t=0
+    // Normalize relMs so the first action in the slice is t=0.
     const offset = raw.length > 0 ? raw[0].relMs : 0;
     const slice = raw.map((entry) => ({
       ...entry,
       relMs: entry.relMs - offset,
     }));
 
-    const setup = this.setupSnapshot ?? { url: "" };
-
     return {
       version: SCHEMA_VERSION,
       capturedAt: new Date().toISOString(),
       studioVersion: STUDIO_VERSION,
-      setup,
+      setup: this.setupSnapshot ?? { url: "" },
       actions: slice,
     };
   }
 
-  /**
-   * Build a Session from the current buffer without resetting state.
-   */
-  serialize(): Session {
-    const setup = this.setupSnapshot ?? { url: "" };
-    return {
+  stop(): Session {
+    const session: Session = {
       version: SCHEMA_VERSION,
       capturedAt: new Date().toISOString(),
       studioVersion: STUDIO_VERSION,
-      setup,
+      setup: this.setupSnapshot ?? { url: "" },
       actions: this.buffer,
     };
-  }
-
-  stop(): Session {
-    const session = this.serialize();
     this.buffer = [];
     this.setupSnapshot = null;
     this._mode = "idle";
     this.notify();
     return session;
-  }
-
-  // Backward compatibility stub - old code may call this
-  // We ignore these events for now (only recording Actions)
-  emit(_entry: any): void {
-    // No-op: old event format not used anymore
-  }
-
-  // Backward compatibility stub
-  onEmit(_listener: any): () => void {
-    // Return no-op unsubscribe
-    return () => {};
-  }
-
-  // Backward compatibility stub
-  setWidget(_widget: any): void {
-    // No-op: old API not used anymore
   }
 }
 

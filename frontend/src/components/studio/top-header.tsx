@@ -1,17 +1,12 @@
 import { useState } from "react";
 import {
-  Clock,
   FastForward,
   FlaskConical,
   Circle,
-  ListChecks,
   SkipForward,
   Square,
 } from "lucide-react";
-// TODO: Re-enable when updated for new system
-// import { RecordingHistoryDialog } from "@/components/studio/recording-history-dialog";
 import { TestsPage } from "@/components/studio/tests-page";
-// import { RunsPage } from "@/components/studio/runs-page";
 import { SaveTestModal } from "@/components/studio/save-test-modal";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,9 +33,7 @@ export function TopHeader() {
   // can still be saved locally.
   const recordDisabled = healthStatus !== "connected" && !slicingState;
 
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [testsOpen, setTestsOpen] = useState(false);
-  const [runsOpen, setRunsOpen] = useState(false);
   const [recordExplainerOpen, setRecordExplainerOpen] = useState(false);
   const [saveTestOpen, setSaveTestOpen] = useState(false);
   const [saveRange, setSaveRange] = useState<{
@@ -130,40 +123,10 @@ export function TopHeader() {
             <FlaskConical className="h-4 w-4" />
             Tests
           </button>
-
-          <button
-            type="button"
-            onClick={() => setRunsOpen(true)}
-            title="Saved run results"
-            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md hover:bg-muted text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ListChecks className="h-4 w-4" />
-            Runs
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setHistoryOpen(true)}
-            title="View recorded actions"
-            className="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <Clock className="h-4 w-4" />
-          </button>
         </>
       )}
 
-      {/* TODO: Re-enable when updated for new system
-      <RecordingHistoryDialog
-        open={historyOpen}
-        onOpenChange={setHistoryOpen}
-      />
-      */}
-
       <TestsPage open={testsOpen} onOpenChange={setTestsOpen} />
-
-      {/* TODO: Re-enable when updated for new system
-      <RunsPage open={runsOpen} onOpenChange={setRunsOpen} />
-      */}
 
       {saveRange && (
         <SaveTestModal
@@ -241,28 +204,6 @@ export function TopHeader() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* TODO: Re-enable when updated for new system
-      {saveRange && (
-        <SaveTestModal
-          open={saveTestOpen}
-          startIndex={saveRange.start}
-          endIndex={saveRange.end}
-          onOpenChange={(v) => {
-            setSaveTestOpen(v);
-            if (!v) {
-              setSaveRange(null);
-              setSlicingState(null);
-            }
-          }}
-          onSaved={() => {
-            setSaveTestOpen(false);
-            setSaveRange(null);
-            setSlicingState(null);
-          }}
-        />
-      )}
-      */}
     </header>
   );
 }
