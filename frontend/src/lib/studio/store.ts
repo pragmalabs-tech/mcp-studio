@@ -28,7 +28,7 @@ import {
 import { DEFAULT_MOCK, type MockData } from "./mock-openai";
 import { extractWidgetUri } from "./tool-category";
 import { validateToolResult, type ResultIssue } from "./validate-tool-result";
-import type { Action } from "@/lib/action";
+import { ToolCallAction, ResourceReadAction, type Action } from "@/lib/action";
 import { createClaudeMock } from "./mock-claude";
 
 /** Payload shape consumed by `applyWidgetMock`. The studio's only widget
@@ -1751,10 +1751,18 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
       if (selected.type === "tool") {
         const args = JSON.parse(editorValue);
-        result = await callTool(selected.tool.name, args);
+        const action = new ToolCallAction(selected.tool.name, args);
+        await action.execute();
+        recorder.record(action, { stateChange: action.change() });
+        if (action.result?.error) throw new Error(action.result.error.message);
+        result = action.result?.data;
         logAction("tools/call", { name: selected.tool.name, result });
       } else if (selected.type === "resource") {
-        result = await readResource(selected.resource.uri);
+        const action = new ResourceReadAction(selected.resource.uri);
+        await action.execute();
+        recorder.record(action, { stateChange: action.change() });
+        if (action.result?.error) throw new Error(action.result.error.message);
+        result = action.result?.data;
         logAction("resources/read", { uri: selected.resource.uri, result });
       } else {
         set({ executing: false });

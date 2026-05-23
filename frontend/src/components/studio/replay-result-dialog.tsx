@@ -11,17 +11,31 @@ import { StatusBadge, StatusDot } from "@/components/ui/status-badge";
 import { JsonView } from "@/components/ui/json-view";
 import { cn } from "@/lib/utils";
 import type { Status } from "@/lib/status";
-import type { SavedReplay } from "@/lib/replays/storage";
-
-function actionStatus(action: { result?: { success: boolean } }): Status {
-  if (!action.result) return "skipped";
-  return action.result.success ? "passed" : "failed";
-}
+import type { AssertResult, AssertReport } from "@/lib/assertion";
+import type { ReplayedAction, SavedReplay } from "@/lib/replays/storage";
 
 interface ReplayResultDialogProps {
   open: boolean;
   result: SavedReplay | null;
   onOpenChange: (open: boolean) => void;
+}
+
+/**
+ * Overall step status drawn from its assert report. A step is "passed"
+ * only if both the action and state assertions pass (skipped counts as
+ * pass for back-compat with tests captured before the assertion layer).
+ */
+function stepStatus(assert: AssertReport): Status {
+  if (assert.action.status === "failed" || assert.state.status === "failed") {
+    return "failed";
+  }
+  return "passed";
+}
+
+function statusOf(assert: AssertResult): Status {
+  if (assert.status === "failed") return "failed";
+  if (assert.status === "skipped") return "skipped";
+  return "passed";
 }
 
 function formatActionName(action: { type: string; data: any }): string {
@@ -38,7 +52,6 @@ export function ReplayResultDialog({
 }: ReplayResultDialogProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  // Reset selection whenever a new replay is shown.
   useEffect(() => {
     if (open) setSelectedIndex(0);
   }, [open, result?.id]);
@@ -46,15 +59,13 @@ export function ReplayResultDialog({
   if (!result) return null;
 
   const passedCount = result.actions.filter(
-    (a) => a.action.result?.success === true,
+    (a) => stepStatus(a.assert) === "passed",
   ).length;
   const total = result.actions.length;
   const selected = result.actions[selectedIndex];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* Override the default `grid` + `sm:max-w-sm` so the dialog fills
-          ~80% of the viewport and the inner panes can shrink properly. */}
       <DialogContent
         className={cn(
           "flex flex-col gap-3",
@@ -67,12 +78,11 @@ export function ReplayResultDialog({
             <StatusBadge status={result.status} />
           </DialogTitle>
           <DialogDescription>
-            {passedCount} / {total} actions passed · {result.durationMs}ms
+            {passedCount} / {total} steps passed · {result.durationMs}ms
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-1 min-h-0 min-w-0 gap-3 px-4 pb-4 border-t pt-3">
-          {/* Left: action list */}
           <div className="w-64 shrink-0 border rounded-md overflow-hidden flex flex-col bg-card/40">
             <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground border-b bg-muted/30">
               Actions
@@ -84,7 +94,7 @@ export function ReplayResultDialog({
                 </div>
               ) : (
                 <div className="p-1">
-                  {result.actions.map((recorded, idx) => {
+                  {result.actions.map((replayed, idx) => {
                     const isSelected = idx === selectedIndex;
                     return (
                       <button
@@ -98,12 +108,12 @@ export function ReplayResultDialog({
                             : "hover:bg-accent/50",
                         )}
                       >
-                        <StatusDot status={actionStatus(recorded.action)} />
+                        <StatusDot status={stepStatus(replayed.assert)} />
                         <span className="font-mono text-muted-foreground shrink-0">
                           #{idx + 1}
                         </span>
                         <span className="flex-1 min-w-0 truncate font-medium">
-                          {formatActionName(recorded.action)}
+                          {formatActionName(replayed.action)}
                         </span>
                       </button>
                     );
@@ -113,11 +123,10 @@ export function ReplayResultDialog({
             </ScrollArea>
           </div>
 
-          {/* Right: inspector */}
           <div className="flex-1 min-w-0 min-h-0 border rounded-md overflow-hidden flex flex-col bg-card/40">
             {selected ? (
               <ReplayActionInspector
-                recorded={selected}
+                replayed={selected}
                 index={selectedIndex}
               />
             ) : (
@@ -133,17 +142,15 @@ export function ReplayResultDialog({
 }
 
 interface ReplayActionInspectorProps {
-  recorded: SavedReplay["actions"][number];
+  replayed: ReplayedAction;
   index: number;
 }
 
 function ReplayActionInspector({
-  recorded,
+  replayed,
   index,
 }: ReplayActionInspectorProps) {
-  const { action, relMs } = recorded;
-  const result = action.result;
-  const success = result?.success === true;
+  const { action, relMs, stateChange, assert } = replayed;
 
   return (
     <>
@@ -155,11 +162,18 @@ function ReplayActionInspector({
           {formatActionName(action)}
         </span>
         <span className="flex-1" />
-        <StatusBadge status={actionStatus(action)} />
+        <StatusBadge status={stepStatus(assert)} />
       </div>
 
       <ScrollArea className="flex-1 min-h-0">
         <div className="p-3 space-y-4 text-xs">
+          <Section label="Assertions">
+            <div className="space-y-2">
+              <AssertionRow label="Action result" result={assert.action} />
+              <AssertionRow label="State change" result={assert.state} />
+            </div>
+          </Section>
+
           <Section label="Type">
             <code className="font-mono">{action.type}</code>
           </Section>
@@ -168,24 +182,26 @@ function ReplayActionInspector({
             <JsonView value={action.data} />
           </Section>
 
-          {result ? (
-            success ? (
-              <Section label="Result">
-                {result.data === undefined ? (
-                  <div className="text-muted-foreground italic">
-                    (no result data)
-                  </div>
-                ) : (
-                  <JsonView value={result.data} />
-                )}
-              </Section>
-            ) : (
-              <Section label="Error">
+          {action.result ? (
+            <Section label="Result">
+              {action.result.error ? (
                 <pre className="font-mono text-xs bg-destructive/10 text-destructive p-2 rounded whitespace-pre-wrap break-words">
-                  {result.error?.message ?? "Unknown error"}
+                  {action.result.error.message}
                 </pre>
-              </Section>
-            )
+              ) : action.result.data === undefined ? (
+                <div className="text-muted-foreground italic">
+                  (no result data)
+                </div>
+              ) : (
+                <JsonView value={action.result.data} />
+              )}
+            </Section>
+          ) : null}
+
+          {stateChange ? (
+            <Section label="State change">
+              <JsonView value={stateChange} />
+            </Section>
           ) : null}
 
           <Section label="Timing">
@@ -200,6 +216,60 @@ function ReplayActionInspector({
         </div>
       </ScrollArea>
     </>
+  );
+}
+
+function AssertionRow({
+  label,
+  result,
+}: {
+  label: string;
+  result: AssertResult;
+}) {
+  const failed = result.status === "failed";
+  const hasData = result.data.expected !== undefined;
+  // Diff colors only kick in when something actually differs. On pass we
+  // still show the two columns so the user can confirm what was compared.
+  const diff = failed;
+  return (
+    <div className="rounded border bg-background/40">
+      <div className="px-2.5 py-1.5 flex items-center gap-2 border-b">
+        <span className="font-medium text-[11px] uppercase tracking-wider text-muted-foreground">
+          {label}
+        </span>
+        <span className="flex-1" />
+        <StatusBadge status={statusOf(result)} />
+      </div>
+      <div className="px-2.5 py-2 space-y-2">
+        {result.data.reason ? (
+          <div className="text-[11px] text-muted-foreground">
+            {result.data.reason}
+          </div>
+        ) : null}
+        {hasData ? (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                Expected
+              </div>
+              <JsonView
+                value={result.data.expected}
+                diffAgainst={diff ? result.data.actual : undefined}
+              />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                Actual
+              </div>
+              <JsonView
+                value={result.data.actual}
+                diffAgainst={diff ? result.data.expected : undefined}
+              />
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

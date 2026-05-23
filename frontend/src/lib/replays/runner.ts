@@ -1,29 +1,14 @@
-import {
-  reconstructAction,
-  ToolCallAction,
-  ResourceReadAction,
-  type Action,
-} from "@/lib/action";
+import { reconstructAction, type Action } from "@/lib/action";
 import { recorder } from "@/lib/recorder/bus";
 import type { RecordedAction } from "@/lib/recorder/schema";
-import { callTool, readResource } from "@/lib/studio/api";
+import { verifyState, type AssertReport } from "@/lib/assertion";
 import type { SavedTest } from "@/lib/tests/storage";
-import { saveReplay, type SavedReplay } from "./storage";
+import { saveReplay, type ReplayedAction, type SavedReplay } from "./storage";
 
 function nowMs(): number {
   return typeof performance !== "undefined" && performance.now
     ? performance.now()
     : Date.now();
-}
-
-function errorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  try {
-    return JSON.stringify(err);
-  } catch {
-    return String(err);
-  }
 }
 
 export interface ReplayProgress {
@@ -53,14 +38,13 @@ export function countReplayableActions(test: SavedTest): number {
 }
 
 /**
- * Re-execute every action in `test`'s recorded session against the live MCP
- * server, capturing per-step success/result. The recorder is suspended for
- * the duration so the replay-driven `recorder.record(...)` calls inside
- * `recordedMcpCall` don't pollute the live timeline.
+ * Re-run every action in a saved test. Each step does two compares:
+ *   - Action verify: live action.result vs recorded action.result.
+ *   - State verify: live action.change() vs recorded stateChange.
  *
- * Honors `options.signal` between steps (in-flight MCP calls still complete).
- * Fires `options.onProgress` before and after each step so callers can drive
- * a progress UI.
+ * The recorder is suspended for the duration so replay-driven MCP calls
+ * don't pollute the live timeline. `options.signal` aborts between steps
+ * (in-flight calls still complete).
  */
 export async function runReplay(
   test: SavedTest,
@@ -68,47 +52,51 @@ export async function runReplay(
 ): Promise<SavedReplay> {
   const { signal, onProgress } = options;
 
-  // Reconstruct upfront so total matches the actually-executed step count.
-  const reconstructed = test.session.actions
-    .map((r) => reconstructAction(r.action))
-    .filter((a): a is Action => a !== null);
-  const total = reconstructed.length;
+  const steps = test.session.actions
+    .map((source) => ({ source, action: reconstructAction(source.action) }))
+    .filter(
+      (s): s is { source: RecordedAction; action: Action } => s.action !== null,
+    );
+  const total = steps.length;
 
   recorder.suspend();
   const runStart = nowMs();
-  const actions: RecordedAction[] = [];
-  let allPassed = true;
+  const out: ReplayedAction[] = [];
+  let anyFailed = false;
   let aborted = false;
 
   try {
-    for (let i = 0; i < reconstructed.length; i++) {
+    for (let i = 0; i < steps.length; i++) {
       if (signal?.aborted) {
         aborted = true;
         break;
       }
-      const action = reconstructed[i];
+      const { source, action } = steps[i];
       const stepStart = nowMs();
       onProgress?.({ step: i, total, action, phase: "before" });
-      try {
-        if (action instanceof ToolCallAction) {
-          const result = await callTool(
-            action.data.tool,
-            (action.data.params as Record<string, unknown>) ?? {},
-          );
-          action.setResult(true, result);
-        } else if (action instanceof ResourceReadAction) {
-          const result = await readResource(action.data.uri);
-          action.setResult(true, result);
-        } else {
-          action.setResult(true);
-        }
-      } catch (err) {
-        action.setResult(false, undefined, { message: errorMessage(err) });
-        allPassed = false;
+
+      await action.execute();
+      const liveChange = action.change();
+
+      const report: AssertReport = {
+        action: action.verify(source.action.result),
+        state: await verifyState(source.stateChange, () => liveChange, {
+          attempts: 3,
+          delayMs: 50,
+        }),
+      };
+      if (
+        report.action.status === "failed" ||
+        report.state.status === "failed"
+      ) {
+        anyFailed = true;
       }
-      actions.push({
+
+      out.push({
         relMs: stepStart - runStart,
         action: action.toJSON() as RecordedAction["action"],
+        stateChange: liveChange,
+        assert: report,
       });
       onProgress?.({ step: i, total, action, phase: "after" });
     }
@@ -122,8 +110,8 @@ export async function runReplay(
     testName: test.name,
     createdAt: new Date().toISOString(),
     durationMs: Math.round(nowMs() - runStart),
-    status: !aborted && allPassed ? "passed" : "failed",
-    actions,
+    status: !aborted && !anyFailed ? "passed" : "failed",
+    actions: out,
   };
   saveReplay(replay);
   return replay;

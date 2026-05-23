@@ -144,6 +144,8 @@ export function TopHeader() {
             setSaveTestOpen(false);
             setSaveRange(null);
             setSlicingState(null);
+            // Pop the Tests drawer so the user sees the new test land.
+            setTestsOpen(true);
           }}
         />
       )}

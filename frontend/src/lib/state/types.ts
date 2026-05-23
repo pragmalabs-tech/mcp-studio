@@ -1,51 +1,36 @@
-import type { Event } from "@/lib/event/types";
+// ── State ──
 
-// Main state interface
+/**
+ * The studio's compositional State — pure counters. Tracks "what happened
+ * how many times" against the MCP surface; the actual response/error
+ * payloads live on each `Action.result`, not here.
+ *
+ * Splitting it this way lets the assertion layer run two clean compares
+ * per replay step:
+ *   - `action.verify(recordedResult)` — did the response/error match?
+ *   - `verifyState(recordedChange, () => action.change())` — did the
+ *     state counters move the same way?
+ */
 export interface State {
   tools: Record<string, ToolState>;
   resources: Record<string, ResourceState>;
   network: NetworkState;
 }
 
-// Tool state
 export interface ToolState {
   callCount: number;
-  calls: ToolCall[];
-  lastResult?: unknown;
-  lastError?: { message: string };
 }
 
-export interface ToolCall {
-  requestId: number;
-  params: unknown;
-  result?: unknown;
-  error?: string;
-  timestamp: number;
-}
-
-// Resource state
 export interface ResourceState {
   readCount: number;
-  reads: ResourceRead[];
-  lastResult?: unknown;
-  lastError?: { message: string };
 }
 
-export interface ResourceRead {
-  requestId: number;
-  result?: unknown;
-  error?: string;
-  timestamp: number;
-}
-
-// Network state
 export interface NetworkState {
   requestCount: number;
   responseCount: number;
   errorCount: number;
 }
 
-// Create initial state
 export function createInitialState(): State {
   return {
     tools: {},
@@ -58,12 +43,21 @@ export function createInitialState(): State {
   };
 }
 
-// Apply single event to state
-export function applyEvent(state: State, event: Event): State {
-  return event.apply(state);
-}
+// ── StateChange ──
 
-// Apply multiple events to state
-export function applyEvents(state: State, events: Event[]): State {
-  return events.reduce((s, e) => applyEvent(s, e), state);
+/** Sparse partial of `State` — the counter delta one action contributes. */
+export type StateChange = Partial<State>;
+
+/**
+ * Reduce a `State` by merging in a `StateChange`. Tool/resource slices
+ * replace atomically; `network` replaces wholesale.
+ */
+export function applyChange(state: State, change: StateChange): State {
+  return {
+    tools: change.tools ? { ...state.tools, ...change.tools } : state.tools,
+    resources: change.resources
+      ? { ...state.resources, ...change.resources }
+      : state.resources,
+    network: change.network ?? state.network,
+  };
 }

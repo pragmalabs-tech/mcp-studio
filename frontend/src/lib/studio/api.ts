@@ -6,8 +6,10 @@
  * with mcpr-cloud's own auth (cookie-based JWT).
  */
 
-import { recordedMcpCall } from "../recorder/mcp-interceptor";
+import { mcpEventBus } from "@/lib/mcp/events";
 import { reportHealth } from "./health";
+
+let nextResponseId = 1;
 
 // ── Proxy URL ──
 
@@ -586,11 +588,48 @@ async function rawMcpCall(
   return data.result;
 }
 
+/**
+ * Run a raw MCP call and fan the response out to `mcpEventBus` so live
+ * subscribers (widget HTML derivation in the studio store) can react.
+ * Recording is the Action's job — `callTool` / `readResource` are pure
+ * I/O helpers that Action subclasses invoke from their `execute()`.
+ */
 export async function mcpCall(
   method: string,
   params: Record<string, unknown> = {},
 ): Promise<unknown> {
-  return recordedMcpCall(rawMcpCall, method, params);
+  const requestId = nextResponseId++;
+  let tool: string | undefined;
+  let resourceUri: string | undefined;
+  if (method === "tools/call" && typeof (params as any).name === "string") {
+    tool = (params as any).name;
+  } else if (
+    method === "resources/read" &&
+    typeof (params as any).uri === "string"
+  ) {
+    resourceUri = (params as any).uri;
+  }
+
+  try {
+    const result = await rawMcpCall(method, params);
+    mcpEventBus.emitResponse({
+      requestId,
+      method,
+      tool,
+      resourceUri,
+      result,
+    });
+    return result;
+  } catch (err) {
+    mcpEventBus.emitResponse({
+      requestId,
+      method,
+      tool,
+      resourceUri,
+      error: { message: err instanceof Error ? err.message : String(err) },
+    });
+    throw err;
+  }
 }
 
 /** MCP tool annotations - behavioural hints surfaced in `tools/list` so
@@ -633,7 +672,7 @@ export async function callTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
-  return recordedMcpCall(rawMcpCall, "tools/call", { name, arguments: args });
+  return mcpCall("tools/call", { name, arguments: args });
 }
 
 /** MCP resource annotations - reading/display hints. `audience` says which

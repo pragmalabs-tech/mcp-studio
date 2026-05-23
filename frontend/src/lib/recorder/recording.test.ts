@@ -1,4 +1,13 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+
+// Mock the studio API so importing ToolCallAction / ResourceReadAction
+// doesn't pull in the live api → health → store chain (which trips a TDZ
+// during module init outside the studio runtime).
+vi.mock("@/lib/studio/api", () => ({
+  callTool: vi.fn(),
+  readResource: vi.fn(),
+}));
+
 import { recorder } from "./bus";
 import { ToolCallAction } from "@/lib/action/tool_call";
 import { ResourceReadAction } from "@/lib/action/resource_read";

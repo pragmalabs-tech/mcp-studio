@@ -16,6 +16,7 @@ import {
 import { TopHeader } from "@/components/studio/top-header";
 import { SignInDialog } from "@/components/studio/sign-in-dialog";
 import { PublishDialog } from "@/components/studio/publish-dialog";
+import { ConfirmDialogRoot } from "@/components/ui/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 
 type BottomTab = "logs" | "console" | "csp" | "oauth";
@@ -61,6 +62,7 @@ export function StudioLayout() {
       <TopHeader />
       <SignInDialog />
       <PublishDialog />
+      <ConfirmDialogRoot />
       <div className="flex-1 flex min-h-0 relative">
         {studioMode === "test" && (
           <div

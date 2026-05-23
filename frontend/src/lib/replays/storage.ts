@@ -1,8 +1,15 @@
 import type { RecordedAction } from "@/lib/recorder/schema";
+import type { AssertReport } from "@/lib/assertion";
 
 const REPLAYS_STORAGE_KEY = "mcp-studio-replays";
 
 export type ReplayStatus = "passed" | "failed";
+
+/** A replayed action: same shape as a RecordedAction plus the two-part
+ *  verify report (action result + state change). */
+export interface ReplayedAction extends RecordedAction {
+  assert: AssertReport;
+}
 
 export interface SavedReplay {
   id: string;
@@ -11,7 +18,7 @@ export interface SavedReplay {
   createdAt: string;
   durationMs: number;
   status: ReplayStatus;
-  actions: RecordedAction[];
+  actions: ReplayedAction[];
 }
 
 export function saveReplay(replay: SavedReplay): void {

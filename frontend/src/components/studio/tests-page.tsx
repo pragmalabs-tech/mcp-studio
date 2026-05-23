@@ -19,9 +19,15 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { loadTests, deleteTest, type SavedTest } from "@/lib/tests/storage";
 import { runReplay, countReplayableActions } from "@/lib/replays/runner";
-import type { SavedReplay } from "@/lib/replays/storage";
+import {
+  loadReplaysForTest,
+  deleteReplay,
+  type SavedReplay,
+} from "@/lib/replays/storage";
 import { ReplayResultDialog } from "@/components/studio/replay-result-dialog";
 import { JsonView } from "@/components/ui/json-view";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { confirm } from "@/components/ui/confirm-dialog";
 import { useStudioStore } from "@/lib/studio/store";
 
 interface TestsPageProps {
@@ -47,6 +53,14 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
 
   const handleReplay = async (test: SavedTest) => {
     if (runState) return;
+
+    const ok = await confirm({
+      title: `Replay "${test.name}"?`,
+      description:
+        "Replay re-runs every recorded action against the live MCP server. Tool calls with side effects (writes, sends, deletes) will fire again.",
+      confirmLabel: "Replay",
+    });
+    if (!ok) return;
 
     const totalSteps = countReplayableActions(test);
     const ctrl = new AbortController();
@@ -130,11 +144,23 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
                     test={test}
                     disableReplay={runState !== null}
                     onRun={() => handleReplay(test)}
-                    onDelete={() => {
+                    onDelete={async () => {
+                      const ok = await confirm({
+                        title: `Delete "${test.name}"?`,
+                        description:
+                          "This removes the recorded session and any saved replay results stay orphaned. This can't be undone.",
+                        confirmLabel: "Delete",
+                        tone: "destructive",
+                      });
+                      if (!ok) return;
                       deleteTest(test.id);
                       setTests(tests.filter((t) => t.id !== test.id));
                     }}
                     onExport={() => handleExport(test)}
+                    onOpenReplay={(replay) => {
+                      setReplayResult(replay);
+                      setReplayDialogOpen(true);
+                    }}
                   />
                 ))}
               </div>
@@ -160,6 +186,7 @@ interface TestCardProps {
   onRun: () => void;
   onDelete: () => void;
   onExport: () => void;
+  onOpenReplay: (replay: SavedReplay) => void;
 }
 
 function TestCard({
@@ -168,10 +195,26 @@ function TestCard({
   onRun,
   onDelete,
   onExport,
+  onOpenReplay,
 }: TestCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [history, setHistory] = useState<SavedReplay[]>([]);
   const actionCount = test.session.actions.length;
   const capturedAt = new Date(test.session.capturedAt).toLocaleString();
+
+  // Load (or refresh) this test's replay history when the card is expanded.
+  // Also re-runs after a replay completes — `runState` flipping back to null
+  // is the global "a replay just finished" signal.
+  const runState = useStudioStore((s) => s.runState);
+  useEffect(() => {
+    if (expanded) {
+      setHistory(
+        loadReplaysForTest(test.id).sort((a, b) =>
+          b.createdAt.localeCompare(a.createdAt),
+        ),
+      );
+    }
+  }, [expanded, test.id, runState]);
 
   return (
     <div className="border rounded-lg overflow-hidden bg-card">
@@ -235,22 +278,119 @@ function TestCard({
       </div>
 
       {expanded && (
-        <div className="border-t bg-muted/20 p-2 space-y-1">
-          {test.session.actions.length === 0 ? (
-            <div className="text-xs text-muted-foreground italic px-2 py-1">
-              No actions recorded
-            </div>
-          ) : (
-            test.session.actions.map((recordedAction, idx) => (
-              <ActionDetail
-                key={idx}
-                recordedAction={recordedAction}
-                index={idx}
-              />
-            ))
-          )}
+        <div className="border-t bg-muted/20 p-2 space-y-3">
+          <Section title="Actions">
+            {test.session.actions.length === 0 ? (
+              <div className="text-xs text-muted-foreground italic px-2 py-1">
+                No actions recorded
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {test.session.actions.map((recordedAction, idx) => (
+                  <ActionDetail
+                    key={idx}
+                    recordedAction={recordedAction}
+                    index={idx}
+                  />
+                ))}
+              </div>
+            )}
+          </Section>
+
+          <Section title="Replay history" count={history.length}>
+            {history.length === 0 ? (
+              <div className="text-xs text-muted-foreground italic px-2 py-1">
+                No replays yet — hit play above to capture one.
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {history.map((replay) => (
+                  <ReplayHistoryRow
+                    key={replay.id}
+                    replay={replay}
+                    onOpen={() => onOpenReplay(replay)}
+                    onDelete={async () => {
+                      const ok = await confirm({
+                        title: "Delete this replay?",
+                        description:
+                          "Removes the saved replay result. The recorded test stays intact.",
+                        confirmLabel: "Delete",
+                        tone: "destructive",
+                      });
+                      if (!ok) return;
+                      deleteReplay(replay.id);
+                      setHistory((h) => h.filter((r) => r.id !== replay.id));
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </Section>
         </div>
       )}
+    </div>
+  );
+}
+
+function Section({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="px-2 pb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <span>{title}</span>
+        {count !== undefined && count > 0 && (
+          <span className="text-muted-foreground/70">· {count}</span>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ReplayHistoryRow({
+  replay,
+  onOpen,
+  onDelete,
+}: {
+  replay: SavedReplay;
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
+  const when = new Date(replay.createdAt).toLocaleString();
+  const passed = replay.actions.filter(
+    (a) =>
+      a.assert.action.status !== "failed" && a.assert.state.status !== "failed",
+  ).length;
+  return (
+    <div className="rounded bg-background/60 overflow-hidden flex items-center gap-2 hover:bg-accent/40 transition-colors">
+      <button
+        onClick={onOpen}
+        className="flex-1 min-w-0 px-2 py-1.5 text-left flex items-center gap-2"
+      >
+        <StatusBadge status={replay.status} hideIcon className="shrink-0" />
+        <span className="text-[11px] text-muted-foreground truncate flex-1">
+          {when}
+        </span>
+        <span className="text-[11px] font-mono text-muted-foreground shrink-0">
+          {passed}/{replay.actions.length} · {replay.durationMs}ms
+        </span>
+      </button>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-7 w-7 p-0 mr-1 text-destructive hover:text-destructive"
+        onClick={onDelete}
+        title="Delete replay"
+      >
+        <Trash2 className="h-3 w-3" />
+      </Button>
     </div>
   );
 }

@@ -1,6 +1,16 @@
 import { Action } from "./types";
-import { ToolCallRequestedEvent } from "@/lib/event/tool_events";
-import type { Event } from "@/lib/event/types";
+import { callTool } from "@/lib/studio/api";
+import type { StateChange } from "@/lib/state/types";
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
 
 export class ToolCallAction extends Action<{
   tool: string;
@@ -10,13 +20,27 @@ export class ToolCallAction extends Action<{
     super("TOOL_CALL", { tool, params });
   }
 
-  execute(): Event[] {
-    return [
-      new ToolCallRequestedEvent({
-        requestId: Date.now(),
-        tool: this.data.tool,
-        params: this.data.params,
-      }),
-    ];
+  async execute(): Promise<void> {
+    try {
+      const result = await callTool(
+        this.data.tool,
+        (this.data.params as Record<string, unknown>) ?? {},
+      );
+      this.setResult(true, result);
+    } catch (err) {
+      this.setResult(false, undefined, { message: errorMessage(err) });
+    }
+  }
+
+  change(): StateChange {
+    const success = this.result?.success ?? false;
+    return {
+      tools: { [this.data.tool]: { callCount: 1 } },
+      network: {
+        requestCount: 1,
+        responseCount: success ? 1 : 0,
+        errorCount: success ? 0 : 1,
+      },
+    };
   }
 }

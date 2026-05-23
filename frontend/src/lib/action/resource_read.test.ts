@@ -1,110 +1,62 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ResourceReadAction } from "./resource_read";
-import {
-  ResourceReadRequestedEvent,
-  ResourceReadCompletedEvent,
-} from "@/lib/event/resource_events";
-import { createInitialState, applyEvent, applyEvents } from "@/lib/state/types";
-import {
-  assertActionSucceeded,
-  assertStateChanged,
-} from "@/lib/assertion/assert";
+
+vi.mock("@/lib/studio/api", () => ({
+  callTool: vi.fn(),
+  readResource: vi.fn(),
+}));
+
+import { readResource } from "@/lib/studio/api";
+
+const mockedReadResource = vi.mocked(readResource);
 
 describe("ResourceReadAction", () => {
-  it("executes and produces events", () => {
-    const action = new ResourceReadAction("widget://test-widget");
-
-    assertActionSucceeded(action);
-
-    const events = action.execute();
-    expect(events).toHaveLength(1);
-    expect(events[0]).toBeInstanceOf(ResourceReadRequestedEvent);
+  beforeEach(() => {
+    mockedReadResource.mockReset();
   });
 
-  it("updates state correctly on request", () => {
-    const uri = "widget://test-widget";
+  it("populates result on success and produces a counter change", async () => {
+    const uri = "widget://test";
+    mockedReadResource.mockResolvedValueOnce({ html: "<div>x</div>" });
     const action = new ResourceReadAction(uri);
-    const events = action.execute();
 
-    const before = createInitialState();
-    const after = applyEvent(before, events[0]);
+    await action.execute();
 
-    // Verify state changed
-    assertStateChanged(before, after, `resources.${uri}`);
-    assertStateChanged(before, after, "network.requestCount");
-
-    // Check specific values
-    expect(after.resources[uri]).toBeDefined();
-    expect(after.resources[uri].readCount).toBe(1);
-    expect(after.resources[uri].reads).toHaveLength(1);
-    expect(after.network.requestCount).toBe(1);
+    expect(mockedReadResource).toHaveBeenCalledWith(uri);
+    expect(action.result).toEqual({
+      success: true,
+      data: { html: "<div>x</div>" },
+      error: undefined,
+    });
+    expect(action.change()).toEqual({
+      resources: { [uri]: { readCount: 1 } },
+      network: { requestCount: 1, responseCount: 1, errorCount: 0 },
+    });
   });
 
-  it("updates state correctly on completion", () => {
-    const uri = "widget://test-widget";
+  it("populates result with error on failure and bumps errorCount", async () => {
+    const uri = "widget://missing";
+    mockedReadResource.mockRejectedValueOnce(new Error("not found"));
     const action = new ResourceReadAction(uri);
-    const requestEvents = action.execute();
 
-    let state = createInitialState();
-    state = applyEvent(state, requestEvents[0]);
+    await action.execute();
 
-    const requestId = state.resources[uri].reads[0].requestId;
-
-    // Simulate completion event
-    const completedEvent = new ResourceReadCompletedEvent({
-      requestId,
-      uri,
-      result: { html: "<div>Widget HTML</div>", mimeType: "text/html" },
+    expect(action.result).toEqual({
+      success: false,
+      data: undefined,
+      error: { message: "not found" },
     });
-
-    const before = state;
-    const after = applyEvent(state, completedEvent);
-
-    // Verify state changed
-    assertStateChanged(before, after, `resources.${uri}.lastResult`);
-    assertStateChanged(before, after, "network.responseCount");
-
-    // Check result was stored
-    expect(after.resources[uri].lastResult).toEqual({
-      html: "<div>Widget HTML</div>",
-      mimeType: "text/html",
+    expect(action.change()).toEqual({
+      resources: { [uri]: { readCount: 1 } },
+      network: { requestCount: 1, responseCount: 0, errorCount: 1 },
     });
-    expect(after.network.responseCount).toBe(1);
   });
 
-  it("handles full action → event → state flow", () => {
-    const uri = "widget://test-widget";
+  it("verify(): passes when success matches recorded", async () => {
+    mockedReadResource.mockResolvedValueOnce({});
+    const action = new ResourceReadAction("widget://x");
+    await action.execute();
 
-    // 1. Create and execute action
-    const action = new ResourceReadAction(uri);
-    assertActionSucceeded(action);
-
-    // 2. Apply request event
-    let state = createInitialState();
-    const requestEvents = action.execute();
-    state = applyEvents(state, requestEvents);
-
-    // 3. Verify request updated state
-    expect(state.resources[uri].readCount).toBe(1);
-    expect(state.network.requestCount).toBe(1);
-
-    // 4. Simulate response
-    const requestId = state.resources[uri].reads[0].requestId;
-    const completedEvent = new ResourceReadCompletedEvent({
-      requestId,
-      uri,
-      result: { html: "<div>Test</div>" },
-    });
-
-    // 5. Apply response event
-    const beforeResponse = state;
-    state = applyEvent(state, completedEvent);
-
-    // 6. Verify completion updated state
-    assertStateChanged(beforeResponse, state, `resources.${uri}.lastResult`);
-    expect(state.resources[uri].lastResult).toEqual({
-      html: "<div>Test</div>",
-    });
-    expect(state.network.responseCount).toBe(1);
+    expect(action.verify({ success: true, data: {} }).status).toBe("passed");
   });
 });

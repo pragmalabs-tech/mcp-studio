@@ -69,55 +69,66 @@ export function SaveTestModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Save Test</DialogTitle>
-          <DialogDescription>
-            Save this recorded session as a test. You can replay it later.
-          </DialogDescription>
-        </DialogHeader>
+        {/* `<form onSubmit>` makes Enter from any input submit the save
+            flow without the user needing to click the button. The Save
+            button below uses `type="submit"`. */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSave();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Save Test</DialogTitle>
+            <DialogDescription>
+              Save this recorded session as a test. You can replay it later.
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="test-name">Test Name</Label>
-            <Input
-              id="test-name"
-              placeholder="e.g., User login flow"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus
-            />
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="test-name">Test Name</Label>
+              <Input
+                id="test-name"
+                placeholder="e.g., User login flow"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="test-description">Description (optional)</Label>
+              <Textarea
+                id="test-description"
+                placeholder="Describe what this test covers..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+              />
+            </div>
+
+            <div className="text-xs text-muted-foreground">
+              <p>
+                <strong>{endIndex - startIndex}</strong> actions will be saved
+              </p>
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="test-description">Description (optional)</Label>
-            <Textarea
-              id="test-description"
-              placeholder="Describe what this test covers..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-            />
-          </div>
-
-          <div className="text-xs text-muted-foreground">
-            <p>
-              <strong>{endIndex - startIndex}</strong> actions will be saved
-            </p>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={saving}
-          >
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={!name.trim() || saving}>
-            {saving ? "Saving..." : "Save Test"}
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!name.trim() || saving}>
+              {saving ? "Saving..." : "Save Test"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

@@ -1,4 +1,5 @@
 import type { Action } from "@/lib/action/types";
+import type { StateChange } from "@/lib/state/types";
 import type { RecordedAction, Session, SetupConfig } from "./schema";
 import { SCHEMA_VERSION } from "./schema";
 
@@ -66,13 +67,16 @@ class Recorder {
     this.notify();
   }
 
-  /** Record an action (call this after action completes to capture result) */
-  record(action: Action): void {
+  /** Record an action (call this after action completes to capture result).
+   *  `opts.stateChange` is the StateChange this action introduced; the
+   *  caller computes it via `changeOfAction(action, action.result)`. */
+  record(action: Action, opts: { stateChange?: StateChange } = {}): void {
     const relMs = nowMs() - this.startedAt;
     const entry: RecordedAction = {
       relMs,
       action: action.toJSON() as RecordedAction["action"],
     };
+    if (opts.stateChange) entry.stateChange = opts.stateChange;
 
     // Only persist when recording AND not suspended.
     if (this._mode === "recording" && !this._suspended) {
