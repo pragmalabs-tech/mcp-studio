@@ -50,36 +50,51 @@ describe("ToolCallAction", () => {
     });
   });
 
-  it("verify(): passed when success boolean matches recorded", async () => {
-    mockedCallTool.mockResolvedValueOnce({ ok: true });
-    const action = new ToolCallAction("ping", {});
-    await action.execute();
-
-    const report = action.verify({
-      success: true,
-      data: { ok: true },
-    });
-    expect(report.status).toBe("passed");
+  it("declares an assertable surface with success as a strict point", () => {
+    const points = ToolCallAction.assertablePoints;
+    expect(points.map((p) => p.key)).toContain("success");
+    const success = points.find((p) => p.key === "success")!;
+    expect(success.defaultMode).toBe("exact");
+    expect(success.path).toBe("success");
   });
 
-  it("verify(): failed when success boolean diverges", async () => {
-    mockedCallTool.mockResolvedValueOnce({ ok: true });
+  it("instance exposes assertable points via accessor", () => {
     const action = new ToolCallAction("ping", {});
-    await action.execute();
-
-    const report = action.verify({
-      success: false,
-      error: { message: "previously broken" },
-    });
-    expect(report.status).toBe("failed");
-    expect(report.data.reason).toMatch(/success mismatch/);
+    expect(action.getAssertablePoints()).toBe(ToolCallAction.assertablePoints);
   });
 
-  it("verify(): skipped when no recorded baseline", async () => {
+  it("verifyResult(): passes when success matches under default modes", async () => {
     mockedCallTool.mockResolvedValueOnce({ ok: true });
     const action = new ToolCallAction("ping", {});
     await action.execute();
 
-    expect(action.verify(undefined).status).toBe("skipped");
+    const r = action.verifyResult(
+      { success: true, data: { ok: true } },
+      undefined,
+    );
+    expect(r.status).toBe("passed");
+  });
+
+  it("verifyResult(): failed with per-point reason when success diverges", async () => {
+    mockedCallTool.mockResolvedValueOnce({ ok: true });
+    const action = new ToolCallAction("ping", {});
+    await action.execute();
+
+    const r = action.verifyResult(
+      { success: false, error: { message: "broken" } },
+      undefined,
+    );
+    expect(r.status).toBe("failed");
+    expect(r.data.failures?.[0].key).toBe("success");
+  });
+
+  it("verifyStateChange(): passes under default exact mode", async () => {
+    mockedCallTool.mockResolvedValueOnce({ ok: true });
+    const action = new ToolCallAction("ping", {});
+    await action.execute();
+
+    const recorded = action.change();
+    const r = await action.verifyStateChange(recorded, { attempts: 1 });
+    expect(r.status).toBe("passed");
   });
 });

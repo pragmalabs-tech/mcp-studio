@@ -1,5 +1,14 @@
 import type { StateChange } from "@/lib/state/types";
-import type { AssertResult } from "@/lib/assertion/types";
+import type {
+  AssertablePoint,
+  AssertResult,
+  Mode,
+} from "@/lib/assertion/types";
+import { verifyAction } from "@/lib/assertion/verify_action";
+import {
+  verifyState,
+  type VerifyStateOptions,
+} from "@/lib/assertion/verify_state";
 
 export interface ActionResult {
   success: boolean;
@@ -9,14 +18,15 @@ export interface ActionResult {
 
 /**
  * An Action is the studio's unit of recordable work. Each subclass owns
- * one MCP operation and exposes three concerns:
+ * one MCP operation and exposes:
  *
  *   - `execute()` — async I/O. Populates `this.result` with the response
  *     or the error message. Returns void; callers read `result` after.
  *   - `change()` — the StateChange (counter delta) this action contributes
  *     given its result. Pure derivation, no I/O.
- *   - `verify(recordedResult)` — compare this action's live result against
- *     a recorded baseline; returns an AssertResult.
+ *   - `static assertablePoints` — the assertable surface this Action type
+ *     exposes for replay verification. Engine receives this and the
+ *     resolved per-key modes; it never imports the Action class itself.
  *
  * Separating result-data (on the Action) from counter-deltas (in State)
  * means replay verification is two clean compares: one for the response,
@@ -31,6 +41,13 @@ export abstract class Action<T = any> {
   /** Populated by `execute()` once the MCP call settles. */
   result?: ActionResult;
 
+  /**
+   * Static-declared assertable surface. Subclasses override with their
+   * specific points; the base list is empty so an undeclared action
+   * verifies as "passed" (nothing to check).
+   */
+  static assertablePoints: AssertablePoint[] = [];
+
   constructor(type: string, data: T) {
     this.id = crypto.randomUUID();
     this.type = type;
@@ -43,40 +60,39 @@ export abstract class Action<T = any> {
   /** State delta this action contributes given its current `result`. */
   abstract change(): StateChange;
 
+  /** Convenience accessor for the static `assertablePoints` on this instance. */
+  getAssertablePoints(): AssertablePoint[] {
+    return (this.constructor as typeof Action).assertablePoints;
+  }
+
   /**
-   * Compare `this.result` against a recorded baseline. Default implementation
-   * checks the `success` boolean and exposes both sides in `data`. Subclasses
-   * can override (e.g. to deep-compare specific response fields), but the
-   * base check is enough for most actions.
+   * Compare `this.result` (set by `execute()`) against a recorded baseline.
+   * Default walks the static `assertablePoints` and dispatches each point
+   * by its resolved mode. Subclasses override only when they need verify
+   * behavior the modes can't express on their own.
    */
-  verify(recorded: ActionResult | undefined): AssertResult {
-    if (!recorded) {
-      return { status: "skipped", data: { reason: "no recorded result" } };
-    }
-    if (!this.result) {
-      return {
-        status: "failed",
-        data: {
-          expected: recorded,
-          actual: undefined,
-          reason: "action did not produce a result",
-        },
-      };
-    }
-    if (recorded.success !== this.result.success) {
-      return {
-        status: "failed",
-        data: {
-          expected: recorded,
-          actual: this.result,
-          reason: `success mismatch (expected ${recorded.success}, got ${this.result.success})`,
-        },
-      };
-    }
-    return {
-      status: "passed",
-      data: { expected: recorded, actual: this.result },
-    };
+  verifyResult(
+    recorded: ActionResult | undefined,
+    modes: Record<string, Mode> | undefined,
+  ): AssertResult {
+    return verifyAction(
+      this.getAssertablePoints(),
+      recorded,
+      this.result,
+      modes,
+    );
+  }
+
+  /**
+   * Compare `this.change()` against a recorded `StateChange` using one
+   * mode for the whole object, with the same retry/poll loop the engine
+   * has always done.
+   */
+  async verifyStateChange(
+    recorded: StateChange | undefined,
+    opts: VerifyStateOptions = {},
+  ): Promise<AssertResult> {
+    return verifyState(recorded, () => this.change(), opts);
   }
 
   setResult(

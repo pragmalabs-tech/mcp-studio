@@ -1,7 +1,11 @@
 import { reconstructAction, type Action } from "@/lib/action";
 import { recorder } from "@/lib/recorder/bus";
 import type { RecordedAction } from "@/lib/recorder/schema";
-import { verifyState, type AssertReport } from "@/lib/assertion";
+import {
+  resolveResultModes,
+  resolveStateMode,
+  type AssertReport,
+} from "@/lib/assertion";
 import type { SavedTest } from "@/lib/tests/storage";
 import { saveReplay, type ReplayedAction, type SavedReplay } from "./storage";
 
@@ -39,8 +43,10 @@ export function countReplayableActions(test: SavedTest): number {
 
 /**
  * Re-run every action in a saved test. Each step does two compares:
- *   - Action verify: live action.result vs recorded action.result.
- *   - State verify: live action.change() vs recorded stateChange.
+ *   - Action verify: live action.result vs recorded action.result, run
+ *     point-by-point with the modes resolved from `test.assertions`.
+ *   - State verify: live action.change() vs recorded stateChange, with a
+ *     single resolved mode for the whole `StateChange`.
  *
  * The recorder is suspended for the duration so replay-driven MCP calls
  * don't pollute the live timeline. `options.signal` aborts between steps
@@ -78,11 +84,20 @@ export async function runReplay(
       await action.execute();
       const liveChange = action.change();
 
+      const recordedId = source.action.id;
+      const modes = resolveResultModes(
+        test.assertions,
+        recordedId,
+        action.getAssertablePoints(),
+      );
+      const stateMode = resolveStateMode(test.assertions, recordedId);
+
       const report: AssertReport = {
-        action: action.verify(source.action.result),
-        state: await verifyState(source.stateChange, () => liveChange, {
+        action: action.verifyResult(source.action.result, modes),
+        state: await action.verifyStateChange(source.stateChange, {
           attempts: 3,
           delayMs: 50,
+          mode: stateMode,
         }),
       };
       if (

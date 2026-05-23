@@ -11,7 +11,7 @@ import { StatusBadge, StatusDot } from "@/components/ui/status-badge";
 import { JsonView } from "@/components/ui/json-view";
 import { cn } from "@/lib/utils";
 import type { Status } from "@/lib/status";
-import type { AssertResult, AssertReport } from "@/lib/assertion";
+import type { AssertResult, AssertReport, PointFailure } from "@/lib/assertion";
 import type { ReplayedAction, SavedReplay } from "@/lib/replays/storage";
 
 interface ReplayResultDialogProps {
@@ -169,7 +169,7 @@ function ReplayActionInspector({
         <div className="p-3 space-y-4 text-xs">
           <Section label="Assertions">
             <div className="space-y-2">
-              <AssertionRow label="Action result" result={assert.action} />
+              <ActionAssertionRow result={assert.action} />
               <AssertionRow label="State change" result={assert.state} />
             </div>
           </Section>
@@ -216,6 +216,71 @@ function ReplayActionInspector({
         </div>
       </ScrollArea>
     </>
+  );
+}
+
+/**
+ * Action-result row. When verifyAction fails, `data.failures` carries
+ * per-point detail — render one card per failing point with the diff
+ * scoped to that point's value, instead of dumping the whole
+ * expected/actual result tree.
+ */
+function ActionAssertionRow({ result }: { result: AssertResult }) {
+  const failures = result.data.failures as PointFailure[] | undefined;
+
+  if (result.status !== "failed" || !failures?.length) {
+    return <AssertionRow label="Action result" result={result} />;
+  }
+
+  return (
+    <div className="rounded border bg-background/40">
+      <div className="px-2.5 py-1.5 flex items-center gap-2 border-b">
+        <span className="font-medium text-[11px] uppercase tracking-wider text-muted-foreground">
+          Action result
+        </span>
+        <span className="flex-1" />
+        <span className="text-[11px] text-muted-foreground">
+          {failures.length} point{failures.length > 1 ? "s" : ""} failed
+        </span>
+        <StatusBadge status="failed" />
+      </div>
+      <div className="px-2.5 py-2 space-y-2">
+        {failures.map((f, i) => (
+          <PointFailureCard key={`${f.key}-${i}`} failure={f} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PointFailureCard({ failure }: { failure: PointFailure }) {
+  return (
+    <div className="rounded border border-destructive/30 bg-destructive/5 p-2 space-y-2">
+      <div className="flex items-center gap-2">
+        <code className="text-[11px] font-mono font-medium">{failure.key}</code>
+        <span className="text-[9px] uppercase tracking-wider bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
+          {failure.mode}
+        </span>
+        <span className="flex-1" />
+        <span className="text-[11px] text-destructive truncate">
+          {failure.reason}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+            Expected
+          </div>
+          <JsonView value={failure.expected} diffAgainst={failure.actual} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+            Actual
+          </div>
+          <JsonView value={failure.actual} diffAgainst={failure.expected} />
+        </div>
+      </div>
+    </div>
   );
 }
 

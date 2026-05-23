@@ -52,11 +52,10 @@ describe("ResourceReadAction", () => {
     });
   });
 
-  it("verify(): passes when success matches recorded", async () => {
-    mockedReadResource.mockResolvedValueOnce({});
-    const action = new ResourceReadAction("widget://x");
-    await action.execute();
-
-    expect(action.verify({ success: true, data: {} }).status).toBe("passed");
+  it("declares an assertable surface with success as a strict point", () => {
+    const success = ResourceReadAction.assertablePoints.find(
+      (p) => p.key === "success",
+    )!;
+    expect(success.defaultMode).toBe("exact");
   });
 });
