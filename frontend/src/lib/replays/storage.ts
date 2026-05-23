@@ -9,6 +9,13 @@ export type ReplayStatus = "passed" | "failed";
  *  verify report (action result + state change). */
 export interface ReplayedAction extends RecordedAction {
   assert: AssertReport;
+  /**
+   * The id of the *recorded* action this step replays. The live `action.id`
+   * is a fresh uuid created by `reconstructAction`, so the dialog needs this
+   * to key per-action assertion config and to find the recorded baseline.
+   * Optional for back-compat with replays saved before this field existed.
+   */
+  recordedActionId?: string;
 }
 
 export interface SavedReplay {

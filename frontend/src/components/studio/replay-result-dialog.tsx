@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,8 +11,26 @@ import { StatusBadge, StatusDot } from "@/components/ui/status-badge";
 import { JsonView } from "@/components/ui/json-view";
 import { cn } from "@/lib/utils";
 import type { Status } from "@/lib/status";
-import type { AssertResult, AssertReport, PointFailure } from "@/lib/assertion";
+import {
+  resolveResultModes,
+  resolveStateMode,
+  verifyAction,
+  compareByMode,
+  getByPath,
+  type AssertResult,
+  type AssertReport,
+  type Mode,
+  type TestAssertionConfig,
+} from "@/lib/assertion";
+import { assertablePointsForType } from "@/lib/action";
+import {
+  getTest,
+  updateTestAssertions,
+  type SavedTest,
+} from "@/lib/tests/storage";
 import type { ReplayedAction, SavedReplay } from "@/lib/replays/storage";
+import type { RecordedAction } from "@/lib/recorder/schema";
+import { AssertionPointRow } from "./assertion-point-row";
 
 interface ReplayResultDialogProps {
   open: boolean;
@@ -20,16 +38,46 @@ interface ReplayResultDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-/**
- * Overall step status drawn from its assert report. A step is "passed"
- * only if both the action and state assertions pass (skipped counts as
- * pass for back-compat with tests captured before the assertion layer).
- */
 function stepStatus(assert: AssertReport): Status {
   if (assert.action.status === "failed" || assert.state.status === "failed") {
     return "failed";
   }
   return "passed";
+}
+
+/**
+ * Re-verify a stored replay step against the current `test.assertions`.
+ * Returns the same `AssertReport` shape `runReplay` produces but using
+ * the user's latest mode choices instead of the values frozen at run
+ * time. Pure recomputation — no MCP calls.
+ *
+ * Falls back to the stored report when we can't resolve the recorded
+ * baseline (test missing, legacy replay without `recordedActionId`,
+ * unknown action type).
+ */
+function liveAssertFor(
+  test: SavedTest | null,
+  replayed: ReplayedAction,
+  index: number,
+): AssertReport {
+  if (!test) return replayed.assert;
+  const recorded = findRecordedBaseline(test, replayed, index);
+  if (!recorded) return replayed.assert;
+  const recordedId = replayed.recordedActionId ?? recorded.action.id;
+  const points = assertablePointsForType(recorded.action.type);
+  if (points.length === 0) return replayed.assert;
+  const modes = resolveResultModes(test.assertions, recordedId, points);
+  const action = verifyAction(
+    points,
+    recorded.action.result,
+    replayed.action.result,
+    modes,
+  );
+  const stateMode = resolveStateMode(test.assertions, recordedId);
+  const state: AssertResult = recorded.stateChange
+    ? compareByMode(stateMode, recorded.stateChange, replayed.stateChange)
+    : { status: "skipped", data: { reason: "no recorded state change" } };
+  return { action, state };
 }
 
 function statusOf(assert: AssertResult): Status {
@@ -51,18 +99,43 @@ export function ReplayResultDialog({
   onOpenChange,
 }: ReplayResultDialogProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
+  // The dialog owns its own copy of the test so mode changes re-render
+  // immediately. Writes go through `updateTestAssertions` to persist.
+  const [test, setTest] = useState<SavedTest | null>(null);
 
   useEffect(() => {
     if (open) setSelectedIndex(0);
   }, [open, result?.id]);
 
+  useEffect(() => {
+    if (result) setTest(getTest(result.testId) ?? null);
+    else setTest(null);
+  }, [result]);
+
   if (!result) return null;
 
-  const passedCount = result.actions.filter(
-    (a) => stepStatus(a.assert) === "passed",
+  // Live re-verify every step against the user's current `test.assertions`
+  // so the sidebar dots, "X / Y steps passed" header, and step status
+  // badges all reflect the latest config — not the modes frozen at the
+  // time the replay was captured.
+  const liveAsserts = result.actions.map((a, i) => liveAssertFor(test, a, i));
+  const liveOverallStatus: Status = liveAsserts.some(
+    (a) => stepStatus(a) === "failed",
+  )
+    ? "failed"
+    : "passed";
+  const passedCount = liveAsserts.filter(
+    (a) => stepStatus(a) === "passed",
   ).length;
   const total = result.actions.length;
   const selected = result.actions[selectedIndex];
+  const selectedLiveAssert = liveAsserts[selectedIndex];
+
+  const handleAssertionsChange = (cfg: TestAssertionConfig) => {
+    if (!test) return;
+    updateTestAssertions(test.id, cfg);
+    setTest({ ...test, assertions: cfg });
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -75,7 +148,7 @@ export function ReplayResultDialog({
         <DialogHeader className="px-4 pt-4">
           <DialogTitle className="flex items-center gap-2 pr-8">
             <span className="truncate">Replay · {result.testName}</span>
-            <StatusBadge status={result.status} />
+            <StatusBadge status={liveOverallStatus} />
           </DialogTitle>
           <DialogDescription>
             {passedCount} / {total} steps passed · {result.durationMs}ms
@@ -108,7 +181,7 @@ export function ReplayResultDialog({
                             : "hover:bg-accent/50",
                         )}
                       >
-                        <StatusDot status={stepStatus(replayed.assert)} />
+                        <StatusDot status={stepStatus(liveAsserts[idx])} />
                         <span className="font-mono text-muted-foreground shrink-0">
                           #{idx + 1}
                         </span>
@@ -128,6 +201,9 @@ export function ReplayResultDialog({
               <ReplayActionInspector
                 replayed={selected}
                 index={selectedIndex}
+                test={test}
+                liveAssert={selectedLiveAssert}
+                onAssertionsChange={handleAssertionsChange}
               />
             ) : (
               <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">
@@ -144,13 +220,28 @@ export function ReplayResultDialog({
 interface ReplayActionInspectorProps {
   replayed: ReplayedAction;
   index: number;
+  test: SavedTest | null;
+  liveAssert: AssertReport;
+  onAssertionsChange: (cfg: TestAssertionConfig) => void;
 }
 
 function ReplayActionInspector({
   replayed,
   index,
+  test,
+  liveAssert,
+  onAssertionsChange,
 }: ReplayActionInspectorProps) {
-  const { action, relMs, stateChange, assert } = replayed;
+  const { action, relMs, stateChange } = replayed;
+
+  // Find the recorded baseline. Prefer the explicit `recordedActionId` if
+  // present (replays saved after that field was added); fall back to
+  // positional lookup for legacy replays.
+  const recorded = useMemo(
+    () => findRecordedBaseline(test, replayed, index),
+    [test, replayed, index],
+  );
+  const recordedActionId = replayed.recordedActionId ?? recorded?.action.id;
 
   return (
     <>
@@ -162,15 +253,29 @@ function ReplayActionInspector({
           {formatActionName(action)}
         </span>
         <span className="flex-1" />
-        <StatusBadge status={stepStatus(assert)} />
+        <StatusBadge status={stepStatus(liveAssert)} />
       </div>
 
       <ScrollArea className="flex-1 min-h-0">
         <div className="p-3 space-y-4 text-xs">
           <Section label="Assertions">
             <div className="space-y-2">
-              <ActionAssertionRow result={assert.action} />
-              <AssertionRow label="State change" result={assert.state} />
+              <ActionAssertions
+                test={test}
+                recordedActionId={recordedActionId}
+                recordedResult={recorded?.action.result}
+                liveResult={action.result}
+                fallbackAssert={liveAssert.action}
+                onAssertionsChange={onAssertionsChange}
+              />
+              <StateAssertions
+                test={test}
+                recordedActionId={recordedActionId}
+                recordedState={recorded?.stateChange}
+                liveState={stateChange}
+                fallbackAssert={liveAssert.state}
+                onAssertionsChange={onAssertionsChange}
+              />
             </div>
           </Section>
 
@@ -220,17 +325,95 @@ function ReplayActionInspector({
 }
 
 /**
- * Action-result row. When verifyAction fails, `data.failures` carries
- * per-point detail — render one card per failing point with the diff
- * scoped to that point's value, instead of dumping the whole
- * expected/actual result tree.
+ * Resolve which `RecordedAction` in the test session this replay step came
+ * from. New replays carry `recordedActionId`; older ones fall back to the
+ * positional match against the test session's reconstructable actions.
  */
-function ActionAssertionRow({ result }: { result: AssertResult }) {
-  const failures = result.data.failures as PointFailure[] | undefined;
-
-  if (result.status !== "failed" || !failures?.length) {
-    return <AssertionRow label="Action result" result={result} />;
+function findRecordedBaseline(
+  test: SavedTest | null,
+  replayed: ReplayedAction,
+  index: number,
+): RecordedAction | undefined {
+  if (!test) return undefined;
+  if (replayed.recordedActionId) {
+    return test.session.actions.find(
+      (a) => a.action.id === replayed.recordedActionId,
+    );
   }
+  return test.session.actions[index];
+}
+
+interface ActionAssertionsProps {
+  test: SavedTest | null;
+  recordedActionId: string | undefined;
+  recordedResult:
+    | { success: boolean; data?: unknown; error?: { message: string } }
+    | undefined;
+  liveResult:
+    | { success: boolean; data?: unknown; error?: { message: string } }
+    | undefined;
+  fallbackAssert: AssertResult;
+  onAssertionsChange: (cfg: TestAssertionConfig) => void;
+}
+
+/**
+ * Renders one row per declared assertable point. Re-verifies the recorded
+ * baseline against the live result on every render using the current
+ * modes from `test.assertions`, so mode changes preview instantly without
+ * re-running the replay against the live MCP server.
+ */
+function ActionAssertions({
+  test,
+  recordedActionId,
+  recordedResult,
+  liveResult,
+  fallbackAssert,
+  onAssertionsChange,
+}: ActionAssertionsProps) {
+  // No test loaded (or recorded baseline missing) — render the stored
+  // assert report read-only.
+  if (!test || !recordedActionId) {
+    return <ReadonlyActionAssertion result={fallbackAssert} />;
+  }
+
+  const actionType = pickActionType(test, recordedActionId);
+  const points = actionType ? assertablePointsForType(actionType) : [];
+  if (points.length === 0) {
+    return <ReadonlyActionAssertion result={fallbackAssert} />;
+  }
+
+  const modes = resolveResultModes(test.assertions, recordedActionId, points);
+  const live = verifyAction(points, recordedResult, liveResult, modes);
+  const failureByKey = new Map(
+    (live.data.failures ?? []).map((f) => [f.key, f]),
+  );
+
+  const aggregateStatus: Status =
+    live.status === "failed"
+      ? "failed"
+      : live.status === "skipped"
+        ? "skipped"
+        : "passed";
+
+  const onModeChange = (pointKey: string, mode: Mode) => {
+    const cfg = test.assertions ?? {};
+    const per = cfg.perAction ?? {};
+    const entry = per[recordedActionId] ?? {};
+    const result = entry.result ?? {};
+    const next: TestAssertionConfig = {
+      ...cfg,
+      perAction: {
+        ...per,
+        [recordedActionId]: {
+          ...entry,
+          result: { ...result, [pointKey]: mode },
+        },
+      },
+    };
+    onAssertionsChange(next);
+  };
+
+  const failedCount = (live.data.failures ?? []).length;
 
   return (
     <div className="rounded border bg-background/40">
@@ -239,46 +422,124 @@ function ActionAssertionRow({ result }: { result: AssertResult }) {
           Action result
         </span>
         <span className="flex-1" />
-        <span className="text-[11px] text-muted-foreground">
-          {failures.length} point{failures.length > 1 ? "s" : ""} failed
-        </span>
-        <StatusBadge status="failed" />
+        {failedCount > 0 ? (
+          <span className="text-[11px] text-muted-foreground">
+            {failedCount} of {points.length} failed
+          </span>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">
+            {points.length} point{points.length > 1 ? "s" : ""} checked
+          </span>
+        )}
+        <StatusBadge status={aggregateStatus} />
       </div>
       <div className="px-2.5 py-2 space-y-2">
-        {failures.map((f, i) => (
-          <PointFailureCard key={`${f.key}-${i}`} failure={f} />
+        {points.map((p) => (
+          <AssertionPointRow
+            key={p.key}
+            point={p}
+            mode={modes[p.key]}
+            expected={getByPath(recordedResult, p.path)}
+            actual={getByPath(liveResult, p.path)}
+            failure={failureByKey.get(p.key)}
+            skipped={recordedResult === undefined}
+            onModeChange={(m) => onModeChange(p.key, m)}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function PointFailureCard({ failure }: { failure: PointFailure }) {
+function pickActionType(
+  test: SavedTest,
+  recordedActionId: string,
+): string | undefined {
+  return test.session.actions.find((a) => a.action.id === recordedActionId)
+    ?.action.type;
+}
+
+function ReadonlyActionAssertion({ result }: { result: AssertResult }) {
+  return <AssertionRow label="Action result" result={result} />;
+}
+
+interface StateAssertionsProps {
+  test: SavedTest | null;
+  recordedActionId: string | undefined;
+  recordedState: ReplayedAction["stateChange"];
+  liveState: ReplayedAction["stateChange"];
+  fallbackAssert: AssertResult;
+  onAssertionsChange: (cfg: TestAssertionConfig) => void;
+}
+
+/**
+ * State change has only one mode (whole-object compare). Renders the row
+ * with a mode dropdown that writes through to `perAction[id].state`.
+ */
+function StateAssertions({
+  test,
+  recordedActionId,
+  recordedState,
+  liveState,
+  fallbackAssert,
+  onAssertionsChange,
+}: StateAssertionsProps) {
+  if (!test || !recordedActionId) {
+    return <AssertionRow label="State change" result={fallbackAssert} />;
+  }
+
+  const stateMode = resolveStateMode(test.assertions, recordedActionId);
+  const stateSupportedModes: Mode[] = ["exact", "shape", "flaky", "ignore"];
+
+  const onModeChange = (m: Mode) => {
+    const cfg = test.assertions ?? {};
+    const per = cfg.perAction ?? {};
+    const entry = per[recordedActionId] ?? {};
+    const next: TestAssertionConfig = {
+      ...cfg,
+      perAction: { ...per, [recordedActionId]: { ...entry, state: m } },
+    };
+    onAssertionsChange(next);
+  };
+
+  // Use the fallback assert for status until we wire in live state re-verify
+  // (it'd require running the action again to get a fresh `change()`, which
+  // the dialog can't do). Show the dropdown either way so users can prep
+  // the mode for the next run.
   return (
-    <div className="rounded border border-destructive/30 bg-destructive/5 p-2 space-y-2">
-      <div className="flex items-center gap-2">
-        <code className="text-[11px] font-mono font-medium">{failure.key}</code>
-        <span className="text-[9px] uppercase tracking-wider bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
-          {failure.mode}
+    <div className="rounded border bg-background/40">
+      <div className="px-2.5 py-1.5 flex items-center gap-2 border-b">
+        <span className="font-medium text-[11px] uppercase tracking-wider text-muted-foreground">
+          State change
         </span>
         <span className="flex-1" />
-        <span className="text-[11px] text-destructive truncate">
-          {failure.reason}
-        </span>
+        <StatusBadge status={statusOf(fallbackAssert)} />
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-            Expected
-          </div>
-          <JsonView value={failure.expected} diffAgainst={failure.actual} />
-        </div>
-        <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-            Actual
-          </div>
-          <JsonView value={failure.actual} diffAgainst={failure.expected} />
-        </div>
+      <div className="px-2.5 py-2 space-y-2">
+        <AssertionPointRow
+          point={{
+            key: "state",
+            label: "State change",
+            path: "",
+            defaultMode: "exact",
+            supportedModes: stateSupportedModes,
+          }}
+          mode={stateMode}
+          expected={recordedState}
+          actual={liveState}
+          failure={
+            fallbackAssert.status === "failed"
+              ? {
+                  key: "state",
+                  mode: stateMode,
+                  expected: recordedState,
+                  actual: liveState,
+                  reason: fallbackAssert.data.reason ?? "mismatch",
+                }
+              : undefined
+          }
+          onModeChange={onModeChange}
+        />
       </div>
     </div>
   );
@@ -293,8 +554,6 @@ function AssertionRow({
 }) {
   const failed = result.status === "failed";
   const hasData = result.data.expected !== undefined;
-  // Diff colors only kick in when something actually differs. On pass we
-  // still show the two columns so the user can confirm what was compared.
   const diff = failed;
   return (
     <div className="rounded border bg-background/40">

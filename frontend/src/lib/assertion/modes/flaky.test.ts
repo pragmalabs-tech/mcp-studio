@@ -39,4 +39,12 @@ describe("modeFlaky", () => {
   it("epoch-ms numbers match each other across replays", () => {
     expect(modeFlaky(1716459600000, 1730000000000).status).toBe("passed");
   });
+
+  it("epoch-s numbers match each other across replays", () => {
+    expect(modeFlaky(1779544510, 1779548575).status).toBe("passed");
+  });
+
+  it("epoch-s vs epoch-ms is treated as different kinds → fails", () => {
+    expect(modeFlaky(1779544510, 1716459600000).status).toBe("failed");
+  });
 });

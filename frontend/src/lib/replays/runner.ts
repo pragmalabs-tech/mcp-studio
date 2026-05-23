@@ -112,6 +112,7 @@ export async function runReplay(
         action: action.toJSON() as RecordedAction["action"],
         stateChange: liveChange,
         assert: report,
+        recordedActionId: recordedId,
       });
       onProgress?.({ step: i, total, action, phase: "after" });
     }
