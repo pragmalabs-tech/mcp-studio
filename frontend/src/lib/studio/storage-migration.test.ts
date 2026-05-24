@@ -4,6 +4,7 @@ import {
   migrateLegacyKeys,
   migrateLocalStorageToBackend,
 } from "./storage-migration";
+import { SCHEMA_VERSION } from "../recorder/schema";
 
 const DONE_FLAG = "studio:storage_migration_v1";
 
@@ -126,7 +127,7 @@ describe("migrateLocalStorageToBackend", () => {
     vi.unstubAllGlobals();
   });
 
-  it("PUTs each saved test to the backend and removes the legacy key", async () => {
+  it("PUTs each saved test to the backend under its own id and removes the legacy key", async () => {
     localStorage.setItem(
       "mcp-studio-tests",
       JSON.stringify([
@@ -135,7 +136,7 @@ describe("migrateLocalStorageToBackend", () => {
           name: "Search Flow",
           createdAt: "2026-01-01T00:00:00Z",
           session: {
-            version: 3,
+            version: SCHEMA_VERSION,
             capturedAt: "",
             studioVersion: "",
             setup: { url: "" },
@@ -149,10 +150,10 @@ describe("migrateLocalStorageToBackend", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("/api/studio/tests/search-flow");
+    expect(url).toBe("/api/studio/tests/old-uuid");
     expect(init.method).toBe("PUT");
     expect(JSON.parse(init.body)).toMatchObject({
-      id: "search-flow",
+      id: "old-uuid",
       name: "Search Flow",
     });
     expect(localStorage.getItem("mcp-studio-tests")).toBeNull();
@@ -190,7 +191,7 @@ describe("migrateLocalStorageToBackend", () => {
           name: "Search Flow",
           createdAt: "",
           session: {
-            version: 3,
+            version: SCHEMA_VERSION,
             capturedAt: "",
             studioVersion: "",
             setup: { url: "" },

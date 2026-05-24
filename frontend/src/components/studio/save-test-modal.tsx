@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { recorder } from "@/lib/recorder/bus";
+import { recorder } from "@/lib/recorder/recorder";
 import { saveTest } from "@/lib/tests/storage";
 
 interface SaveTestModalProps {
@@ -41,8 +41,8 @@ export function SaveTestModal({
       // Get the session slice
       const session = recorder.serializeRange(startIndex, endIndex);
 
-      // Create test object — `id` will be replaced by the slug saveTest
-      // derives from `name`. The uuid placeholder keeps the type honest.
+      // Caller-assigned UUID is the persistent id. Two tests with the
+      // same display name save to distinct files because their ids differ.
       const test = {
         id: crypto.randomUUID(),
         name: name.trim(),
@@ -51,7 +51,6 @@ export function SaveTestModal({
         session,
       };
 
-      // Persist to the studio backend (~/.mcp-studio/tests/<slug>.json).
       await saveTest(test);
       console.log("Test saved:", test.name);
 

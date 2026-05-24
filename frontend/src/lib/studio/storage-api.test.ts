@@ -9,6 +9,7 @@ import {
   putReplay,
   deleteReplay,
 } from "./storage-api";
+import { SCHEMA_VERSION } from "../recorder/schema";
 
 type FetchMock = ReturnType<typeof vi.fn>;
 let fetchMock: FetchMock;
@@ -73,7 +74,7 @@ describe("storage-api — tests", () => {
       name: "Search Flow",
       createdAt: "2026-01-01T00:00:00Z",
       session: {
-        version: 3,
+        version: SCHEMA_VERSION,
         capturedAt: "",
         studioVersion: "",
         setup: { url: "" },

@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { useStudioStore, type RunState } from "@/lib/studio/store";
 import { useMcpHealth } from "@/lib/studio/health";
-import { recorder } from "@/lib/recorder/bus";
+import { recorder } from "@/lib/recorder/recorder";
 import { actionLabel, actionSummary } from "@/lib/core/action-format";
 import type { McpHealth } from "@/lib/studio/api";
 
@@ -56,8 +56,18 @@ export function TopHeader() {
     setRecordExplainerOpen(false);
   }
 
-  function handleStopRecording() {
+  async function handleStopRecording() {
     if (!slicingState) return;
+    // Finalize any open WidgetClickAction settle window so its events land
+    // in the recording before the slice end is measured. `recorder.record`
+    // runs in a microtask after close(), so we await `action.recorded` —
+    // otherwise markIndex() captures a buffer that doesn't yet include the
+    // last click.
+    const open = useStudioStore.getState().openClick;
+    if (open) {
+      open.close();
+      await open.recorded;
+    }
     setSaveRange({ start: slicingState.startIndex, end: recorder.markIndex() });
     setSaveTestOpen(true);
   }

@@ -22,6 +22,8 @@ export function actionLabel(a: AnyAction): string {
       return `Tool · ${j.data?.tool ?? "?"}`;
     case "RESOURCE_READ":
       return `Resource · ${j.data?.uri ?? "?"}`;
+    case "WIDGET_CLICK":
+      return `Click · ${j.data?.fallbackText ?? j.data?.candidates?.[0] ?? "?"}`;
     default:
       return j.type;
   }

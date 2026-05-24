@@ -67,7 +67,18 @@ import {
   type Profile,
   type ProfileAuth,
 } from "./profiles-api";
-import { recorder } from "../recorder/bus";
+import { recorder } from "../recorder/recorder";
+import { eventBus } from "@/lib/event";
+import type { WidgetClickAction } from "@/lib/action/widget_click";
+
+/** Close any open WidgetClickAction settle window. Called before starting
+ *  a new Action (so the next user action's events go to the new bucket)
+ *  and at recording-slice boundaries. Idempotent — null check inside. */
+function closeOpenClick(): void {
+  const open = useStudioStore.getState().openClick;
+  if (open) open.close();
+}
+
 function generateRandomString(length: number): string {
   const array = new Uint8Array(length);
   crypto.getRandomValues(array);
@@ -531,6 +542,12 @@ interface StudioState {
   _iframeRef: HTMLIFrameElement | null;
   _extAppsMock: ReturnType<typeof createClaudeMock> | null;
 
+  /** Currently-open WidgetClickAction awaiting close. Set inside the
+   *  action's execute(); cleared by close() or by the orchestrator
+   *  (next store.execute, slice-end, replay runner). Transient — never
+   *  persisted, never compared. */
+  openClick: WidgetClickAction | null;
+
   // Actions
   loadAll: () => Promise<void>;
   setAuthMethod: (method: AuthMethod) => void;
@@ -831,7 +848,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   detectedProtocols: null,
 
   // Refs
-  _iframeRef: null,
+  _iframeRef: null as HTMLIFrameElement | null,
+  openClick: null as WidgetClickAction | null,
   _extAppsMock: null,
 
   // ── Actions ──
@@ -1734,6 +1752,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
    * method entirely — `toolExecuting` is a UI concern, not an Action one.
    */
   execute: async () => {
+    // A new user action closes any open WidgetClickAction settle window so
+    // its events finalize and the new action's events start a fresh bucket.
+    closeOpenClick();
     if (get().toolExecuting) return; // hard block beyond the button-disable
     const { selected } = get();
     if (!selected || selected.type === "widget") return;
@@ -1747,7 +1768,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
               JSON.parse(get().editorValue),
             )
           : new ResourceReadAction(selected.resource.uri);
-      await action.execute();
+      eventBus.setActive(action);
+      try {
+        await action.execute();
+      } finally {
+        eventBus.setActive(null);
+      }
       recorder.record(action, { stateChange: action.change() });
     } finally {
       set({ toolExecuting: false });
@@ -1756,9 +1782,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 }));
 
 // Always-on recorder: start a session as soon as the store module loads.
-// Browser-only — guard for SSR / unit tests. Widget HTML is no longer
-// derived from the response bus; `loadAll` prefetches every ui:// resource
-// into `widgetCache`, which Actions and `loadWidget` read from.
+// Browser-only — guard for SSR / unit tests. `loadAll` prefetches every
+// ui:// resource into `widgetCache`, which Actions and `loadWidget` read
+// from.
 if (typeof window !== "undefined") {
   const s = useStudioStore.getState();
   recorder.start({

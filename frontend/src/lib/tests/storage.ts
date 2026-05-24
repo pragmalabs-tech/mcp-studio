@@ -1,4 +1,4 @@
-import { migrateSession, type Session } from "@/lib/recorder/schema";
+import type { Session } from "@/lib/recorder/schema";
 import type { TestAssertionConfig } from "@/lib/assertion";
 import {
   deleteTest as apiDeleteTest,
@@ -6,12 +6,12 @@ import {
   listTestSummaries,
   putTest,
 } from "@/lib/studio/storage-api";
-import { slugify } from "./format";
 
 export interface SavedTest {
-  /** Filename slug derived from `name` via `slugify`. Also the path
-   *  segment under `/api/studio/tests/{id}`. Stable across writes; renaming
-   *  the display name produces a new slug. */
+  /** Stable unique id (UUID) assigned at creation. Doubles as the backend
+   *  filename and the path segment under `/api/studio/tests/{id}`. Has no
+   *  relationship to the user-visible `name` — renaming the display name
+   *  does NOT change the id. Two tests can share a name. */
   id: string;
   name: string;
   description?: string;
@@ -20,7 +20,7 @@ export interface SavedTest {
   /**
    * Per-test assertion config. Optional — when absent every action falls
    * back to its `AssertablePoint.defaultMode` and state falls back to
-   * `"exact"`, preserving the pre-v2 replay behavior.
+   * `"exact"`.
    */
   assertions?: TestAssertionConfig;
 }
@@ -30,41 +30,30 @@ export interface SavedTest {
  * fetches each body in parallel, drops anything that 404s mid-flight.
  * Used by the catalog page where we need the session bodies for action
  * counts and replay-history hookup. For one-test access prefer the
- * single-fetch `getTest(slug)` to avoid hydrating the whole catalog.
+ * single-fetch `getTest(id)` to avoid hydrating the whole catalog.
  */
 export async function loadTests(): Promise<SavedTest[]> {
   const summaries = await listTestSummaries();
   const bodies = await Promise.all(summaries.map((s) => apiGetTest(s.name)));
-  return bodies
-    .filter((t): t is SavedTest => t !== null)
-    .map((t) => ({ ...t, session: migrateSession(t.session) }));
+  return bodies.filter((t): t is SavedTest => t !== null);
 }
 
-export async function getTest(slug: string): Promise<SavedTest | null> {
-  const test = await apiGetTest(slug);
-  if (!test) return null;
-  return { ...test, session: migrateSession(test.session) };
+export async function getTest(id: string): Promise<SavedTest | null> {
+  return await apiGetTest(id);
 }
 
 /**
- * Persist a SavedTest. The id is derived from `test.name` so the filename
- * matches what the user typed; renames produce a new slug (and orphan the
- * old file — explicit delete is left to the caller's "save under new
- * name" UX). Sessions are normalized to the current schema before PUT so
- * disk doesn't lag the in-memory shape. Returns the slug.
+ * Persist a SavedTest under its own id (caller assigns at creation). Two
+ * tests with the same name save to distinct files because their ids are
+ * different UUIDs. Returns the id.
  */
 export async function saveTest(test: SavedTest): Promise<string> {
-  const slug = slugify(test.name);
-  await putTest(slug, {
-    ...test,
-    id: slug,
-    session: migrateSession(test.session),
-  });
-  return slug;
+  await putTest(test.id, test);
+  return test.id;
 }
 
-export async function deleteTest(slug: string): Promise<void> {
-  await apiDeleteTest(slug);
+export async function deleteTest(id: string): Promise<void> {
+  await apiDeleteTest(id);
 }
 
 /**
@@ -73,10 +62,10 @@ export async function deleteTest(slug: string): Promise<void> {
  * backend file is the single source of truth.
  */
 export async function updateTestAssertions(
-  slug: string,
+  id: string,
   cfg: TestAssertionConfig,
 ): Promise<void> {
-  const existing = await apiGetTest(slug);
+  const existing = await apiGetTest(id);
   if (!existing) return;
-  await putTest(slug, { ...existing, assertions: cfg });
+  await putTest(id, { ...existing, assertions: cfg });
 }

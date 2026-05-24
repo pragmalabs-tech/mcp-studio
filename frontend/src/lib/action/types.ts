@@ -9,6 +9,7 @@ import {
   verifyState,
   type VerifyStateOptions,
 } from "@/lib/assertion/verify_state";
+import type { Event } from "@/lib/event/types";
 
 export interface ActionResult {
   success: boolean;
@@ -40,6 +41,13 @@ export abstract class Action<T = any> {
 
   /** Populated by `execute()` once the MCP call settles. */
   result?: ActionResult;
+
+  /** Side-effect observations emitted during this Action's window. Built
+   *  up by the event bus (see `lib/event/bus.ts`) while the Action is
+   *  active. Direct Actions populate this synchronously during execute();
+   *  open-window Actions accept events arriving asynchronously from
+   *  external sources (bridge, future server push). */
+  events: Event[] = [];
 
   /**
    * Static-declared assertable surface. Subclasses override with their
@@ -111,6 +119,9 @@ export abstract class Action<T = any> {
       timestamp: this.timestamp,
     };
     if (this.result) json.result = this.result;
+    if (this.events.length > 0) {
+      json.events = this.events.map((e) => e.toJSON());
+    }
     return json;
   }
 }

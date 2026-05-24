@@ -1,19 +1,13 @@
 import type { StateChange } from "@/lib/state/types";
 
 /**
- * Session schema version.
+ * Session schema version stamped on every recording at save time.
  *
- *   - v1: initial event-based recording (retired).
- *   - v2: Action+StateChange shape; tool response lived directly at
- *         `RecordedAction.action.result.data`.
- *   - v3: tool response is wrapped under `data.tool` and joined by
- *         widget outcome fields (`data.widget`, `data.widgetId`,
- *         `data.snapshot`). State gains a `widgets` slice for
- *         per-widget renderCount. See `migrateSession` for the v2→v3
- *         upgrade — older sessions get their `data` wrapped lazily on
- *         load so existing assertions keep working.
+ * Studio is pre-1.0 — recordings older than the current SCHEMA_VERSION
+ * are NOT migrated. If you bump this, expect existing test files on disk
+ * to need re-recording. Keep the bump deliberate.
  */
-export const SCHEMA_VERSION = 3 as const;
+export const SCHEMA_VERSION = 4 as const;
 
 /**
  * Setup metadata captured at record-time — purely informational. NOT
@@ -31,10 +25,13 @@ export interface SetupConfig {
  * A recorded Action plus its offset from the start of the recording.
  *
  *   - `action.result` — the response/error data, used by `action.verify`.
+ *   - `action.events` — side-effect observations during the action's
+ *     window (tools/call, widget/render, etc.). Reconstructed via
+ *     `reconstructEvent`.
  *   - `stateChange` — the counter delta, used by `verifyState`.
  *
- * Both are independent: result mismatches and counter mismatches surface
- * as separate assertions in the replay dialog.
+ * Result, events, and stateChange are independent: mismatches in each
+ * surface as separate assertions in the replay dialog.
  */
 export interface RecordedAction {
   relMs: number;
@@ -48,6 +45,17 @@ export interface RecordedAction {
       data?: unknown;
       error?: { message: string };
     };
+    events?: Array<{
+      id: string;
+      type: string;
+      data: any;
+      timestamp: number;
+      result?: {
+        success: boolean;
+        data?: unknown;
+        error?: { message: string };
+      };
+    }>;
   };
   stateChange?: StateChange;
 }
@@ -58,56 +66,4 @@ export interface Session {
   studioVersion: string;
   setup: SetupConfig;
   actions: RecordedAction[];
-}
-
-/**
- * Upgrade a saved session in place. Today only v2→v3 is handled: wrap
- * each TOOL_CALL action's `result.data` (raw tool response) under
- * `data.tool` and stub in the new widget fields. Older versions or
- * already-current sessions pass through untouched. Idempotent.
- */
-export function migrateSession(session: Session): Session {
-  // Sessions written prior to the version-bump are not literally typed
-  // as `typeof SCHEMA_VERSION`, but localStorage round-trips them as
-  // plain `number`. Read once and dispatch.
-  const version = (session as { version?: number }).version ?? 0;
-  if (version >= SCHEMA_VERSION) return session;
-
-  if (version === 2) {
-    return {
-      ...session,
-      version: SCHEMA_VERSION,
-      actions: session.actions.map((entry) => {
-        if (entry.action.type !== "TOOL_CALL") return entry;
-        const result = entry.action.result;
-        if (!result) return entry;
-        // Skip when an earlier load already wrapped this entry.
-        if (
-          result.data !== null &&
-          typeof result.data === "object" &&
-          "tool" in (result.data as object) &&
-          "widget" in (result.data as object)
-        ) {
-          return entry;
-        }
-        return {
-          ...entry,
-          action: {
-            ...entry.action,
-            result: {
-              ...result,
-              data: {
-                tool: result.data,
-                widget: null,
-                widgetId: null,
-                snapshot: null,
-              },
-            },
-          },
-        };
-      }),
-    };
-  }
-
-  return session;
 }

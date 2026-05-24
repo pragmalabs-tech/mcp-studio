@@ -425,7 +425,9 @@ function ActionDetail({ recordedAction, index }: ActionDetailProps) {
       ? `Tool · ${(action.data as any).tool}`
       : action.type === "RESOURCE_READ"
         ? `Resource · ${(action.data as any).uri}`
-        : action.type;
+        : action.type === "WIDGET_CLICK"
+          ? `Click · ${(action.data as any).fallbackText ?? (action.data as any).candidates?.[0] ?? "?"}`
+          : action.type;
 
   const time = `+${(relMs / 1000).toFixed(2)}s`;
 

@@ -6,10 +6,14 @@
  * with mcpr-cloud's own auth (cookie-based JWT).
  */
 
-import { mcpEventBus } from "@/lib/mcp/events";
+import {
+  eventBus,
+  ResourcesReadEvent,
+  ToolsCallEvent,
+  type Event,
+  type EventResult,
+} from "@/lib/event";
 import { reportHealth } from "./health";
-
-let nextResponseId = 1;
 
 // ── Proxy URL ──
 
@@ -589,45 +593,45 @@ async function rawMcpCall(
 }
 
 /**
- * Run a raw MCP call and fan the response out to `mcpEventBus` so live
- * subscribers (widget HTML derivation in the studio store) can react.
- * Recording is the Action's job — `callTool` / `readResource` are pure
- * I/O helpers that Action subclasses invoke from their `execute()`.
+ * Run a raw MCP call and emit an Event for the active Action (via the bus
+ * in `lib/event/bus.ts`). Recording is the Action's job — `callTool` /
+ * `readResource` are pure I/O helpers that Action subclasses invoke from
+ * their `execute()`. The bus drops the emission when no Action is active.
  */
+function eventForCall(
+  method: string,
+  params: Record<string, unknown>,
+  result: EventResult,
+): Event | null {
+  if (method === "tools/call" && typeof (params as any).name === "string") {
+    return new ToolsCallEvent(
+      (params as any).name,
+      (params as any).arguments ?? {},
+      result,
+    );
+  }
+  if (method === "resources/read" && typeof (params as any).uri === "string") {
+    return new ResourcesReadEvent((params as any).uri, result);
+  }
+  return null;
+}
+
 export async function mcpCall(
   method: string,
   params: Record<string, unknown> = {},
 ): Promise<unknown> {
-  const requestId = nextResponseId++;
-  let tool: string | undefined;
-  let resourceUri: string | undefined;
-  if (method === "tools/call" && typeof (params as any).name === "string") {
-    tool = (params as any).name;
-  } else if (
-    method === "resources/read" &&
-    typeof (params as any).uri === "string"
-  ) {
-    resourceUri = (params as any).uri;
-  }
-
   try {
     const result = await rawMcpCall(method, params);
-    mcpEventBus.emitResponse({
-      requestId,
-      method,
-      tool,
-      resourceUri,
-      result,
-    });
+    const ev = eventForCall(method, params, { success: true, data: result });
+    if (ev) eventBus.emit(ev);
     return result;
   } catch (err) {
-    mcpEventBus.emitResponse({
-      requestId,
-      method,
-      tool,
-      resourceUri,
-      error: { message: err instanceof Error ? err.message : String(err) },
+    const message = err instanceof Error ? err.message : String(err);
+    const ev = eventForCall(method, params, {
+      success: false,
+      error: { message },
     });
+    if (ev) eventBus.emit(ev);
     throw err;
   }
 }

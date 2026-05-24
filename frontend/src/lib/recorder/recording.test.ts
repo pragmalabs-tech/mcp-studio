@@ -26,7 +26,7 @@ vi.mock("@/lib/studio/store", () => {
   };
 });
 
-import { recorder } from "./bus";
+import { recorder } from "./recorder";
 import { ToolCallAction } from "@/lib/action/tool_call";
 import { ResourceReadAction } from "@/lib/action/resource_read";
 import { SCHEMA_VERSION } from "./schema";

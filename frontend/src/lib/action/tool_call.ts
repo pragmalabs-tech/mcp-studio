@@ -231,7 +231,7 @@ export class ToolCallAction extends Action<{
       },
     };
     if (widget) {
-      change.widgets = { [widget]: { renderCount: 1 } };
+      change.widgets = { [widget]: { renderCount: 1, clickCount: 0 } };
     }
     return change;
   }

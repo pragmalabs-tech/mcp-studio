@@ -134,7 +134,7 @@ describe("ToolCallAction", () => {
     expect(action.change()).toEqual({
       tools: { get_weather: { callCount: 1 } },
       network: { requestCount: 1, responseCount: 1, errorCount: 0 },
-      widgets: { [widgetUri]: { renderCount: 1 } },
+      widgets: { [widgetUri]: { renderCount: 1, clickCount: 0 } },
     });
   });
 
@@ -167,7 +167,7 @@ describe("ToolCallAction", () => {
       snapshot: null,
     });
     expect(action.change().widgets).toEqual({
-      [widgetUri]: { renderCount: 1 },
+      [widgetUri]: { renderCount: 1, clickCount: 0 },
     });
   });
 

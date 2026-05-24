@@ -34,6 +34,13 @@ class Recorder {
     return this._mode;
   }
 
+  /** True when we're recording AND not suspended (i.e., replay isn't
+   *  driving). Use this to gate side-effect capture (e.g. iframe click
+   *  listeners) so replayed events don't re-record. */
+  isCapturing(): boolean {
+    return this._mode === "recording" && !this._suspended;
+  }
+
   /** Returns a snapshot copy of the current buffer. */
   snapshot(): RecordedAction[] {
     return this.buffer.slice();

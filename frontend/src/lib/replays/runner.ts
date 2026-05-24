@@ -1,11 +1,13 @@
 import { reconstructAction, type Action } from "@/lib/action";
-import { recorder } from "@/lib/recorder/bus";
+import { WidgetClickAction } from "@/lib/action/widget_click";
+import { recorder } from "@/lib/recorder/recorder";
 import type { RecordedAction } from "@/lib/recorder/schema";
 import {
   resolveResultModes,
   resolveStateMode,
   type AssertReport,
 } from "@/lib/assertion";
+import { eventBus } from "@/lib/event";
 import type { SavedTest } from "@/lib/tests/storage";
 import { saveReplay, type ReplayedAction, type SavedReplay } from "./storage";
 
@@ -13,6 +15,18 @@ function nowMs(): number {
   return typeof performance !== "undefined" && performance.now
     ? performance.now()
     : Date.now();
+}
+
+/** Poll `pred` until it returns true, or `capMs` elapses. Step every 25ms. */
+async function waitUntil(
+  pred: () => boolean,
+  capMs: number,
+  stepMs = 25,
+): Promise<void> {
+  const deadline = Date.now() + capMs;
+  while (!pred() && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, stepMs));
+  }
 }
 
 export interface ReplayProgress {
@@ -81,7 +95,27 @@ export async function runReplay(
       const stepStart = nowMs();
       onProgress?.({ step: i, total, action, phase: "before" });
 
-      await action.execute();
+      eventBus.setActive(action);
+      try {
+        if (action instanceof WidgetClickAction) {
+          // Open-window action: drive close via the recorded event count
+          // (live events flow in asynchronously via the bus during the
+          // settle window).
+          const expectedEvents =
+            (source.action as { events?: unknown[] }).events?.length ?? 0;
+          const settled = action.execute();
+          await waitUntil(() => action.events.length >= expectedEvents, 5000);
+          await new Promise((r) => setTimeout(r, 150)); // DOM rerender grace
+          action.close();
+          await settled;
+        } else {
+          // Direct action: execute resolves when its own I/O is done; events
+          // accumulate synchronously via the bus during that window.
+          await action.execute();
+        }
+      } finally {
+        eventBus.setActive(null);
+      }
       const liveChange = action.change();
 
       const recordedId = source.action.id;

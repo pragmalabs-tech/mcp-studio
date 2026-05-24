@@ -7,6 +7,10 @@ import { extractCspDomains } from "@/lib/core/csp/profiles";
 import { analyze } from "@/lib/core/csp/analyze";
 import { stripTunnelUrls } from "@/lib/core/widget/inject";
 import type { CspFinding } from "@/lib/core/csp/types";
+import { eventBus, WidgetRenderEvent } from "@/lib/event";
+import { WidgetClickAction } from "@/lib/action/widget_click";
+import { captureSelector } from "@/lib/action/capture-selector";
+import { recorder } from "@/lib/recorder/recorder";
 import { CopyButton } from "@/components/ui/copy-button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -166,6 +170,18 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
     const timer = setTimeout(() => {
       const snap = doc.documentElement.outerHTML;
       useStudioStore.getState().setSnapshot(targetId, snap);
+      // Emit widget/render for the currently-active Action. URI source:
+      // prefer the resource URI baked into the mock _meta; fall back to
+      // the widgetId UUID so the event always carries a stable identifier.
+      const meta = entry.mock?._meta as Record<string, unknown> | undefined;
+      const ui = meta?.ui as Record<string, unknown> | undefined;
+      const uri =
+        (typeof ui?.resourceUri === "string" && ui.resourceUri) ||
+        (typeof ui?.uri === "string" && ui.uri) ||
+        (typeof meta?.["openai/outputTemplate"] === "string" &&
+          (meta["openai/outputTemplate"] as string)) ||
+        targetId;
+      eventBus.emit(new WidgetRenderEvent(targetId, uri, { success: true }));
     }, entry.waitMs);
 
     return () => {
@@ -181,6 +197,56 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
     addPendingMessage,
     addCspViolation,
   ]);
+
+  // Click capture — own effect, depends only on `targetId`. Kept separate
+  // from the mount effect because the mount effect's deps (`entry`) mutate
+  // ~150ms after mount (when setSnapshot fires), which would tear down the
+  // click listener and the early-return guard prevents re-attaching it.
+  // This effect's listener lives for the full time the widget is displayed.
+  useEffect(() => {
+    if (!targetId) return;
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    if (!iframe || !doc) return;
+
+    const onClick = (e: Event) => {
+      if (!recorder.isCapturing()) return;
+      const target = e.target as Element | null;
+      if (!target) return;
+      const liveDoc = iframe.contentDocument ?? doc;
+      const candidates = captureSelector(target, liveDoc);
+      if (candidates.length === 0) return;
+      const fallbackText =
+        (target.textContent || "").trim().slice(0, 40) || undefined;
+
+      const prev = useStudioStore.getState().openClick;
+      if (prev) prev.close();
+
+      const action = new WidgetClickAction(targetId, candidates, fallbackText);
+      eventBus.setActive(action);
+
+      void action
+        .recordFromUserClick(liveDoc, {
+          matchedSelector: candidates[0],
+          matchedIndex: 0,
+        })
+        .then(() => {
+          if (eventBus.current() === action) eventBus.setActive(null);
+          recorder.record(action, { stateChange: action.change() });
+          action.markRecorded();
+        });
+    };
+
+    doc.addEventListener("click", onClick, { capture: true });
+
+    return () => {
+      doc.removeEventListener("click", onClick, { capture: true });
+      // Close any in-flight click when this widget is being swapped out so
+      // its events don't get orphaned.
+      const open = useStudioStore.getState().openClick;
+      if (open) open.close();
+    };
+  }, [targetId]);
 
   const viewportSize = getViewportSize();
   const actions = useStudioStore((s) => s.actions);

@@ -13,7 +13,6 @@
 import { putReplay, putTest } from "@/lib/studio/storage-api";
 import type { SavedTest } from "@/lib/tests/storage";
 import type { SavedReplay } from "@/lib/replays/storage";
-import { slugify } from "@/lib/tests/format";
 
 const DONE_FLAG = "studio:storage_migration_v1";
 
@@ -84,8 +83,8 @@ async function migrateTestsFromLocalStorage(): Promise<void> {
   let anyFailed = false;
   for (const test of parsed) {
     try {
-      const slug = slugify(test.name);
-      await putTest(slug, { ...test, id: slug });
+      const id = test.id || crypto.randomUUID();
+      await putTest(id, { ...test, id });
     } catch (e) {
       console.warn("migrateLocalStorage: test failed", test.id ?? test.name, e);
       anyFailed = true;
