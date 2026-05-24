@@ -24,6 +24,7 @@ import {
   deleteReplay,
   type SavedReplay,
 } from "@/lib/replays/storage";
+import { liveReplayStatus } from "@/lib/replays/live-status";
 import { ReplayResultDialog } from "@/components/studio/replay-result-dialog";
 import { JsonView } from "@/components/ui/json-view";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -310,6 +311,7 @@ function TestCard({
                 {history.map((replay) => (
                   <ReplayHistoryRow
                     key={replay.id}
+                    test={test}
                     replay={replay}
                     onOpen={() => onOpenReplay(replay)}
                     onDelete={async () => {
@@ -358,31 +360,34 @@ function Section({
 }
 
 function ReplayHistoryRow({
+  test,
   replay,
   onOpen,
   onDelete,
 }: {
+  test: SavedTest;
   replay: SavedReplay;
   onOpen: () => void;
   onDelete: () => void;
 }) {
   const when = new Date(replay.createdAt).toLocaleString();
-  const passed = replay.actions.filter(
-    (a) =>
-      a.assert.action.status !== "failed" && a.assert.state.status !== "failed",
-  ).length;
+  // Re-derive status against the test's current assertion modes. The
+  // stored `replay.status` and per-step `assert` reports are frozen at
+  // run time; if the user later marks a previously-failing point as
+  // `flaky` / `ignore` in the dialog, this row should reflect that.
+  const { status, passed, total } = liveReplayStatus(test, replay);
   return (
     <div className="rounded bg-background/60 overflow-hidden flex items-center gap-2 hover:bg-accent/40 transition-colors">
       <button
         onClick={onOpen}
         className="flex-1 min-w-0 px-2 py-1.5 text-left flex items-center gap-2"
       >
-        <StatusBadge status={replay.status} hideIcon className="shrink-0" />
+        <StatusBadge status={status} hideIcon className="shrink-0" />
         <span className="text-[11px] text-muted-foreground truncate flex-1">
           {when}
         </span>
         <span className="text-[11px] font-mono text-muted-foreground shrink-0">
-          {passed}/{replay.actions.length} · {replay.durationMs}ms
+          {passed}/{total} · {replay.durationMs}ms
         </span>
       </button>
       <Button

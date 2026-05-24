@@ -1,27 +1,65 @@
 import { useEffect, useRef, useState } from "react";
 import { useStudioStore } from "@/lib/studio/store";
 import { renderHtml } from "@/lib/core/widget/render-html";
-import type { MockData } from "@/lib/studio/mock-openai";
 import { createClaudeMock } from "@/lib/studio/mock-claude";
 import { callTool } from "@/lib/studio/api";
+import { extractCspDomains } from "@/lib/core/csp/profiles";
+import { analyze } from "@/lib/core/csp/analyze";
+import { stripTunnelUrls } from "@/lib/core/widget/inject";
+import type { CspFinding } from "@/lib/core/csp/types";
 import { CopyButton } from "@/components/ui/copy-button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 type ViewTab = "preview" | "mock" | "html";
 
-export function WidgetPreview() {
+/** Convert a static-analysis finding into the panel-shaped violation.
+ *  Duplicates the shape from store.toStaticViolation (kept local since
+ *  the conversion is shallow). */
+function findingToViolation(finding: CspFinding, sourceFile: string) {
+  return {
+    id: `static_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    time: new Date().toTimeString().split(" ")[0],
+    directive: finding.directive,
+    blockedUri: finding.blocked,
+    sourceFile,
+    lineNumber: finding.line || 0,
+    columnNumber: 0,
+    source: "static" as const,
+    fix: finding.fix,
+    severity: finding.severity,
+    platforms: finding.platforms,
+    snippet: finding.snippet,
+  };
+}
+
+/**
+ * Renders the widget pointed at by `props.widgetId` (override) or
+ * `store.activeWidgetId`. Mount effect writes HTML into the iframe, runs
+ * CSP analysis, wires the ext-apps mock, and after `entry.waitMs`
+ * captures `outerHTML` back into the store via `setSnapshot` — which
+ * resolves the promise the originating Action is awaiting.
+ *
+ * Entries that already carry a `snapshot` short-circuit the mount cycle:
+ * the comparison dialog can mount a second `<WidgetPreview>` pointing at
+ * a recorded entry and see the captured DOM without a fresh wait.
+ */
+export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
   const [tab, setTab] = useState<ViewTab>("preview");
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const widgetRawHtml = useStudioStore((s) => s.widgetRawHtml);
-  const currentMock = useStudioStore((s) => s.currentMock);
+  const activeWidgetId = useStudioStore((s) => s.activeWidgetId);
+  const targetId = widgetId ?? activeWidgetId;
+  const entry = useStudioStore((s) =>
+    targetId ? (s.widgets[targetId] ?? null) : null,
+  );
   const platform = useStudioStore((s) => s.platform);
   const strictMode = useStudioStore((s) => s.strictMode);
   const addConsoleEntry = useStudioStore((s) => s.addConsoleEntry);
   const logAction = useStudioStore((s) => s.logAction);
   const addPendingMessage = useStudioStore((s) => s.addPendingMessage);
   const getViewportSize = useStudioStore((s) => s.getViewportSize);
+  const addCspViolation = useStudioStore((s) => s.addCspViolation);
 
-  // Store iframe ref in global store so other parts can access it
+  // Publish iframe ref so other store consumers (mock-claude.ts) can reach it.
   useEffect(() => {
     useStudioStore.setState({ _iframeRef: iframeRef.current });
   }, []);
@@ -79,68 +117,72 @@ export function WidgetPreview() {
     return () => window.removeEventListener("message", handleMessage);
   }, [addConsoleEntry, logAction]);
 
-  // Render widget when HTML or mock changes
+  // Mount + snapshot effect — fires when the target entry changes.
   useEffect(() => {
-    if (!widgetRawHtml || !currentMock || !iframeRef.current) return;
+    if (!targetId || !entry) return;
+    if (entry.snapshot !== null) return; // already captured — skip remount
+    const iframe = iframeRef.current;
+    if (!iframe?.contentDocument) return;
 
-    const mock: MockData = {
-      toolInput: currentMock.toolInput || {},
-      toolOutput: currentMock.toolOutput || {},
-      _meta: currentMock._meta || {},
-      widgetState: currentMock.widgetState || null,
-      theme: currentMock.theme,
-      locale: currentMock.locale,
-      displayMode: currentMock.displayMode,
-    };
-
-    const { html } = renderHtml({
-      html: widgetRawHtml,
-      mock,
+    const { html: finalHtml } = renderHtml({
+      html: entry.html,
+      mock: entry.mock,
       platform,
       strict: strictMode,
     });
 
-    const iframe = iframeRef.current;
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (!doc) return;
-
+    const doc = iframe.contentDocument;
     doc.open();
-    doc.write(html);
+    doc.write(finalHtml);
     doc.close();
 
-    // Clean up previous mock
-    const prevMock = useStudioStore.getState()._extAppsMock;
-    if (prevMock) {
-      prevMock.destroy();
-      useStudioStore.setState({ _extAppsMock: null });
+    // CSP static analysis (moved from store.renderWidget).
+    const cspDomains = extractCspDomains(
+      (entry.mock._meta || {}) as Record<string, unknown>,
+    );
+    const { findings } = analyze(stripTunnelUrls(entry.html), cspDomains);
+    for (const finding of findings) {
+      addCspViolation(findingToViolation(finding, targetId));
     }
 
-    // Set up ext-apps mock for Claude platform or OpenAI ext-apps mode.
-    // `onToolCall` forwards `ui/call-server-tool` to the real MCP server so
-    // widgets can invoke tools and receive responses (matches ChatGPT /
-    // Claude behaviour). `onMessage` surfaces `ui/message` payloads as
-    // pending messages so the user can see what the widget sent.
-    if (platform === "claude" && iframe) {
-      const extAppsMock = createClaudeMock(
+    // ext-apps mock — owns the post-message JSON-RPC dance with the widget.
+    const prev = useStudioStore.getState()._extAppsMock;
+    if (prev) {
+      prev.destroy();
+      useStudioStore.setState({ _extAppsMock: null });
+    }
+    let extAppsMock: ReturnType<typeof createClaudeMock> | null = null;
+    if (platform === "claude") {
+      extAppsMock = createClaudeMock(
         iframe,
-        mock,
+        entry.mock,
         (method, args) => logAction(method, args),
         (name, args) => callTool(name, args),
         (content) => addPendingMessage("claude", content),
       );
       useStudioStore.setState({ _extAppsMock: extAppsMock });
     }
+
+    const timer = setTimeout(() => {
+      const snap = doc.documentElement.outerHTML;
+      useStudioStore.getState().setSnapshot(targetId, snap);
+    }, entry.waitMs);
+
+    return () => {
+      clearTimeout(timer);
+      extAppsMock?.destroy();
+    };
   }, [
-    widgetRawHtml,
-    currentMock,
+    targetId,
+    entry,
     platform,
     strictMode,
     logAction,
     addPendingMessage,
+    addCspViolation,
   ]);
 
   const viewportSize = getViewportSize();
-  const widgetSourceHtml = useStudioStore((s) => s.widgetSourceHtml);
   const actions = useStudioStore((s) => s.actions);
 
   // Get the last tool call result for display when no widget
@@ -150,7 +192,6 @@ export function WidgetPreview() {
     const last = toolCalls[toolCalls.length - 1];
     try {
       const parsed = JSON.parse(last.args);
-      // Try to extract structured content or text content
       if (parsed.structuredContent) {
         return JSON.stringify(parsed.structuredContent, null, 2);
       }
@@ -165,30 +206,30 @@ export function WidgetPreview() {
           return parsed.result.content[0].text;
         }
       }
-      // Fallback to full result
       return JSON.stringify(parsed.result || parsed, null, 2);
     } catch {
       return last.args;
     }
   })();
 
-  const mockJson = currentMock
+  const mockJson = entry
     ? JSON.stringify(
         {
-          toolInput: currentMock.toolInput,
-          toolOutput: currentMock.toolOutput,
-          _meta: currentMock._meta,
-          widgetState: currentMock.widgetState,
-          theme: currentMock.theme,
-          locale: currentMock.locale,
-          displayMode: currentMock.displayMode,
+          toolInput: entry.mock.toolInput,
+          toolOutput: entry.mock.toolOutput,
+          _meta: entry.mock._meta,
+          widgetState: entry.mock.widgetState,
+          theme: entry.mock.theme,
+          locale: entry.mock.locale,
+          displayMode: entry.mock.displayMode,
         },
         null,
         2,
       )
     : "";
 
-  const htmlSource = widgetSourceHtml || widgetRawHtml || "";
+  const htmlSource = entry ? stripTunnelUrls(entry.html) : "";
+  const hasWidget = entry !== null;
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -209,20 +250,19 @@ export function WidgetPreview() {
           </TabButton>
         </div>
         {tab === "mock" &&
-          (widgetRawHtml ? (
+          (hasWidget ? (
             <CopyButton value={mockJson} />
           ) : lastToolResult ? (
             <CopyButton value={lastToolResult} />
           ) : null)}
-        {tab === "html" && widgetRawHtml && <CopyButton value={htmlSource} />}
-        {tab === "preview" && !widgetRawHtml && lastToolResult && (
+        {tab === "html" && hasWidget && <CopyButton value={htmlSource} />}
+        {tab === "preview" && !hasWidget && lastToolResult && (
           <CopyButton value={lastToolResult} />
         )}
       </div>
 
       {/* Content area */}
-      {!widgetRawHtml ? (
-        // No widget loaded - show tool result or empty state based on tab
+      {!hasWidget ? (
         tab === "preview" ? (
           lastToolResult ? (
             <ScrollArea className="flex-1 min-h-0">
@@ -258,7 +298,6 @@ export function WidgetPreview() {
             </div>
           )
         ) : (
-          // HTML Source tab - empty when no widget
           <div className="flex-1 flex items-center justify-center bg-muted/30 text-muted-foreground text-sm">
             No HTML source (not a widget)
           </div>

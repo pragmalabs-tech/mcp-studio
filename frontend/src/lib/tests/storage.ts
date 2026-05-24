@@ -1,4 +1,4 @@
-import type { Session } from "@/lib/recorder/schema";
+import { migrateSession, type Session } from "@/lib/recorder/schema";
 import type { TestAssertionConfig } from "@/lib/assertion";
 
 const TESTS_STORAGE_KEY = "mcp-studio-tests";
@@ -28,7 +28,11 @@ export function loadTests(): SavedTest[] {
   if (!stored) return [];
 
   try {
-    return JSON.parse(stored);
+    const parsed = JSON.parse(stored) as SavedTest[];
+    // Lazy upgrade — sessions captured under an older schema are
+    // wrapped into the current shape so downstream code (runner,
+    // dialogs, assertion editor) doesn't need to branch on version.
+    return parsed.map((t) => ({ ...t, session: migrateSession(t.session) }));
   } catch {
     return [];
   }

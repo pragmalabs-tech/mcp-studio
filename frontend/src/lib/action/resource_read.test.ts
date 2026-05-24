@@ -1,11 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ResourceReadAction } from "./resource_read";
 
 vi.mock("@/lib/studio/api", () => ({
   callTool: vi.fn(),
   readResource: vi.fn(),
 }));
 
+vi.mock("@/lib/studio/store", () => {
+  const state: Record<string, unknown> = {
+    logAction: vi.fn(),
+    lastResult: null,
+    jsonOutput: null,
+  };
+  return {
+    useStudioStore: {
+      getState: () => state,
+      setState: (patch: object | ((s: object) => object)) => {
+        const next = typeof patch === "function" ? patch(state) : patch;
+        Object.assign(state, next);
+      },
+    },
+  };
+});
+
+import { ResourceReadAction } from "./resource_read";
 import { readResource } from "@/lib/studio/api";
 
 const mockedReadResource = vi.mocked(readResource);

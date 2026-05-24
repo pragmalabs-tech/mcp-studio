@@ -26,28 +26,15 @@ import {
   type McpResourceInfo,
 } from "./api";
 import { DEFAULT_MOCK, type MockData } from "./mock-openai";
-import { extractWidgetUri } from "./tool-category";
-import { validateToolResult, type ResultIssue } from "./validate-tool-result";
+import { type ResultIssue } from "./validate-tool-result";
 import { ToolCallAction, ResourceReadAction, type Action } from "@/lib/action";
+import { resolveWidgetUri as resolveWidgetUriHelper } from "@/lib/action/widget-helpers";
 import { createClaudeMock } from "./mock-claude";
-
-/** Payload shape consumed by `applyWidgetMock`. The studio's only widget
- *  mock surface — kept inline here so we don't reintroduce a stub types module. */
-export interface WidgetMock {
-  toolInput: unknown;
-  toolOutput: unknown;
-  meta: Record<string, unknown>;
-  widgetState: unknown | null;
-}
-import { extractCspDomains } from "@/lib/core/csp/profiles";
-import { analyze } from "@/lib/core/csp/analyze";
 import type {
-  CspFinding,
   Severity,
   Snippet,
   ViolationPlatform,
 } from "@/lib/core/csp/types";
-import { stripTunnelUrls } from "@/lib/core/widget/inject";
 import type {
   OAuthDebugEvent,
   OAuthServerMetadata,
@@ -87,6 +74,11 @@ function generateRandomString(length: number): string {
     .join("")
     .slice(0, length);
 }
+
+/** Resolvers parked by `insertWidget` and fulfilled by `setSnapshot`.
+ *  Lives in module scope so it's wiring, not React state — and so it
+ *  survives store recreations in tests without leaking into snapshots. */
+const _pendingSnapshots = new Map<string, (snap: string | null) => void>();
 
 // ── Types ──
 
@@ -155,6 +147,21 @@ export interface PendingMessage {
   content: unknown;
 }
 
+/**
+ * One active widget tracked by the store. The Action that produced it
+ * generates the id and calls `insertWidget(id, entry)`. `<WidgetPreview>`
+ * watches `activeWidgetId` (or the override prop), mounts the HTML, waits
+ * `waitMs`, and calls `setSnapshot(id, ...)` — which resolves the promise
+ * the Action is awaiting. The entry then carries its snapshot for any
+ * later viewers (comparison dialog etc.).
+ */
+export interface WidgetEntry {
+  html: string;
+  mock: MockData;
+  waitMs: number;
+  snapshot: string | null;
+}
+
 export type AuthMethod = "oauth" | "bearer" | "custom";
 
 export type OAuthStatus =
@@ -209,32 +216,6 @@ export interface CspViolation {
 }
 
 // ── Helpers ──
-
-/**
- * Convert a static-analysis `CspFinding` into the panel-shaped
- * `CspViolation`, stamping in the bookkeeping fields the finding doesn't
- * carry. Runtime sandbox violations build their own `CspViolation`
- * directly (different input shape, no finding to convert from).
- */
-function toStaticViolation(
-  finding: CspFinding,
-  opts: { sourceFile: string },
-): CspViolation {
-  return {
-    id: `static_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    time: new Date().toTimeString().split(" ")[0],
-    directive: finding.directive,
-    blockedUri: finding.blocked,
-    sourceFile: opts.sourceFile,
-    lineNumber: finding.line || 0,
-    columnNumber: 0,
-    source: "static",
-    fix: finding.fix,
-    severity: finding.severity,
-    platforms: finding.platforms,
-    snippet: finding.snippet,
-  };
-}
 
 function defaultEditorValue() {
   return JSON.stringify(
@@ -513,7 +494,7 @@ interface StudioState {
   viewportCustom: ViewportSize;
 
   // Execution
-  executing: boolean;
+  toolExecuting: boolean;
   jsonOutput: string | null;
   lastResult: unknown | null;
   /** Spec-compliance issues from the latest tool/resource response.
@@ -529,23 +510,18 @@ interface StudioState {
   strictMode: boolean;
   cspViolations: CspViolation[];
 
-  // Raw widget HTML source (with tunnel URLs stripped to relative paths) -
-  // matches what the static analyzer scanned, used by the HTML preview tab.
-  widgetSourceHtml: string | null;
-
-  // Raw widget HTML with tunnel URLs intact - fed to WidgetFrame, which
-  // rewrites tunnels to the local proxy at render time so sandboxed iframe
-  // asset requests resolve.
-  widgetRawHtml: string | null;
   /** Pre-loaded widget HTML keyed by ui:// resource URI. Populated by
    *  `loadAll` after the resources list lands so a `tools/call` that
    *  surfaces a UI ref can render synchronously without a second
    *  `resources/read` round-trip — same shape as Claude / ChatGPT. */
   widgetCache: Record<string, string>;
-  // Last mock used to render. WidgetFrame re-renders srcdoc when this
-  // changes; applyMock hot-updates window.openai in place without changing
-  // this field, so the iframe is not reloaded.
-  currentMock: MockData | null;
+
+  /** Active widget entries keyed by the id the Action provides. Action
+   *  generates the id via `crypto.randomUUID()`, calls `insertWidget(id,
+   *  entry)`, awaits the snapshot; `<WidgetPreview>` mounts the entry
+   *  and resolves via `setSnapshot`. */
+  widgets: Record<string, WidgetEntry>;
+  activeWidgetId: string | null;
 
   // Protocol detection
   detectedProtocols: { legacyOpenAI: boolean; extApps: boolean } | null;
@@ -611,6 +587,15 @@ interface StudioState {
   clearCspViolations: () => void;
   setProtocolDetected: (protocol: "legacy_openai" | "ext_apps") => void;
 
+  /** Widget command surface — what an Action calls.
+   *  Action provides the id (via `crypto.randomUUID()` or any deterministic
+   *  scheme an external caller wants); the store never invents one. */
+  insertWidget: (
+    id: string,
+    entry: Omit<WidgetEntry, "snapshot">,
+  ) => Promise<string | null>;
+  setSnapshot: (id: string, snapshot: string) => void;
+
   // Cloud auth + tunnel actions
   hydrateCloudAuth: () => Promise<void>;
   hydrateTunnel: () => Promise<void>;
@@ -620,14 +605,7 @@ interface StudioState {
   cloudAuthCompleted: (email: string) => void;
   startTunnel: (subdomain?: string) => Promise<void>;
 
-  // Widget rendering
-  resolveWidgetName: (responseMeta?: Record<string, unknown>) => string | null;
-  renderWidget: (mock: MockData, overrideWidgetName?: string) => Promise<void>;
-  /** Updates `currentMock` and triggers protocol detection. The HTML
-   *  side-effects (`widgetSourceHtml`, `widgetRawHtml`) are set by
-   *  `renderWidget` from the prefetched `widgetCache` (or an on-demand
-   *  fallback fetch), not by this method. */
-  applyWidgetMock: (widgetName: string, mock: WidgetMock) => Promise<void>;
+  // Widget preview
   loadWidget: () => Promise<void>;
   applyMock: () => void;
   resetEditor: () => void;
@@ -831,7 +809,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   viewportCustom: { width: 430, height: 932 },
 
   // Execution
-  executing: false,
+  toolExecuting: false,
   jsonOutput: null,
   lastResult: null,
   resultIssues: [],
@@ -842,10 +820,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   // CSP / Strict mode
   strictMode: false,
   cspViolations: [],
-  widgetSourceHtml: null,
-  widgetRawHtml: null,
   widgetCache: {},
-  currentMock: null,
+
+  // Widget registry
+  widgets: {},
+  activeWidgetId: null,
 
   // Protocol detection
   detectedProtocols: null,
@@ -1309,8 +1288,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       lastResult: null,
       resultIssues: [],
       _extAppsMock: null,
-      widgetRawHtml: null,
-      currentMock: null,
+      activeWidgetId: null,
     });
 
     // Set editor value based on selection type
@@ -1324,8 +1302,15 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     // Skipped during replay (studioMode === "test") so a deferred
     // loadWidget here doesn't fire an extra `resources/read` on top of
     // the one the replay runner is already executing.
-    const widgetName = get().resolveWidgetName();
-    if (widgetName && get().studioMode !== "test") {
+    const meta =
+      item.type === "tool"
+        ? (item.tool.meta as Record<string, unknown> | undefined)
+        : undefined;
+    const toolName = item.type === "tool" ? item.tool.name : null;
+    if (
+      resolveWidgetUriHelper(meta, toolName, get().resources) &&
+      get().studioMode !== "test"
+    ) {
       // Small delay to ensure iframe ref is set
       setTimeout(() => get().loadWidget(), 50);
     }
@@ -1528,160 +1513,91 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     }
   },
 
-  // ── Widget name resolution ──
+  // ── Widget command surface (called by Actions) ──
 
-  resolveWidgetName: (responseMeta) => {
-    // 1. Check response meta (from tools/call result)
-    if (responseMeta) {
-      const fromResponse = extractWidgetUri(responseMeta);
-      if (fromResponse) return fromResponse;
+  insertWidget: (id, entry) => {
+    // Resolve any prior pending snapshot for this id first (defensive — an
+    // Action that races itself shouldn't park two resolvers).
+    const prior = _pendingSnapshots.get(id);
+    if (prior) {
+      prior(null);
+      _pendingSnapshots.delete(id);
     }
 
-    const { selected } = get();
-    if (!selected) return null;
-
-    // 2. Resource → parse URI (ui://widget/{name} or ui://{app}/{path})
-    if (selected.type === "resource") {
-      // Reuse extractWidgetUri logic by wrapping in a fake meta object
-      const fromUri = extractWidgetUri({
-        ui: { resourceUri: selected.resource.uri },
-      });
-      if (fromUri) return fromUri;
-    }
-
-    // 4. Tool → check meta, then fuzzy match against ui:// resources
-    if (selected.type === "tool") {
-      const meta = selected.tool.meta;
-      if (meta) {
-        const fromMeta = extractWidgetUri(meta);
-        if (fromMeta) return fromMeta;
-      }
-
-      // Fuzzy match against ui:// resource names
-      const { resources } = get();
-      const uiResources = resources.filter((r) => r.uri.startsWith("ui://"));
-      const toolName = selected.tool.name;
-
-      for (const r of uiResources) {
-        const fromUri = extractWidgetUri({ ui: { resourceUri: r.uri } });
-        if (!fromUri) continue;
-        if (fromUri === toolName) return fromUri;
-        if (toolName.includes(fromUri) || fromUri.includes(toolName))
-          return fromUri;
-        const stripped = toolName.replace(
-          /^(create|get|list|update|add|delete|remove|submit|review)_/,
-          "",
-        );
-        if (
-          fromUri === stripped ||
-          fromUri.includes(stripped) ||
-          stripped.includes(fromUri)
-        )
-          return fromUri;
-      }
-    }
-
-    return null;
-  },
-
-  // ── Widget rendering ──
-
-  renderWidget: async (mock, overrideWidgetName) => {
-    const { addCspViolation } = get();
-    const name = overrideWidgetName || get().resolveWidgetName();
-    if (!name) return;
-
-    // Reset prior view state. The iframe element itself is owned by
-    // `<WidgetFrame>`; this routine clears the slot then loads HTML
-    // and applies the mock. extAppsMock is wired in WidgetPreview as
-    // an effect on (iframe ref, currentMock).
-    get()._extAppsMock?.destroy();
-    set({
-      _extAppsMock: null,
-      cspViolations: [],
-      detectedProtocols: null,
-      widgetSourceHtml: null,
-      widgetRawHtml: null,
-      currentMock: null,
+    const ready = new Promise<string | null>((resolve) => {
+      _pendingSnapshots.set(id, resolve);
     });
 
-    const { resources, widgetCache } = get();
-    const resUri = resources.find(
-      (r) =>
-        r.uri.startsWith("ui://") &&
-        r.uri.includes(name) &&
-        r.mimeType === "text/html;profile=mcp-app",
-    )?.uri;
-    if (!resUri) return;
+    set((s) => ({
+      widgets: { ...s.widgets, [id]: { ...entry, snapshot: null } },
+      activeWidgetId: id,
+    }));
 
-    // Prefer the prefetched cache (loadAll fills this for every ui://
-    // widget). On miss — e.g. a server that surfaced a UI ref after
-    // loadAll, or a manually-warmed flow — fetch on demand and warm the
-    // cache so the next render is also synchronous.
-    let rawHtml = widgetCache[resUri] ?? "";
-    if (!rawHtml) {
-      const result = (await readResource(resUri)) as {
-        contents?: { text?: string }[];
+    return ready;
+  },
+
+  setSnapshot: (id, snapshot) => {
+    set((s) => {
+      const existing = s.widgets[id];
+      if (!existing) return s;
+      return {
+        widgets: {
+          ...s.widgets,
+          [id]: { ...existing, snapshot },
+        },
       };
-      rawHtml = result?.contents?.[0]?.text ?? "";
-      if (rawHtml) {
-        set((s) => ({
-          widgetCache: { ...s.widgetCache, [resUri]: rawHtml },
-        }));
-      }
-    }
-    if (!rawHtml) return;
-    set({
-      widgetSourceHtml: stripTunnelUrls(rawHtml),
-      widgetRawHtml: rawHtml,
     });
-
-    // CSP analysis uses the tool-call meta (not the widget HTML response
-    // meta), so we still run it here where we have the mock context.
-    const cspDomains = extractCspDomains(
-      (mock._meta || {}) as Record<string, unknown>,
-    );
-    const { findings } = analyze(get().widgetSourceHtml ?? rawHtml, cspDomains);
-    for (const finding of findings) {
-      addCspViolation(toStaticViolation(finding, { sourceFile: resUri }));
+    const resolve = _pendingSnapshots.get(id);
+    if (resolve) {
+      resolve(snapshot);
+      _pendingSnapshots.delete(id);
     }
-
-    // Apply the mock; the iframe re-renders against `currentMock`.
-    await get().applyWidgetMock(name, {
-      toolInput: mock.toolInput,
-      toolOutput: mock.toolOutput,
-      meta: (mock._meta || {}) as Record<string, unknown>,
-      widgetState: mock.widgetState ?? null,
-    });
   },
 
-  applyWidgetMock: async (widgetName, mock) => {
-    const fullMock: MockData = {
-      toolInput: mock.toolInput,
-      toolOutput: mock.toolOutput,
-      _meta: mock.meta,
-      widgetState: mock.widgetState ?? null,
-      theme: get().theme,
-      locale: get().locale,
-      displayMode: get().displayMode,
-    };
-    get()._extAppsMock?.destroy();
-    set({
-      _extAppsMock: null,
-      currentMock: fullMock,
-    });
-    // Re-detect protocol from the cached HTML (the bus subscriber set
-    // widgetRawHtml when the resources/read response arrived).
-    const html = get().widgetRawHtml ?? "";
-    if (/window\.openai\b/.test(html)) {
-      get().setProtocolDetected("legacy_openai");
-    }
-    get().setProtocolDetected("ext_apps");
-  },
+  // ── Widget preview (user-driven, not Action-driven) ──
+  // These run when the user manually picks a widget resource or edits the
+  // mock JSON, so the studio can show a preview without forcing a tool
+  // call. They use the same `insertWidget` command surface that Actions
+  // use, just without going through an Action.
 
   loadWidget: async () => {
-    const { editorValue, theme, locale, displayMode, logAction, renderWidget } =
-      get();
+    const {
+      editorValue,
+      theme,
+      locale,
+      displayMode,
+      logAction,
+      resources,
+      widgetCache,
+      selected,
+    } = get();
+    const meta =
+      selected?.type === "tool"
+        ? (selected.tool.meta as Record<string, unknown> | undefined)
+        : undefined;
+    const toolName = selected?.type === "tool" ? selected.tool.name : null;
+    const widgetUri = resolveWidgetUriHelper(meta, toolName, resources);
+    if (!widgetUri) return;
+
+    let html = widgetCache[widgetUri] ?? "";
+    if (!html) {
+      try {
+        const res = (await readResource(widgetUri)) as {
+          contents?: { text?: string }[];
+        };
+        html = res?.contents?.[0]?.text ?? "";
+        if (html) {
+          set((s) => ({
+            widgetCache: { ...s.widgetCache, [widgetUri]: html },
+          }));
+        }
+      } catch (e) {
+        logAction("error", `Widget HTML fetch failed: ${(e as Error).message}`);
+        return;
+      }
+    }
+    if (!html.trim()) return;
+
     try {
       const parsed = JSON.parse(editorValue);
       const mock: MockData = {
@@ -1693,7 +1609,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         locale,
         displayMode,
       };
-      await renderWidget(mock);
+      const id = crypto.randomUUID();
+      get().insertWidget(id, { html, mock, waitMs: 150 });
     } catch (e) {
       logAction("error", `Invalid JSON: ${(e as Error).message}`);
     }
@@ -1708,10 +1625,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       locale,
       displayMode,
       logAction,
-      renderWidget,
-      resolveWidgetName,
+      activeWidgetId,
+      widgets,
     } = get();
-    if (!resolveWidgetName()) return;
+    if (!activeWidgetId || !widgets[activeWidgetId]) return;
 
     try {
       const parsed = JSON.parse(editorValue);
@@ -1725,7 +1642,17 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         displayMode,
       };
 
-      // Try hot-update first
+      // Update the entry's mock so future re-mounts see it.
+      set((s) => ({
+        widgets: {
+          ...s.widgets,
+          [activeWidgetId]: { ...s.widgets[activeWidgetId], mock },
+        },
+      }));
+
+      // Hot-update path: avoid a full reload when the widget protocol
+      // supports it. Falls through to a snapshot-reset (which makes
+      // WidgetPreview re-mount) when neither path is available.
       if (platform === "openai" && iframe) {
         try {
           const win = iframe.contentWindow;
@@ -1741,13 +1668,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             openai.locale = mock.locale;
             openai.displayMode = mock.displayMode;
             win.dispatchEvent(new CustomEvent("openai:set_globals"));
-            // Also update ext-apps mock (OpenAI now supports both)
             get()._extAppsMock?.update(mock);
             logAction("system", "Mock data applied");
             return;
           }
         } catch {
-          /* fall through to full reload */
+          /* fall through */
         }
       }
 
@@ -1757,8 +1683,13 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         return;
       }
 
-      // Full reload fallback
-      renderWidget(mock);
+      // Full reload fallback — clear snapshot so the mount effect re-fires.
+      set((s) => ({
+        widgets: {
+          ...s.widgets,
+          [activeWidgetId]: { ...s.widgets[activeWidgetId], snapshot: null },
+        },
+      }));
       logAction("system", "Mock data applied (reload)");
     } catch (e) {
       logAction("error", `Invalid JSON: ${(e as Error).message}`);
@@ -1782,111 +1713,37 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   // ── Execute ──
 
+  /**
+   * Thin UI-click caller for an Action. The studio orchestration that used
+   * to live here (validation, widget detection, mock construction, render,
+   * jsonOutput branching, logAction) is now inside `ToolCallAction.execute`
+   * and `ResourceReadAction.execute`. This method only:
+   *
+   *   1. Hard re-entrancy guard via `toolExecuting`.
+   *   2. Constructs the right Action from the current UI selection.
+   *   3. Awaits execute, records the result + change.
+   *
+   * Replay and other callers construct Actions directly and bypass this
+   * method entirely — `toolExecuting` is a UI concern, not an Action one.
+   */
   execute: async () => {
-    const {
-      selected,
-      editorValue,
-      theme,
-      locale,
-      displayMode,
-      logAction,
-      renderWidget,
-      resolveWidgetName,
-    } = get();
-    if (!selected) return;
-    set({ executing: true, resultIssues: [] });
-    logAction("system", `Executing ${selected.type}…`);
+    if (get().toolExecuting) return; // hard block beyond the button-disable
+    const { selected } = get();
+    if (!selected || selected.type === "widget") return;
 
+    set({ toolExecuting: true, resultIssues: [] });
     try {
-      let result: unknown;
-
-      if (selected.type === "tool") {
-        const args = JSON.parse(editorValue);
-        const action = new ToolCallAction(selected.tool.name, args);
-        await action.execute();
-        recorder.record(action, { stateChange: action.change() });
-        if (action.result?.error) throw new Error(action.result.error.message);
-        result = action.result?.data;
-        logAction("tools/call", { name: selected.tool.name, result });
-      } else if (selected.type === "resource") {
-        const action = new ResourceReadAction(selected.resource.uri);
-        await action.execute();
-        recorder.record(action, { stateChange: action.change() });
-        if (action.result?.error) throw new Error(action.result.error.message);
-        result = action.result?.data;
-        logAction("resources/read", { uri: selected.resource.uri, result });
-      } else {
-        set({ executing: false });
-        return;
-      }
-
-      // Spec-compliance check. The biggest footgun is structuredContent
-      // shape: hosts (Claude / ChatGPT) consume it as an object, so a
-      // primitive or array silently breaks downstream parsing. Surface
-      // any issues to both the action log and the preview banner.
-      if (selected.type === "tool") {
-        const issues = validateToolResult(result);
-        if (issues.length > 0) {
-          set({ resultIssues: issues });
-          for (const issue of issues) {
-            logAction(
-              issue.severity === "error" ? "error" : "warn",
-              `${issue.title} - ${issue.detail}`,
-            );
-          }
-        }
-      }
-
-      // Extract tool output
-      const content = result as {
-        content?: Array<{ type: string; text?: string }>;
-        _meta?: Record<string, unknown>;
-        meta?: Record<string, unknown>;
-      };
-      let toolOutput: unknown = result;
-      const meta = content._meta || content.meta || {};
-
-      if (content.content) {
-        const textContent = content.content.find((c) => c.type === "text");
-        if (textContent?.text) {
-          try {
-            toolOutput = JSON.parse(textContent.text);
-          } catch {
-            toolOutput = textContent.text;
-          }
-        }
-      }
-
-      const toolInput = selected.type === "tool" ? JSON.parse(editorValue) : {};
-      const mockData = {
-        toolInput,
-        toolOutput,
-        _meta: meta,
-        widgetState: null,
-      };
-
-      // Store result separately — don't overwrite editor
-      set({ lastResult: result });
-
-      // Resolve widget from response meta
-      const widgetName = resolveWidgetName(meta);
-
-      if (widgetName) {
-        set({ jsonOutput: null });
-        const mock: MockData = { ...mockData, theme, locale, displayMode };
-        await renderWidget(mock, widgetName);
-        logAction(
-          "system",
-          `Widget "${widgetName}" rendered with real tool response`,
-        );
-      } else {
-        set({ jsonOutput: JSON.stringify(result, null, 2) });
-        logAction("system", "No widget — showing JSON response");
-      }
-    } catch (e) {
-      logAction("error", (e as Error).message);
+      const action =
+        selected.type === "tool"
+          ? new ToolCallAction(
+              selected.tool.name,
+              JSON.parse(get().editorValue),
+            )
+          : new ResourceReadAction(selected.resource.uri);
+      await action.execute();
+      recorder.record(action, { stateChange: action.change() });
     } finally {
-      set({ executing: false });
+      set({ toolExecuting: false });
     }
   },
 }));
@@ -1894,7 +1751,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 // Always-on recorder: start a session as soon as the store module loads.
 // Browser-only — guard for SSR / unit tests. Widget HTML is no longer
 // derived from the response bus; `loadAll` prefetches every ui:// resource
-// into `widgetCache`, and `renderWidget` reads from there.
+// into `widgetCache`, which Actions and `loadWidget` read from.
 if (typeof window !== "undefined") {
   const s = useStudioStore.getState();
   recorder.start({

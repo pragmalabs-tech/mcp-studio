@@ -2,6 +2,7 @@ import { Action } from "./types";
 import { readResource } from "@/lib/studio/api";
 import type { StateChange } from "@/lib/state/types";
 import type { AssertablePoint } from "@/lib/assertion/types";
+import { useStudioStore } from "@/lib/studio/store";
 
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -43,11 +44,22 @@ export class ResourceReadAction extends Action<{ uri: string }> {
   }
 
   async execute(): Promise<void> {
+    const store = useStudioStore.getState();
+    store.logAction("system", `Executing resource ${this.data.uri}…`);
+
     try {
       const result = await readResource(this.data.uri);
       this.setResult(true, result);
+      store.logAction("resources/read", { uri: this.data.uri, result });
+
+      useStudioStore.setState({
+        lastResult: result,
+        jsonOutput: JSON.stringify(result, null, 2),
+      });
     } catch (err) {
-      this.setResult(false, undefined, { message: errorMessage(err) });
+      const message = errorMessage(err);
+      store.logAction("error", message);
+      this.setResult(false, undefined, { message });
     }
   }
 

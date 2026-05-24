@@ -21,7 +21,7 @@ export function RequestEditor() {
   const {
     selected,
     editorValue,
-    executing,
+    toolExecuting,
     setEditorValue,
     resetEditor,
     applyMock,
@@ -100,9 +100,9 @@ export function RequestEditor() {
                   size="sm"
                   className="h-6 text-xs px-2"
                   onClick={execute}
-                  disabled={executing}
+                  disabled={toolExecuting}
                 >
-                  {executing ? "…" : "⚡ Execute"}
+                  {toolExecuting ? "…" : "⚡ Execute"}
                 </Button>
               )}
             </>

@@ -15,6 +15,7 @@ export interface State {
   tools: Record<string, ToolState>;
   resources: Record<string, ResourceState>;
   network: NetworkState;
+  widgets: Record<string, WidgetState>;
 }
 
 export interface ToolState {
@@ -31,6 +32,10 @@ export interface NetworkState {
   errorCount: number;
 }
 
+export interface WidgetState {
+  renderCount: number;
+}
+
 export function createInitialState(): State {
   return {
     tools: {},
@@ -40,6 +45,7 @@ export function createInitialState(): State {
       responseCount: 0,
       errorCount: 0,
     },
+    widgets: {},
   };
 }
 
@@ -59,5 +65,8 @@ export function applyChange(state: State, change: StateChange): State {
       ? { ...state.resources, ...change.resources }
       : state.resources,
     network: change.network ?? state.network,
+    widgets: change.widgets
+      ? { ...state.widgets, ...change.widgets }
+      : state.widgets,
   };
 }

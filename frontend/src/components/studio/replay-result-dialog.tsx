@@ -29,6 +29,11 @@ import {
   type SavedTest,
 } from "@/lib/tests/storage";
 import type { ReplayedAction, SavedReplay } from "@/lib/replays/storage";
+import {
+  liveAssertFor,
+  stepStatus,
+  findRecordedBaseline,
+} from "@/lib/replays/live-status";
 import type { RecordedAction } from "@/lib/recorder/schema";
 import { AssertionPointRow } from "./assertion-point-row";
 
@@ -36,48 +41,6 @@ interface ReplayResultDialogProps {
   open: boolean;
   result: SavedReplay | null;
   onOpenChange: (open: boolean) => void;
-}
-
-function stepStatus(assert: AssertReport): Status {
-  if (assert.action.status === "failed" || assert.state.status === "failed") {
-    return "failed";
-  }
-  return "passed";
-}
-
-/**
- * Re-verify a stored replay step against the current `test.assertions`.
- * Returns the same `AssertReport` shape `runReplay` produces but using
- * the user's latest mode choices instead of the values frozen at run
- * time. Pure recomputation — no MCP calls.
- *
- * Falls back to the stored report when we can't resolve the recorded
- * baseline (test missing, legacy replay without `recordedActionId`,
- * unknown action type).
- */
-function liveAssertFor(
-  test: SavedTest | null,
-  replayed: ReplayedAction,
-  index: number,
-): AssertReport {
-  if (!test) return replayed.assert;
-  const recorded = findRecordedBaseline(test, replayed, index);
-  if (!recorded) return replayed.assert;
-  const recordedId = replayed.recordedActionId ?? recorded.action.id;
-  const points = assertablePointsForType(recorded.action.type);
-  if (points.length === 0) return replayed.assert;
-  const modes = resolveResultModes(test.assertions, recordedId, points);
-  const action = verifyAction(
-    points,
-    recorded.action.result,
-    replayed.action.result,
-    modes,
-  );
-  const stateMode = resolveStateMode(test.assertions, recordedId);
-  const state: AssertResult = recorded.stateChange
-    ? compareByMode(stateMode, recorded.stateChange, replayed.stateChange)
-    : { status: "skipped", data: { reason: "no recorded state change" } };
-  return { action, state };
 }
 
 function statusOf(assert: AssertResult): Status {
@@ -303,6 +266,25 @@ function ReplayActionInspector({
             </Section>
           ) : null}
 
+          {(() => {
+            const liveSnap = (action.result?.data as { snapshot?: unknown })
+              ?.snapshot;
+            const recordedSnap = (
+              recorded?.action.result?.data as { snapshot?: unknown }
+            )?.snapshot;
+            const hasAny =
+              typeof liveSnap === "string" || typeof recordedSnap === "string";
+            if (!hasAny) return null;
+            return (
+              <Section label="Snapshot">
+                <div className="grid grid-cols-2 gap-2 min-w-0">
+                  <SnapshotPane label="Recorded" snapshot={recordedSnap} />
+                  <SnapshotPane label="Replay" snapshot={liveSnap} />
+                </div>
+              </Section>
+            );
+          })()}
+
           {stateChange ? (
             <Section label="State change">
               <JsonView value={stateChange} />
@@ -322,25 +304,6 @@ function ReplayActionInspector({
       </ScrollArea>
     </>
   );
-}
-
-/**
- * Resolve which `RecordedAction` in the test session this replay step came
- * from. New replays carry `recordedActionId`; older ones fall back to the
- * positional match against the test session's reconstructable actions.
- */
-function findRecordedBaseline(
-  test: SavedTest | null,
-  replayed: ReplayedAction,
-  index: number,
-): RecordedAction | undefined {
-  if (!test) return undefined;
-  if (replayed.recordedActionId) {
-    return test.session.actions.find(
-      (a) => a.action.id === replayed.recordedActionId,
-    );
-  }
-  return test.session.actions[index];
 }
 
 interface ActionAssertionsProps {
@@ -608,6 +571,46 @@ function Section({
     <div className="min-w-0">
       <div className="font-medium text-muted-foreground mb-1">{label}</div>
       {children}
+    </div>
+  );
+}
+
+/**
+ * One side of the side-by-side Snapshot section. Renders the captured
+ * HTML inside an empty-sandbox iframe (no scripts, no same-origin) so
+ * it stays purely visual. The CSS prepended to `srcDoc` hides the
+ * iframe's own scrollbar — content taller than the pane still scrolls
+ * via mouse wheel, just without the visual noise the native scrollbar
+ * adds in a small viewer.
+ */
+function SnapshotPane({
+  label,
+  snapshot,
+}: {
+  label: string;
+  snapshot: unknown;
+}) {
+  const hasSnapshot = typeof snapshot === "string" && snapshot.length > 0;
+  const srcDoc = hasSnapshot
+    ? `<style>html,body{margin:0}body::-webkit-scrollbar{display:none}body{scrollbar-width:none;-ms-overflow-style:none}</style>${snapshot}`
+    : "";
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+        {label}
+      </div>
+      {hasSnapshot ? (
+        <iframe
+          srcDoc={srcDoc}
+          sandbox=""
+          title={`Widget snapshot — ${label}`}
+          className="w-full h-80 rounded border bg-background"
+        />
+      ) : (
+        <div className="w-full h-80 rounded border bg-background/40 flex items-center justify-center text-muted-foreground italic text-[11px]">
+          (no snapshot)
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,19 @@
 import type { StateChange } from "@/lib/state/types";
 
-export const SCHEMA_VERSION = 2 as const;
+/**
+ * Session schema version.
+ *
+ *   - v1: initial event-based recording (retired).
+ *   - v2: Action+StateChange shape; tool response lived directly at
+ *         `RecordedAction.action.result.data`.
+ *   - v3: tool response is wrapped under `data.tool` and joined by
+ *         widget outcome fields (`data.widget`, `data.widgetId`,
+ *         `data.snapshot`). State gains a `widgets` slice for
+ *         per-widget renderCount. See `migrateSession` for the v2→v3
+ *         upgrade — older sessions get their `data` wrapped lazily on
+ *         load so existing assertions keep working.
+ */
+export const SCHEMA_VERSION = 3 as const;
 
 /**
  * Setup metadata captured at record-time — purely informational. NOT
@@ -45,4 +58,56 @@ export interface Session {
   studioVersion: string;
   setup: SetupConfig;
   actions: RecordedAction[];
+}
+
+/**
+ * Upgrade a saved session in place. Today only v2→v3 is handled: wrap
+ * each TOOL_CALL action's `result.data` (raw tool response) under
+ * `data.tool` and stub in the new widget fields. Older versions or
+ * already-current sessions pass through untouched. Idempotent.
+ */
+export function migrateSession(session: Session): Session {
+  // Sessions written prior to the version-bump are not literally typed
+  // as `typeof SCHEMA_VERSION`, but localStorage round-trips them as
+  // plain `number`. Read once and dispatch.
+  const version = (session as { version?: number }).version ?? 0;
+  if (version >= SCHEMA_VERSION) return session;
+
+  if (version === 2) {
+    return {
+      ...session,
+      version: SCHEMA_VERSION,
+      actions: session.actions.map((entry) => {
+        if (entry.action.type !== "TOOL_CALL") return entry;
+        const result = entry.action.result;
+        if (!result) return entry;
+        // Skip when an earlier load already wrapped this entry.
+        if (
+          result.data !== null &&
+          typeof result.data === "object" &&
+          "tool" in (result.data as object) &&
+          "widget" in (result.data as object)
+        ) {
+          return entry;
+        }
+        return {
+          ...entry,
+          action: {
+            ...entry.action,
+            result: {
+              ...result,
+              data: {
+                tool: result.data,
+                widget: null,
+                widgetId: null,
+                snapshot: null,
+              },
+            },
+          },
+        };
+      }),
+    };
+  }
+
+  return session;
 }

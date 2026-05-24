@@ -289,12 +289,32 @@ function KeyLabel({ name }: { name: string | number }) {
 
 // ── Primitive renderer with type colors ──
 
+/** Threshold above which a string leaf is truncated. Picked so error
+ *  messages, URIs, and short snippets render in full while multi-KB
+ *  blobs (e.g. a widget HTML snapshot) collapse to a glimpse. The full
+ *  text is still reachable via the top-of-tree copy button. */
+const STRING_PREVIEW_CHARS = 200;
+
 function Primitive({ value }: { value: unknown }) {
   if (value === null)
     return <span className="text-muted-foreground">null</span>;
   if (value === undefined)
     return <span className="text-muted-foreground italic">undefined</span>;
   if (typeof value === "string") {
+    if (value.length > STRING_PREVIEW_CHARS) {
+      const hidden = value.length - STRING_PREVIEW_CHARS;
+      return (
+        <span
+          className="text-success break-all"
+          title={`${value.length} chars — use the copy button to grab the full value`}
+        >
+          "{value.slice(0, STRING_PREVIEW_CHARS)}…"
+          <span className="text-muted-foreground italic ml-1">
+            (+{hidden.toLocaleString()} chars)
+          </span>
+        </span>
+      );
+    }
     return <span className="text-success break-all">"{value}"</span>;
   }
   if (typeof value === "number") {

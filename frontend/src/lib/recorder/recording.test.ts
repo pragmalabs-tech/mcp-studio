@@ -1,30 +1,45 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-// Mock the studio API so importing ToolCallAction / ResourceReadAction
-// doesn't pull in the live api → health → store chain (which trips a TDZ
-// during module init outside the studio runtime).
 vi.mock("@/lib/studio/api", () => ({
   callTool: vi.fn(),
   readResource: vi.fn(),
 }));
 
+vi.mock("@/lib/studio/store", () => {
+  const state: Record<string, unknown> = {
+    logAction: vi.fn(),
+    insertWidget: vi.fn(),
+    resources: [],
+    theme: "dark",
+    locale: "en-US",
+    displayMode: "compact",
+    widgetCache: {},
+  };
+  return {
+    useStudioStore: {
+      getState: () => state,
+      setState: (patch: object | ((s: object) => object)) => {
+        const next = typeof patch === "function" ? patch(state) : patch;
+        Object.assign(state, next);
+      },
+    },
+  };
+});
+
 import { recorder } from "./bus";
 import { ToolCallAction } from "@/lib/action/tool_call";
 import { ResourceReadAction } from "@/lib/action/resource_read";
+import { SCHEMA_VERSION } from "./schema";
 
 describe("Recording new Actions", () => {
   beforeEach(() => {
-    // Start recording before each test
     recorder.start({ url: "http://localhost:3000" });
   });
 
   it("records tool call actions", () => {
     const action = new ToolCallAction("get_weather", { city: "SF" });
-
-    // Record the action
     recorder.record(action);
 
-    // Check it was recorded
     const snapshot = recorder.snapshot();
     expect(snapshot).toHaveLength(1);
     expect(snapshot[0].action.type).toBe("TOOL_CALL");
@@ -34,9 +49,19 @@ describe("Recording new Actions", () => {
     });
   });
 
+  it("records the waitMs override when provided", () => {
+    const action = new ToolCallAction("get_weather", { city: "SF" }, 400);
+    recorder.record(action);
+
+    expect(recorder.snapshot()[0].action.data).toEqual({
+      tool: "get_weather",
+      params: { city: "SF" },
+      waitMs: 400,
+    });
+  });
+
   it("records resource read actions", () => {
     const action = new ResourceReadAction("widget://test-widget");
-
     recorder.record(action);
 
     const snapshot = recorder.snapshot();
@@ -46,25 +71,20 @@ describe("Recording new Actions", () => {
   });
 
   it("records multiple actions", () => {
-    const action1 = new ToolCallAction("get_weather", { city: "SF" });
-    const action2 = new ToolCallAction("get_weather", { city: "NYC" });
-    const action3 = new ResourceReadAction("widget://test");
+    recorder.record(new ToolCallAction("get_weather", { city: "SF" }));
+    recorder.record(new ToolCallAction("get_weather", { city: "NYC" }));
+    recorder.record(new ResourceReadAction("widget://test"));
 
-    recorder.record(action1);
-    recorder.record(action2);
-    recorder.record(action3);
-
-    const snapshot = recorder.snapshot();
-    expect(snapshot).toHaveLength(3);
+    expect(recorder.snapshot()).toHaveLength(3);
   });
 
-  it("can serialize to session", () => {
+  it("can serialize to session at current schema version", () => {
     const action = new ToolCallAction("get_weather", { city: "SF" });
     recorder.record(action);
 
     const session = recorder.stop();
 
-    expect(session.version).toBe(2);
+    expect(session.version).toBe(SCHEMA_VERSION);
     expect(session.actions).toHaveLength(1);
     expect(session.actions[0].action.type).toBe("TOOL_CALL");
     expect(session.setup.url).toBe("http://localhost:3000");
@@ -72,14 +92,11 @@ describe("Recording new Actions", () => {
 
   it("normalizes timing when serializing range", () => {
     recorder.record(new ToolCallAction("tool1", {}));
-    // Wait a bit
     recorder.record(new ToolCallAction("tool2", {}));
 
     const session = recorder.serializeRange(0, 2);
 
-    // First action should start at t=0
     expect(session.actions[0].relMs).toBe(0);
-    // Second action should have positive offset
     expect(session.actions[1].relMs).toBeGreaterThanOrEqual(0);
   });
 });
