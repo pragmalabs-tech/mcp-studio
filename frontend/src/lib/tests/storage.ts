@@ -1,9 +1,18 @@
 import { migrateSession, type Session } from "@/lib/recorder/schema";
 import type { TestAssertionConfig } from "@/lib/assertion";
-
-const TESTS_STORAGE_KEY = "mcp-studio-tests";
+import {
+  deleteTest as apiDeleteTest,
+  getTest as apiGetTest,
+  listTestSummaries,
+  putTest,
+  type TestSummary,
+} from "@/lib/studio/storage-api";
+import { slugify } from "./format";
 
 export interface SavedTest {
+  /** Filename slug derived from `name` via `slugify`. Also the path
+   *  segment under `/api/studio/tests/{id}`. Stable across writes; renaming
+   *  the display name produces a new slug. */
   id: string;
   name: string;
   description?: string;
@@ -17,50 +26,64 @@ export interface SavedTest {
   assertions?: TestAssertionConfig;
 }
 
-export function saveTest(test: SavedTest): void {
-  const tests = loadTests();
-  tests.push(test);
-  localStorage.setItem(TESTS_STORAGE_KEY, JSON.stringify(tests));
-}
+export type { TestSummary };
 
-export function loadTests(): SavedTest[] {
-  const stored = localStorage.getItem(TESTS_STORAGE_KEY);
-  if (!stored) return [];
-
-  try {
-    const parsed = JSON.parse(stored) as SavedTest[];
-    // Lazy upgrade — sessions captured under an older schema are
-    // wrapped into the current shape so downstream code (runner,
-    // dialogs, assertion editor) doesn't need to branch on version.
-    return parsed.map((t) => ({ ...t, session: migrateSession(t.session) }));
-  } catch {
-    return [];
-  }
-}
-
-export function deleteTest(id: string): void {
-  const tests = loadTests();
-  const filtered = tests.filter((t) => t.id !== id);
-  localStorage.setItem(TESTS_STORAGE_KEY, JSON.stringify(filtered));
-}
-
-export function getTest(id: string): SavedTest | undefined {
-  const tests = loadTests();
-  return tests.find((t) => t.id === id);
+/**
+ * Catalog list — lightweight summaries the backend lifts from each file.
+ * Use `getTest(slug)` to fetch the full body on demand (e.g. before
+ * running a replay or opening the detail dialog).
+ */
+export async function loadTestSummaries(): Promise<TestSummary[]> {
+  return listTestSummaries();
 }
 
 /**
- * Replace the `assertions` field on a saved test. Both the test detail
- * view and the replay result dialog write through this helper, so the
- * source of truth stays the single localStorage entry.
+ * Hydrate every test into its full `SavedTest` shape. Lists summaries,
+ * fetches each body in parallel, drops anything that 404s mid-flight.
+ * Used by the catalog page where we need the session bodies for action
+ * counts and replay-history hookup. For one-test access prefer the
+ * single-fetch `getTest(slug)` to avoid hydrating the whole catalog.
  */
-export function updateTestAssertions(
-  testId: string,
+export async function loadTests(): Promise<SavedTest[]> {
+  const summaries = await listTestSummaries();
+  const bodies = await Promise.all(summaries.map((s) => apiGetTest(s.name)));
+  return bodies
+    .filter((t): t is SavedTest => t !== null)
+    .map((t) => ({ ...t, session: migrateSession(t.session) }));
+}
+
+export async function getTest(slug: string): Promise<SavedTest | null> {
+  const test = await apiGetTest(slug);
+  if (!test) return null;
+  return { ...test, session: migrateSession(test.session) };
+}
+
+/**
+ * Persist a SavedTest. The id is derived from `test.name` so the filename
+ * matches what the user typed; renames produce a new slug (and orphan the
+ * old file — explicit delete is left to the caller's "save under new
+ * name" UX). Returns the slug for callers that want it.
+ */
+export async function saveTest(test: SavedTest): Promise<string> {
+  const slug = slugify(test.name);
+  await putTest(slug, { ...test, id: slug });
+  return slug;
+}
+
+export async function deleteTest(slug: string): Promise<void> {
+  await apiDeleteTest(slug);
+}
+
+/**
+ * Patch the `assertions` field on a saved test. Both the test detail
+ * view and the replay result dialog write through this helper, so the
+ * backend file is the single source of truth.
+ */
+export async function updateTestAssertions(
+  slug: string,
   cfg: TestAssertionConfig,
-): void {
-  const tests = loadTests();
-  const idx = tests.findIndex((t) => t.id === testId);
-  if (idx === -1) return;
-  tests[idx] = { ...tests[idx], assertions: cfg };
-  localStorage.setItem(TESTS_STORAGE_KEY, JSON.stringify(tests));
+): Promise<void> {
+  const existing = await apiGetTest(slug);
+  if (!existing) return;
+  await putTest(slug, { ...existing, assertions: cfg });
 }

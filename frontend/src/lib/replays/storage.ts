@@ -1,7 +1,11 @@
 import type { RecordedAction } from "@/lib/recorder/schema";
 import type { AssertReport } from "@/lib/assertion";
-
-const REPLAYS_STORAGE_KEY = "mcp-studio-replays";
+import {
+  deleteReplay as apiDeleteReplay,
+  getReplay as apiGetReplay,
+  listReplaySummaries,
+  putReplay,
+} from "@/lib/studio/storage-api";
 
 export type ReplayStatus = "passed" | "failed";
 
@@ -28,27 +32,29 @@ export interface SavedReplay {
   actions: ReplayedAction[];
 }
 
-export function saveReplay(replay: SavedReplay): void {
-  const all = loadReplays();
-  all.push(replay);
-  localStorage.setItem(REPLAYS_STORAGE_KEY, JSON.stringify(all));
+export async function saveReplay(replay: SavedReplay): Promise<void> {
+  await putReplay(replay.id, replay);
 }
 
-export function loadReplays(): SavedReplay[] {
-  const stored = localStorage.getItem(REPLAYS_STORAGE_KEY);
-  if (!stored) return [];
-  try {
-    return JSON.parse(stored);
-  } catch {
-    return [];
-  }
+export async function getReplay(id: string): Promise<SavedReplay | null> {
+  return apiGetReplay(id);
 }
 
-export function loadReplaysForTest(testId: string): SavedReplay[] {
-  return loadReplays().filter((r) => r.testId === testId);
+/**
+ * Fetch every replay belonging to a test. Lists summaries, filters by
+ * `test_id`, then hydrates each into a full `SavedReplay` so callers can
+ * read per-step `assert` reports for the history badges. N is typically
+ * small (one user's runs against one test); the parallel fetch is fine.
+ */
+export async function loadReplaysForTest(
+  testId: string,
+): Promise<SavedReplay[]> {
+  const summaries = await listReplaySummaries();
+  const ids = summaries.filter((s) => s.test_id === testId).map((s) => s.id);
+  const replays = await Promise.all(ids.map((id) => apiGetReplay(id)));
+  return replays.filter((r): r is SavedReplay => r !== null);
 }
 
-export function deleteReplay(id: string): void {
-  const filtered = loadReplays().filter((r) => r.id !== id);
-  localStorage.setItem(REPLAYS_STORAGE_KEY, JSON.stringify(filtered));
+export async function deleteReplay(id: string): Promise<void> {
+  await apiDeleteReplay(id);
 }

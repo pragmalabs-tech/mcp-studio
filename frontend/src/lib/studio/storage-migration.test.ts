@@ -1,6 +1,9 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it } from "vitest";
-import { migrateLegacyKeys } from "./storage-migration";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  migrateLegacyKeys,
+  migrateLocalStorageToBackend,
+} from "./storage-migration";
 
 const DONE_FLAG = "studio:storage_migration_v1";
 
@@ -101,5 +104,116 @@ describe("migrateLegacyKeys", () => {
 
     expect(localStorage.getItem("some_other_key")).toBe("x");
     expect(localStorage.getItem("studio:already_new:y")).toBe("y");
+  });
+});
+
+describe("migrateLocalStorageToBackend", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("PUTs each saved test to the backend and removes the legacy key", async () => {
+    localStorage.setItem(
+      "mcp-studio-tests",
+      JSON.stringify([
+        {
+          id: "old-uuid",
+          name: "Search Flow",
+          createdAt: "2026-01-01T00:00:00Z",
+          session: {
+            version: 3,
+            capturedAt: "",
+            studioVersion: "",
+            setup: { url: "" },
+            actions: [],
+          },
+        },
+      ]),
+    );
+
+    await migrateLocalStorageToBackend();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("/api/studio/tests/search-flow");
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(init.body)).toMatchObject({
+      id: "search-flow",
+      name: "Search Flow",
+    });
+    expect(localStorage.getItem("mcp-studio-tests")).toBeNull();
+  });
+
+  it("PUTs each replay and removes the legacy key", async () => {
+    localStorage.setItem(
+      "mcp-studio-replays",
+      JSON.stringify([
+        {
+          id: "r1",
+          testId: "search-flow",
+          testName: "Search Flow",
+          createdAt: "",
+          durationMs: 0,
+          status: "passed",
+          actions: [],
+        },
+      ]),
+    );
+
+    await migrateLocalStorageToBackend();
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/studio/run-results/r1");
+    expect(localStorage.getItem("mcp-studio-replays")).toBeNull();
+  });
+
+  it("keeps the legacy key when a PUT fails so the next boot retries", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("", { status: 500 }));
+    localStorage.setItem(
+      "mcp-studio-tests",
+      JSON.stringify([
+        {
+          id: "old",
+          name: "Search Flow",
+          createdAt: "",
+          session: {
+            version: 3,
+            capturedAt: "",
+            studioVersion: "",
+            setup: { url: "" },
+            actions: [],
+          },
+        },
+      ]),
+    );
+
+    await migrateLocalStorageToBackend();
+
+    expect(localStorage.getItem("mcp-studio-tests")).not.toBeNull();
+  });
+
+  it("drops the legacy key when JSON is garbled", async () => {
+    localStorage.setItem("mcp-studio-tests", "{ broken");
+    await migrateLocalStorageToBackend();
+    expect(localStorage.getItem("mcp-studio-tests")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when no legacy data exists", async () => {
+    await migrateLocalStorageToBackend();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

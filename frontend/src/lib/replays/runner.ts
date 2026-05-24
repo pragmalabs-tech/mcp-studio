@@ -129,6 +129,6 @@ export async function runReplay(
     status: !aborted && !anyFailed ? "passed" : "failed",
     actions: out,
   };
-  saveReplay(replay);
+  await saveReplay(replay);
   return replay;
 }

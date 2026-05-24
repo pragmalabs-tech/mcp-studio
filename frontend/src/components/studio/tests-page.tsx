@@ -48,11 +48,16 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
   // Load tests when drawer opens — newest first so the most recently
   // recorded session is at the top.
   useEffect(() => {
-    if (open) {
-      setTests(
-        loadTests().sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-      );
-    }
+    if (!open) return;
+    let cancelled = false;
+    void (async () => {
+      const all = await loadTests();
+      if (cancelled) return;
+      setTests(all.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   const handleReplay = async (test: SavedTest) => {
@@ -157,7 +162,7 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
                         tone: "destructive",
                       });
                       if (!ok) return;
-                      deleteTest(test.id);
+                      await deleteTest(test.id);
                       setTests(tests.filter((t) => t.id !== test.id));
                     }}
                     onExport={() => handleExport(test)}
@@ -211,13 +216,16 @@ function TestCard({
   // is the global "a replay just finished" signal.
   const runState = useStudioStore((s) => s.runState);
   useEffect(() => {
-    if (expanded) {
-      setHistory(
-        loadReplaysForTest(test.id).sort((a, b) =>
-          b.createdAt.localeCompare(a.createdAt),
-        ),
-      );
-    }
+    if (!expanded) return;
+    let cancelled = false;
+    void (async () => {
+      const all = await loadReplaysForTest(test.id);
+      if (cancelled) return;
+      setHistory(all.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [expanded, test.id, runState]);
 
   return (
@@ -323,7 +331,7 @@ function TestCard({
                         tone: "destructive",
                       });
                       if (!ok) return;
-                      deleteReplay(replay.id);
+                      await deleteReplay(replay.id);
                       setHistory((h) => h.filter((r) => r.id !== replay.id));
                     }}
                   />

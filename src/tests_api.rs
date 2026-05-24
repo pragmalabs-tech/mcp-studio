@@ -1,8 +1,10 @@
-//! HTTP handlers for the Cue catalog at `~/.mcp-studio/tests/<slug>.json`.
+//! HTTP handlers for the studio's test catalog at
+//! `~/.mcp-studio/tests/<slug>.json`.
 //!
-//! Files on disk are Cue JSON (`docs/cue-spec.md`). The frontend translates
-//! a Cue into Engine IR before running. Backend validation is structural
-//! only; the frontend does deep validation against the spec.
+//! Files on disk are opaque JSON — the frontend owns the schema (today
+//! that's `SavedTest` from `lib/tests/storage.ts`). Backend validation
+//! is intentionally absent so the storage layer doesn't have to evolve
+//! every time the frontend tweaks its shape.
 
 use axum::Json;
 use axum::extract::Path;
@@ -18,15 +20,12 @@ pub struct TestSummary {
     pub name: String,
     pub size: u64,
     pub modified_ms: u128,
-    /// Best-effort fields lifted out of the Cue JSON for catalog UX.
+    /// Best-effort fields lifted out of the body for catalog UX. The
+    /// backend doesn't enforce any of these — they're just convenience
+    /// projections that save the catalog UI a follow-up GET.
     pub display_name: Option<String>,
     pub description: Option<String>,
-    /// Cue files don't currently track createdAt; left for future use.
     pub created_at: Option<String>,
-    /// Number of `steps[]` declared in the Cue.
-    pub total_actions: Option<usize>,
-    /// Tags lifted from the Cue body for filter UX.
-    pub tags: Option<Vec<String>>,
 }
 
 fn lift_summary(name: &str, file: storage::JsonFile, value: &Value) -> TestSummary {
@@ -42,15 +41,6 @@ fn lift_summary(name: &str, file: storage::JsonFile, value: &Value) -> TestSumma
         .get("createdAt")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
-    let total_actions = value
-        .get("steps")
-        .and_then(|t| t.as_array())
-        .map(|a| a.len());
-    let tags = value.get("tags").and_then(|v| v.as_array()).map(|arr| {
-        arr.iter()
-            .filter_map(|t| t.as_str().map(|s| s.to_string()))
-            .collect()
-    });
     TestSummary {
         name: name.to_string(),
         size: file.size,
@@ -58,8 +48,6 @@ fn lift_summary(name: &str, file: storage::JsonFile, value: &Value) -> TestSumma
         display_name,
         description,
         created_at,
-        total_actions,
-        tags,
     }
 }
 
@@ -100,19 +88,6 @@ pub async fn put_test(
     Path(name): Path<String>,
     Json(body): Json<Value>,
 ) -> Result<Json<TestSummary>, AppError> {
-    // Minimal structural check; deep validation lives in the frontend
-    // (`lib/cue/validate.ts`). The backend only ensures the body looks
-    // like a Cue at all so we don't accept arbitrary JSON.
-    let name_ok = body.get("name").and_then(|v| v.as_str()).is_some();
-    let steps_ok = body
-        .get("steps")
-        .and_then(|v| v.as_array())
-        .is_some_and(|a| !a.is_empty());
-    if !name_ok || !steps_ok {
-        return Err(AppError::BadRequest(
-            "expected Cue file with `name` (string) and non-empty `steps` (array)".into(),
-        ));
-    }
     let path = resolve_path(&name)?;
     storage::write_json(&path, &body).map_err(|e| AppError::Internal(e.to_string()))?;
     let metadata = std::fs::metadata(&path).map_err(|e| AppError::Internal(e.to_string()))?;

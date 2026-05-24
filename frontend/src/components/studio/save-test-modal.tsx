@@ -41,7 +41,8 @@ export function SaveTestModal({
       // Get the session slice
       const session = recorder.serializeRange(startIndex, endIndex);
 
-      // Create test object
+      // Create test object — `id` will be replaced by the slug saveTest
+      // derives from `name`. The uuid placeholder keeps the type honest.
       const test = {
         id: crypto.randomUUID(),
         name: name.trim(),
@@ -50,8 +51,8 @@ export function SaveTestModal({
         session,
       };
 
-      // Save to localStorage
-      saveTest(test);
+      // Persist to the studio backend (~/.mcp-studio/tests/<slug>.json).
+      await saveTest(test);
       console.log("Test saved:", test.name);
 
       // Reset and close

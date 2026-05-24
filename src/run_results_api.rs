@@ -1,9 +1,10 @@
-//! HTTP handlers for batch test-run results at `~/.mcp-studio/run-results/<id>.json`.
+//! HTTP handlers for the studio's replay catalog at
+//! `~/.mcp-studio/run-results/<id>.json`.
 //!
-//! Each file stores one completed batch run: filter, environment, summary
-//! counts, and per-test entries (recorded + replayed trace + verdict). The
-//! frontend is the source of truth for the schema; the backend only validates
-//! structural fields needed for the catalog listing.
+//! Files on disk are opaque JSON — the frontend owns the schema (today
+//! that's `SavedReplay` from `lib/replays/storage.ts`). Backend
+//! validation is intentionally absent; the lifted summary fields are
+//! best-effort projections for the catalog UI.
 
 use axum::Json;
 use axum::extract::Path;
@@ -19,6 +20,10 @@ pub struct RunResultSummary {
     pub id: String,
     pub size: u64,
     pub modified_ms: u128,
+    /// Test this run belongs to. Lifted from the body so the catalog
+    /// can filter "replays for this test" without a follow-up GET per
+    /// entry. Optional because legacy bodies may omit it.
+    pub test_id: Option<String>,
     pub started_at: Option<u64>,
     pub finished_at: Option<u64>,
     pub run_type: Option<String>,
@@ -28,6 +33,10 @@ pub struct RunResultSummary {
 }
 
 fn lift_summary(id: &str, file: storage::JsonFile, value: &Value) -> RunResultSummary {
+    let test_id = value
+        .get("testId")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let started_at = value.get("startedAt").and_then(|v| v.as_u64());
     let finished_at = value.get("finishedAt").and_then(|v| v.as_u64());
     let run_type = value
@@ -41,6 +50,7 @@ fn lift_summary(id: &str, file: storage::JsonFile, value: &Value) -> RunResultSu
         id: id.to_string(),
         size: file.size,
         modified_ms: file.modified_ms,
+        test_id,
         started_at,
         finished_at,
         run_type,
@@ -89,11 +99,6 @@ pub async fn put_run_result(
     Path(id): Path<String>,
     Json(body): Json<Value>,
 ) -> Result<Json<RunResultSummary>, AppError> {
-    if body.get("startedAt").is_none() || body.get("summary").is_none() {
-        return Err(AppError::BadRequest(
-            "expected run-result with `startedAt` and `summary` fields".into(),
-        ));
-    }
     let path = resolve_path(&id)?;
     storage::write_json(&path, &body).map_err(|e| AppError::Internal(e.to_string()))?;
     let metadata = std::fs::metadata(&path).map_err(|e| AppError::Internal(e.to_string()))?;

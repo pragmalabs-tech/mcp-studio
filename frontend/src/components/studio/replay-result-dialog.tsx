@@ -71,8 +71,18 @@ export function ReplayResultDialog({
   }, [open, result?.id]);
 
   useEffect(() => {
-    if (result) setTest(getTest(result.testId) ?? null);
-    else setTest(null);
+    if (!result) {
+      setTest(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const t = await getTest(result.testId);
+      if (!cancelled) setTest(t);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [result]);
 
   if (!result) return null;
@@ -96,8 +106,13 @@ export function ReplayResultDialog({
 
   const handleAssertionsChange = (cfg: TestAssertionConfig) => {
     if (!test) return;
-    updateTestAssertions(test.id, cfg);
+    // Optimistic UI: flip the local copy immediately so dialog rows
+    // re-render under the new modes; persist in the background and log
+    // on failure (no rollback — the dialog stays usable either way).
     setTest({ ...test, assertions: cfg });
+    void updateTestAssertions(test.id, cfg).catch((e) => {
+      console.warn("updateTestAssertions failed:", e);
+    });
   };
 
   return (

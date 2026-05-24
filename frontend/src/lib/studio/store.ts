@@ -29,6 +29,7 @@ import { DEFAULT_MOCK, type MockData } from "./mock-openai";
 import { type ResultIssue } from "./validate-tool-result";
 import { ToolCallAction, ResourceReadAction, type Action } from "@/lib/action";
 import { resolveWidgetUri as resolveWidgetUriHelper } from "@/lib/action/widget-helpers";
+import { migrateLocalStorageToBackend } from "@/lib/studio/storage-migration";
 import { createClaudeMock } from "./mock-claude";
 import type {
   Severity,
@@ -924,6 +925,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       if (t.length > 0) get().select({ type: "tool", tool: t[0] });
       else if (r.length > 0) get().select({ type: "resource", resource: r[0] });
     }
+
+    // Lift any leftover tests/replays from localStorage to the backend
+    // store. Fire-and-forget: failures log but don't block the rest of
+    // initialization, and the legacy keys are only removed after a
+    // successful round-trip so the next boot retries.
+    void migrateLocalStorageToBackend();
   },
 
   setAuthMethod: (method) => {
