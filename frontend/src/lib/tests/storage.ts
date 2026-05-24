@@ -5,7 +5,6 @@ import {
   getTest as apiGetTest,
   listTestSummaries,
   putTest,
-  type TestSummary,
 } from "@/lib/studio/storage-api";
 import { slugify } from "./format";
 
@@ -24,17 +23,6 @@ export interface SavedTest {
    * `"exact"`, preserving the pre-v2 replay behavior.
    */
   assertions?: TestAssertionConfig;
-}
-
-export type { TestSummary };
-
-/**
- * Catalog list — lightweight summaries the backend lifts from each file.
- * Use `getTest(slug)` to fetch the full body on demand (e.g. before
- * running a replay or opening the detail dialog).
- */
-export async function loadTestSummaries(): Promise<TestSummary[]> {
-  return listTestSummaries();
 }
 
 /**
@@ -62,11 +50,16 @@ export async function getTest(slug: string): Promise<SavedTest | null> {
  * Persist a SavedTest. The id is derived from `test.name` so the filename
  * matches what the user typed; renames produce a new slug (and orphan the
  * old file — explicit delete is left to the caller's "save under new
- * name" UX). Returns the slug for callers that want it.
+ * name" UX). Sessions are normalized to the current schema before PUT so
+ * disk doesn't lag the in-memory shape. Returns the slug.
  */
 export async function saveTest(test: SavedTest): Promise<string> {
   const slug = slugify(test.name);
-  await putTest(slug, { ...test, id: slug });
+  await putTest(slug, {
+    ...test,
+    id: slug,
+    session: migrateSession(test.session),
+  });
   return slug;
 }
 

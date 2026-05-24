@@ -2,7 +2,7 @@ import type { RecordedAction } from "@/lib/recorder/schema";
 import type { AssertReport } from "@/lib/assertion";
 import {
   deleteReplay as apiDeleteReplay,
-  getReplay as apiGetReplay,
+  getReplay,
   listReplaySummaries,
   putReplay,
 } from "@/lib/studio/storage-api";
@@ -36,10 +36,6 @@ export async function saveReplay(replay: SavedReplay): Promise<void> {
   await putReplay(replay.id, replay);
 }
 
-export async function getReplay(id: string): Promise<SavedReplay | null> {
-  return apiGetReplay(id);
-}
-
 /**
  * Fetch every replay belonging to a test. Lists summaries, filters by
  * `test_id`, then hydrates each into a full `SavedReplay` so callers can
@@ -51,7 +47,7 @@ export async function loadReplaysForTest(
 ): Promise<SavedReplay[]> {
   const summaries = await listReplaySummaries();
   const ids = summaries.filter((s) => s.test_id === testId).map((s) => s.id);
-  const replays = await Promise.all(ids.map((id) => apiGetReplay(id)));
+  const replays = await Promise.all(ids.map((id) => getReplay(id)));
   return replays.filter((r): r is SavedReplay => r !== null);
 }
 
