@@ -63,10 +63,19 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
   const getViewportSize = useStudioStore((s) => s.getViewportSize);
   const addCspViolation = useStudioStore((s) => s.addCspViolation);
 
-  // Publish iframe ref so other store consumers (mock-claude.ts) can reach it.
-  useEffect(() => {
-    useStudioStore.setState({ _iframeRef: iframeRef.current });
-  }, []);
+  // Publish iframe ref so other store consumers (mock-claude.ts,
+  // WidgetClickAction) can reach it. We use a ref callback rather than a
+  // `useEffect(() => …, [])` because the <iframe> is conditionally
+  // rendered (only when a widget is active + the preview tab is open).
+  // The [] effect would fire once at component mount with iframeRef.current
+  // still null (the iframe hasn't appeared yet) and never re-publish — so
+  // store._iframeRef would stay null forever. The ref callback fires
+  // every time the iframe element mounts/unmounts, so the store always
+  // matches the live DOM.
+  const setIframe = (el: HTMLIFrameElement | null) => {
+    iframeRef.current = el;
+    useStudioStore.setState({ _iframeRef: el });
+  };
 
   // Forward console messages from iframe to studio console, and bridge
   // legacy-OpenAI `window.openai.callTool` calls through the real MCP
@@ -380,7 +389,7 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
             className="bg-background border rounded-lg shadow-lg overflow-hidden"
           >
             <iframe
-              ref={iframeRef}
+              ref={setIframe}
               className="w-full h-full"
               sandbox="allow-scripts allow-forms allow-modals allow-popups allow-same-origin"
               title="Widget Preview"

@@ -15,36 +15,31 @@ export * from "./widget_click";
  * inverse of `Action.toJSON()`. Returns `null` for unknown action types so
  * the replay runner can skip them instead of failing the whole run.
  */
+/**
+ * Rebuild a LIVE Action instance from a recorded JSON blob — used by the
+ * replay runner. Live actions start with `events: []` on purpose: the
+ * recorded events live on the JSON (`source.action.events`) and are used
+ * only for assertion comparison. Copying them onto the live instance
+ * would double-count when execute() emits its own observations.
+ */
 export function reconstructAction(json: {
   type: string;
   data: any;
-  events?: Array<{ type: string; data: any; result?: any }>;
 }): Action | null {
-  let action: Action | null = null;
   switch (json.type) {
     case "TOOL_CALL":
-      action = new ToolCallAction(json.data.tool, json.data.params);
-      break;
+      return new ToolCallAction(json.data.tool, json.data.params);
     case "RESOURCE_READ":
-      action = new ResourceReadAction(json.data.uri);
-      break;
+      return new ResourceReadAction(json.data.uri);
     case "WIDGET_CLICK":
-      action = new WidgetClickAction(
+      return new WidgetClickAction(
         json.data.widgetId,
         json.data.candidates,
         json.data.fallbackText,
       );
-      break;
     default:
       return null;
   }
-  if (json.events) {
-    const rebuilt = json.events.map(reconstructEvent);
-    for (const e of rebuilt) {
-      if (e) action.events.push(e);
-    }
-  }
-  return action;
 }
 
 /**

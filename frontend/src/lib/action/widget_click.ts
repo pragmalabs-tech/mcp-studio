@@ -115,8 +115,8 @@ export class WidgetClickAction extends Action<{
     const store = useStudioStore.getState();
     store.logAction("system", `Click widget ${this.data.widgetId}…`);
     const doc = store._iframeRef?.contentDocument;
-    if (!store.widgets[this.data.widgetId] || !doc) {
-      this.setResult(false, undefined, { message: "widget not mounted" });
+    if (!doc) {
+      this.setResult(false, undefined, { message: "iframe not mounted" });
       return;
     }
 

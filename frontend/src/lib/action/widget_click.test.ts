@@ -47,13 +47,13 @@ describe("WidgetClickAction", () => {
     setupStore("");
   });
 
-  it("sets result.success=false when the widget is not mounted", async () => {
+  it("sets result.success=false when the iframe isn't mounted", async () => {
     const s = useStudioStore.getState() as unknown as Record<string, unknown>;
-    s.widgets = {};
+    s._iframeRef = null;
     const action = new WidgetClickAction("missing", ['[data-testid="x"]']);
     await action.execute();
     expect(action.result?.success).toBe(false);
-    expect(action.result?.error?.message).toBe("widget not mounted");
+    expect(action.result?.error?.message).toBe("iframe not mounted");
   });
 
   it("sets result.success=false when no candidate matches", async () => {
