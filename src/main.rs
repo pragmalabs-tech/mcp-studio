@@ -14,32 +14,11 @@ mod tunnel;
 
 use std::sync::Arc;
 
-use clap::{Parser, Subcommand};
 use tokio::sync::RwLock;
 use tracing_subscriber::EnvFilter;
 
 const BIND_ADDR: &str = "127.0.0.1:7777";
 const PUBLIC_URL: &str = "http://localhost:7777";
-
-#[derive(Parser)]
-#[command(
-    name = "mcp-studio",
-    version,
-    about = "A local studio to debug MCP Servers and MCP Applications"
-)]
-struct Cli {
-    #[command(subcommand)]
-    cmd: Cmd,
-}
-
-#[derive(Subcommand)]
-enum Cmd {
-    /// Start Studio and open it in your browser.
-    Open {
-        /// MCP server URL to preselect (optional).
-        url: Option<String>,
-    },
-}
 
 #[tokio::main]
 async fn main() {
@@ -49,24 +28,16 @@ async fn main() {
         )
         .init();
 
-    let cli = Cli::parse();
-    match cli.cmd {
-        Cmd::Open { url } => run_open(url).await,
-    }
+    run().await;
 }
 
-async fn run_open(preselect: Option<String>) {
+async fn run() {
     let listener = match tokio::net::TcpListener::bind(BIND_ADDR).await {
         Ok(l) => l,
         Err(e) => {
             eprintln!("error: failed to bind on {BIND_ADDR}: {e}");
             std::process::exit(1);
         }
-    };
-
-    let target = match preselect {
-        Some(u) if !u.is_empty() => format!("{PUBLIC_URL}/?proxy={}", urlencoding::encode(&u)),
-        _ => format!("{PUBLIC_URL}/"),
     };
 
     let state = server::AppState {
@@ -76,8 +47,7 @@ async fn run_open(preselect: Option<String>) {
     };
 
     println!("Studio listening on {PUBLIC_URL}");
-    println!("Opening {target}");
-    if let Err(e) = open::that(&target) {
+    if let Err(e) = open::that(PUBLIC_URL) {
         eprintln!("warning: could not open browser: {e}");
     }
 
