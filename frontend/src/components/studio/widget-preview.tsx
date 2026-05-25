@@ -9,6 +9,7 @@ import { stripTunnelUrls } from "@/lib/core/widget/inject";
 import type { CspFinding } from "@/lib/core/csp/types";
 import { eventBus, WidgetRenderEvent } from "@/lib/event";
 import { WidgetClickAction } from "@/lib/action/widget_click";
+import { WidgetTextInputAction } from "@/lib/action/widget_text_input";
 import { captureSelector } from "@/lib/action/capture-selector";
 import { recorder } from "@/lib/recorder/recorder";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -34,6 +35,27 @@ function findingToViolation(finding: CspFinding, sourceFile: string) {
     platforms: finding.platforms,
     snippet: finding.snippet,
   };
+}
+
+function isTextLikeInput(el: Element): boolean {
+  const tag = el.tagName.toLowerCase();
+  if (tag === "textarea") return true;
+  if (tag === "input") {
+    const t = ((el as HTMLInputElement).type ?? "text").toLowerCase();
+    return ![
+      "checkbox",
+      "radio",
+      "button",
+      "submit",
+      "reset",
+      "file",
+      "image",
+      "range",
+      "color",
+      "hidden",
+    ].includes(t);
+  }
+  return false;
 }
 
 /**
@@ -222,6 +244,8 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
       if (!recorder.isCapturing()) return;
       const target = e.target as Element | null;
       if (!target) return;
+      // Text-like inputs are captured via the 'input' event handler below.
+      if (isTextLikeInput(target)) return;
       const liveDoc = iframe.contentDocument ?? doc;
       const candidates = captureSelector(target, liveDoc);
       if (candidates.length === 0) return;
@@ -230,6 +254,9 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
 
       const prev = useStudioStore.getState().openClick;
       if (prev) prev.close();
+      // Clicking a non-input element also finalizes any in-flight text input.
+      const prevText = useStudioStore.getState().openTextInput;
+      if (prevText) prevText.close();
 
       const action = new WidgetClickAction(targetId, candidates, fallbackText);
       eventBus.setActive(action);
@@ -253,6 +280,80 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
       // Close any in-flight click when this widget is being swapped out so
       // its events don't get orphaned.
       const open = useStudioStore.getState().openClick;
+      if (open) open.close();
+    };
+  }, [targetId]);
+
+  // Keyboard capture — own effect, same dep as click capture.
+  // `keyup` fires after the browser has committed the character to the
+  // element's value, so we can read the correct post-keystroke content
+  // without a microtask delay. The first keyup on an element opens a
+  // WidgetTextInputAction; subsequent keyups on the same element call
+  // updateValue() to reset the debounce. The action closes automatically
+  // after DEBOUNCE_MS of silence.
+  useEffect(() => {
+    if (!targetId) return;
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    if (!iframe || !doc) return;
+
+    let currentEl: Element | null = null;
+
+    const onKeyup = (e: KeyboardEvent) => {
+      if (!recorder.isCapturing()) return;
+      // Only react to keys that actually change the input's value. This
+      // prevents Tab, Escape, Arrow keys etc. from opening a spurious empty
+      // WidgetTextInputAction on the newly-focused element.
+      if (e.key.length !== 1 && e.key !== "Backspace" && e.key !== "Delete")
+        return;
+      const target = e.target as Element | null;
+      if (!target || !isTextLikeInput(target)) return;
+
+      const inputEl = target as HTMLInputElement | HTMLTextAreaElement;
+      const liveDoc = iframe.contentDocument ?? doc;
+      const openTextInput = useStudioStore.getState().openTextInput;
+
+      if (openTextInput && currentEl === target) {
+        openTextInput.updateValue(inputEl.value);
+        return;
+      }
+
+      // Different element or no open action — finalize previous, start fresh.
+      // close() captures the snapshot as its first step, so calling it here
+      // (in the keyup capture phase, before React's bubble phase) freezes the
+      // DOM before the new element's onChange re-render contaminates it.
+      if (openTextInput) openTextInput.close();
+      currentEl = target;
+
+      const candidates = captureSelector(target, liveDoc);
+      if (candidates.length === 0) return;
+
+      const action = new WidgetTextInputAction(
+        targetId,
+        candidates,
+        inputEl.value,
+      );
+      eventBus.setActive(action);
+
+      void action
+        .recordFromUserInput(liveDoc, {
+          matchedSelector: candidates[0],
+          matchedIndex: 0,
+          initialValue: inputEl.value,
+        })
+        .then(() => {
+          if (eventBus.current() === action) eventBus.setActive(null);
+          recorder.record(action, { stateChange: action.change() });
+          action.markRecorded();
+          if (currentEl === target) currentEl = null;
+        });
+    };
+
+    doc.addEventListener("keyup", onKeyup, { capture: true });
+
+    return () => {
+      doc.removeEventListener("keyup", onKeyup, { capture: true });
+      const open = useStudioStore.getState().openTextInput;
       if (open) open.close();
     };
   }, [targetId]);

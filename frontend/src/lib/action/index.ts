@@ -2,6 +2,7 @@ import { Action } from "./types";
 import { ToolCallAction } from "./tool_call";
 import { ResourceReadAction } from "./resource_read";
 import { WidgetClickAction } from "./widget_click";
+import { WidgetTextInputAction } from "./widget_text_input";
 import { reconstructEvent } from "@/lib/event";
 import type { AssertablePoint } from "@/lib/assertion/types";
 
@@ -9,6 +10,7 @@ export * from "./types";
 export * from "./tool_call";
 export * from "./resource_read";
 export * from "./widget_click";
+export * from "./widget_text_input";
 
 /**
  * Rebuild a live Action instance from its serialized `toJSON()` blob — the
@@ -37,6 +39,13 @@ export function reconstructAction(json: {
         json.data.candidates,
         json.data.fallbackText,
       );
+    case "WIDGET_TEXT_INPUT":
+      return new WidgetTextInputAction(
+        json.data.widgetId,
+        json.data.candidates,
+        json.data.value,
+        json.data.fallbackText,
+      );
     default:
       return null;
   }
@@ -55,6 +64,8 @@ export function assertablePointsForType(type: string): AssertablePoint[] {
       return ResourceReadAction.assertablePoints;
     case "WIDGET_CLICK":
       return WidgetClickAction.assertablePoints;
+    case "WIDGET_TEXT_INPUT":
+      return WidgetTextInputAction.assertablePoints;
     default:
       return [];
   }

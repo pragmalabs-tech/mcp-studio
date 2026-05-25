@@ -35,6 +35,7 @@ export interface NetworkState {
 export interface WidgetState {
   renderCount: number;
   clickCount: number;
+  inputCount?: number;
 }
 
 export function createInitialState(): State {

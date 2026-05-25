@@ -1,5 +1,6 @@
 import { reconstructAction, type Action } from "@/lib/action";
 import { WidgetClickAction } from "@/lib/action/widget_click";
+import { WidgetTextInputAction } from "@/lib/action/widget_text_input";
 import { recorder } from "@/lib/recorder/recorder";
 import type { RecordedAction } from "@/lib/recorder/schema";
 import {
@@ -97,8 +98,11 @@ export async function runReplay(
 
       eventBus.setActive(action);
       try {
-        if (action instanceof WidgetClickAction) {
-          // Open-window action: drive close via the recorded event count
+        if (
+          action instanceof WidgetClickAction ||
+          action instanceof WidgetTextInputAction
+        ) {
+          // Open-window actions: drive close via the recorded event count
           // (live events flow in asynchronously via the bus during the
           // settle window).
           const expectedEvents =

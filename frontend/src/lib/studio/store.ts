@@ -70,12 +70,18 @@ import {
 import { recorder } from "../recorder/recorder";
 import { eventBus } from "@/lib/event";
 import type { WidgetClickAction } from "@/lib/action/widget_click";
+import type { WidgetTextInputAction } from "@/lib/action/widget_text_input";
 
 /** Close any open WidgetClickAction settle window. Called before starting
  *  a new Action (so the next user action's events go to the new bucket)
  *  and at recording-slice boundaries. Idempotent — null check inside. */
 function closeOpenClick(): void {
   const open = useStudioStore.getState().openClick;
+  if (open) open.close();
+}
+
+function closeOpenTextInput(): void {
+  const open = useStudioStore.getState().openTextInput;
   if (open) open.close();
 }
 
@@ -548,6 +554,9 @@ interface StudioState {
    *  persisted, never compared. */
   openClick: WidgetClickAction | null;
 
+  /** Currently-open WidgetTextInputAction awaiting debounce + close. */
+  openTextInput: WidgetTextInputAction | null;
+
   // Actions
   loadAll: () => Promise<void>;
   setAuthMethod: (method: AuthMethod) => void;
@@ -850,6 +859,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   // Refs
   _iframeRef: null as HTMLIFrameElement | null,
   openClick: null as WidgetClickAction | null,
+  openTextInput: null as WidgetTextInputAction | null,
   _extAppsMock: null,
 
   // ── Actions ──
@@ -1752,9 +1762,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
    * method entirely — `toolExecuting` is a UI concern, not an Action one.
    */
   execute: async () => {
-    // A new user action closes any open WidgetClickAction settle window so
-    // its events finalize and the new action's events start a fresh bucket.
+    // A new user action closes any open settle windows so their events
+    // finalize and the new action's events start a fresh bucket.
     closeOpenClick();
+    closeOpenTextInput();
     if (get().toolExecuting) return; // hard block beyond the button-disable
     const { selected } = get();
     if (!selected || selected.type === "widget") return;
