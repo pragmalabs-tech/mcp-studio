@@ -91,7 +91,12 @@ function OAuthCallback() {
       // Save tokens scoped to the proxy origin. This triggers a "storage"
       // event on the original Studio tab (if still open) so it can hydrate
       // the tokens immediately.
-      saveOAuthTokensForProxy(flow.proxyUrl, tokens, flow.clientId);
+      saveOAuthTokensForProxy(
+        flow.proxyUrl,
+        tokens,
+        flow.clientId,
+        flow.tokenEndpoint,
+      );
       clearOAuthFlowState();
 
       setStatus("success");

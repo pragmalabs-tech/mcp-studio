@@ -14,6 +14,7 @@ import {
   type EventResult,
 } from "@/lib/event";
 import { reportHealth } from "./health";
+import { refreshAccessToken } from "./oauth";
 
 // ── Proxy URL ──
 
@@ -179,6 +180,7 @@ export function saveOAuthTokens(
     token_type: string;
   },
   clientId: string,
+  tokenEndpoint?: string,
 ) {
   localStorage.setItem(studioKey("oauth_access_token"), tokens.access_token);
   localStorage.setItem(studioKey("oauth_token_type"), tokens.token_type);
@@ -196,6 +198,9 @@ export function saveOAuthTokens(
   if (tokens.scope) {
     localStorage.setItem(studioKey("oauth_scope"), tokens.scope);
   }
+  if (tokenEndpoint) {
+    localStorage.setItem(studioKey("oauth_token_endpoint"), tokenEndpoint);
+  }
 }
 
 export function loadOAuthTokens() {
@@ -206,6 +211,7 @@ export function loadOAuthTokens() {
       Number(localStorage.getItem(studioKey("oauth_expires_at"))) || null,
     scope: localStorage.getItem(studioKey("oauth_scope")),
     clientId: localStorage.getItem(studioKey("oauth_client_id")),
+    tokenEndpoint: localStorage.getItem(studioKey("oauth_token_endpoint")),
   };
 }
 
@@ -217,6 +223,7 @@ export function clearOAuthTokens() {
     "oauth_scope",
     "oauth_token_type",
     "oauth_client_id",
+    "oauth_token_endpoint",
   ]) {
     localStorage.removeItem(studioKey(suffix));
   }
@@ -298,6 +305,7 @@ export function saveOAuthTokensForProxy(
     token_type: string;
   },
   clientId: string,
+  tokenEndpoint?: string,
 ) {
   const origin = new URL(proxyUrl).origin;
   const key = (suffix: string) => studioKeyForOrigin(origin, suffix);
@@ -314,6 +322,36 @@ export function saveOAuthTokensForProxy(
   if (tokens.scope) {
     localStorage.setItem(key("oauth_scope"), tokens.scope);
   }
+  if (tokenEndpoint) {
+    localStorage.setItem(key("oauth_token_endpoint"), tokenEndpoint);
+  }
+}
+
+// ── OAuth auto-refresh ──
+
+async function tryRefreshToken(): Promise<boolean> {
+  const { refreshToken, clientId, tokenEndpoint } = loadOAuthTokens();
+  if (!refreshToken || !clientId || !tokenEndpoint) return false;
+  try {
+    const tokens = await refreshAccessToken(
+      tokenEndpoint,
+      refreshToken,
+      clientId,
+      () => {},
+    );
+    saveOAuthTokens(tokens, clientId, tokenEndpoint);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureValidToken(): Promise<void> {
+  if (getAuthMethod() !== "oauth") return;
+  const { expiresAt } = loadOAuthTokens();
+  const expired = expiresAt !== null ? Date.now() > expiresAt - 60_000 : false;
+  if (!expired) return;
+  await tryRefreshToken();
 }
 
 // ── MCP JSON-RPC ──
@@ -366,11 +404,24 @@ async function rawMcpPost(
   params: Record<string, unknown> = {},
   overrideSessionId?: string,
 ): Promise<Response> {
-  return fetch(getMcpFetchUrl(), {
+  await ensureValidToken();
+  const body = JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params });
+  const resp = await fetch(getMcpFetchUrl(), {
     method: "POST",
     headers: buildHeaders(overrideSessionId),
-    body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
+    body,
   });
+  if (resp.status === 401 && getAuthMethod() === "oauth") {
+    const refreshed = await tryRefreshToken();
+    if (refreshed) {
+      return fetch(getMcpFetchUrl(), {
+        method: "POST",
+        headers: buildHeaders(overrideSessionId),
+        body,
+      });
+    }
+  }
+  return resp;
 }
 
 /** Parse a response that may be JSON or SSE-wrapped JSON (data: {...}\n\n) */

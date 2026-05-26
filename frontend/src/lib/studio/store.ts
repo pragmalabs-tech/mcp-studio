@@ -1189,7 +1189,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         onEvent,
       );
 
-      saveOAuthTokens(tokens, clientId);
+      saveOAuthTokens(tokens, clientId, endpoints.tokenEndpoint);
       removePKCE();
 
       // Mark the active profile as `oauth` so future activations know to
@@ -1249,7 +1249,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         onEvent,
       );
 
-      saveOAuthTokens(tokens, clientId);
+      saveOAuthTokens(tokens, clientId, endpoints.tokenEndpoint);
 
       const decoded = decodeToken(tokens.access_token);
 
