@@ -47,4 +47,35 @@ describe("modeFlaky", () => {
   it("epoch-s vs epoch-ms is treated as different kinds → fails", () => {
     expect(modeFlaky(1779544510, 1716459600000).status).toBe("failed");
   });
+
+  describe("scalar array order-insensitivity", () => {
+    it("passes for same strings in different order", () => {
+      expect(modeFlaky(["water", "CO2"], ["CO2", "water"]).status).toBe(
+        "passed",
+      );
+    });
+
+    it("passes for same numbers in different order", () => {
+      expect(modeFlaky([3, 1, 2], [1, 2, 3]).status).toBe("passed");
+    });
+
+    it("handles duplicate scalars correctly", () => {
+      expect(modeFlaky(["a", "a", "b"], ["b", "a", "a"]).status).toBe("passed");
+      expect(modeFlaky(["a", "a"], ["a", "b"]).status).toBe("failed");
+    });
+
+    it("fails when a scalar element is missing", () => {
+      expect(modeFlaky(["a", "b"], ["a", "c"]).status).toBe("failed");
+    });
+
+    it("fails on length mismatch", () => {
+      expect(modeFlaky(["a", "b"], ["a"]).status).toBe("failed");
+    });
+
+    it("keeps ordered comparison for object arrays", () => {
+      expect(modeFlaky([{ x: 1 }, { x: 2 }], [{ x: 2 }, { x: 1 }]).status).toBe(
+        "failed",
+      );
+    });
+  });
 });

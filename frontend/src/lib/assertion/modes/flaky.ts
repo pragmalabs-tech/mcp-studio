@@ -10,6 +10,15 @@ export function modeFlaky(expected: unknown, actual: unknown): AssertResult {
       };
 }
 
+function isScalar(v: unknown): v is string | number | boolean | null {
+  return (
+    v === null ||
+    typeof v === "string" ||
+    typeof v === "number" ||
+    typeof v === "boolean"
+  );
+}
+
 function walk(a: unknown, b: unknown): boolean {
   const ka = flakyKind(a);
   const kb = flakyKind(b);
@@ -25,6 +34,16 @@ function walk(a: unknown, b: unknown): boolean {
   if (Array.isArray(a) !== Array.isArray(b)) return false;
   if (Array.isArray(a) && Array.isArray(b)) {
     if (a.length !== b.length) return false;
+    // Scalar-only arrays: order-insensitive (same elements, any order).
+    if (a.every(isScalar) && b.every(isScalar)) {
+      const remaining = [...b] as Array<string | number | boolean | null>;
+      for (const el of a as Array<string | number | boolean | null>) {
+        const idx = remaining.indexOf(el);
+        if (idx === -1) return false;
+        remaining.splice(idx, 1);
+      }
+      return true;
+    }
     for (let i = 0; i < a.length; i++) {
       if (!walk(a[i], b[i])) return false;
     }

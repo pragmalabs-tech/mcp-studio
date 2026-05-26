@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   FlaskConical,
   Play,
+  PlaySquare,
   Trash2,
   ChevronDown,
   ChevronRight,
@@ -21,6 +22,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { TagFilter } from "@/components/ui/tag-filter";
 import {
   loadTests,
@@ -51,6 +59,10 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
   const [tests, setTests] = useState<SavedTest[]>([]);
   const [replayResult, setReplayResult] = useState<SavedReplay | null>(null);
   const [replayDialogOpen, setReplayDialogOpen] = useState(false);
+  const [runAllResults, setRunAllResults] = useState<
+    Array<{ test: SavedTest; replay: SavedReplay }>
+  >([]);
+  const [runAllDialogOpen, setRunAllDialogOpen] = useState(false);
   const runState = useStudioStore((s) => s.runState);
   const setRunState = useStudioStore((s) => s.setRunState);
   const patchRunState = useStudioStore((s) => s.patchRunState);
@@ -156,14 +168,86 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
     URL.revokeObjectURL(url);
   };
 
+  const handleRunAll = async () => {
+    if (runState || visibleTests.length === 0) return;
+
+    const count = visibleTests.length;
+    const ok = await confirm({
+      title: `Run ${count} test${count === 1 ? "" : "s"}?`,
+      description:
+        "Runs each visible test in sequence against the live MCP server. Tool calls with side effects will fire again.",
+      confirmLabel: "Run All",
+    });
+    if (!ok) return;
+
+    onOpenChange(false);
+    setStudioMode("test");
+
+    const ctrl = new AbortController();
+    const results: Array<{ test: SavedTest; replay: SavedReplay }> = [];
+
+    for (let i = 0; i < visibleTests.length; i++) {
+      if (ctrl.signal.aborted) break;
+      const test = visibleTests[i];
+      const totalSteps = countReplayableActions(test);
+
+      setRunState({
+        testName: `[${i + 1}/${count}] ${test.name}`,
+        mode: "auto",
+        currentStep: -1,
+        totalSteps,
+        currentAction: null,
+        ctrl,
+        nextResolver: null,
+      });
+
+      try {
+        const replay = await runReplay(test, {
+          signal: ctrl.signal,
+          onProgress: ({ step, action, phase }) => {
+            if (phase === "before") {
+              patchRunState({ currentStep: step, currentAction: action });
+            }
+          },
+        });
+        results.push({ test, replay });
+      } catch (err) {
+        console.error(`Replay failed for "${test.name}":`, err);
+      }
+    }
+
+    setRunState(null);
+    setStudioMode("normal");
+    setRunAllResults(results);
+    setRunAllDialogOpen(true);
+  };
+
   return (
     <>
       <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent side="right">
           <DrawerHeader>
-            <DrawerTitle className="flex items-center gap-2">
-              <FlaskConical className="h-5 w-5" />
-              Tests
+            <DrawerTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <FlaskConical className="h-5 w-5" />
+                Tests
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-2.5 text-xs gap-1.5"
+                onClick={handleRunAll}
+                disabled={runState !== null || visibleTests.length === 0}
+                title={`Run ${visibleTests.length} visible test(s)`}
+              >
+                <PlaySquare className="h-3.5 w-3.5" />
+                Run All
+                {visibleTests.length > 0 && (
+                  <span className="text-muted-foreground font-normal">
+                    ({visibleTests.length})
+                  </span>
+                )}
+              </Button>
             </DrawerTitle>
             <DrawerDescription>
               Recorded test sessions. Use the play button to replay against the
@@ -244,6 +328,15 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
         open={replayDialogOpen}
         result={replayResult}
         onOpenChange={setReplayDialogOpen}
+      />
+      <RunAllResultsDialog
+        open={runAllDialogOpen}
+        results={runAllResults}
+        onOpenChange={setRunAllDialogOpen}
+        onViewReplay={(replay) => {
+          setReplayResult(replay);
+          setReplayDialogOpen(true);
+        }}
       />
     </>
   );
@@ -623,5 +716,85 @@ function ActionDetail({ recordedAction, index }: ActionDetailProps) {
         </div>
       )}
     </div>
+  );
+}
+
+interface RunAllResultsDialogProps {
+  open: boolean;
+  results: Array<{ test: SavedTest; replay: SavedReplay }>;
+  onOpenChange: (open: boolean) => void;
+  onViewReplay: (replay: SavedReplay) => void;
+}
+
+function RunAllResultsDialog({
+  open,
+  results,
+  onOpenChange,
+  onViewReplay,
+}: RunAllResultsDialogProps) {
+  const passed = results.filter((r) => r.replay.status === "passed").length;
+  const failed = results.length - passed;
+  const totalMs = results.reduce((sum, r) => sum + r.replay.durationMs, 0);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <PlaySquare className="h-5 w-5" />
+            Run All Results
+          </DialogTitle>
+          <DialogDescription>
+            {results.length} test{results.length === 1 ? "" : "s"} ·{" "}
+            <span className="text-green-500">{passed} passed</span>
+            {failed > 0 && (
+              <>
+                {" · "}
+                <span className="text-destructive">{failed} failed</span>
+              </>
+            )}{" "}
+            ·{" "}
+            {totalMs < 1000
+              ? `${totalMs}ms`
+              : `${(totalMs / 1000).toFixed(1)}s`}{" "}
+            total
+          </DialogDescription>
+        </DialogHeader>
+
+        <ScrollArea className="max-h-96 -mx-1 px-1">
+          <div className="space-y-1 py-1">
+            {results.map(({ test, replay }) => (
+              <div
+                key={replay.id}
+                className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent/40 transition-colors"
+              >
+                <StatusBadge
+                  status={replay.status}
+                  hideIcon
+                  className="shrink-0"
+                />
+                <span className="flex-1 min-w-0 text-sm truncate">
+                  {test.name}
+                </span>
+                <span className="text-[11px] font-mono text-muted-foreground shrink-0">
+                  {replay.durationMs}ms
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-xs shrink-0"
+                  onClick={() => {
+                    onViewReplay(replay);
+                    onOpenChange(false);
+                  }}
+                >
+                  View
+                </Button>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   );
 }
