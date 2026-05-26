@@ -1,5 +1,6 @@
 import type { Session } from "@/lib/recorder/schema";
 import type { TestAssertionConfig } from "@/lib/assertion";
+import { normalizeTags } from "@/lib/tests/tags";
 import {
   deleteTest as apiDeleteTest,
   getTest as apiGetTest,
@@ -23,6 +24,8 @@ export interface SavedTest {
    * `"exact"`.
    */
   assertions?: TestAssertionConfig;
+  /** Sorted, lowercased, deduped labels. Absent == []. */
+  tags?: string[];
 }
 
 /**
@@ -68,4 +71,13 @@ export async function updateTestAssertions(
   const existing = await apiGetTest(id);
   if (!existing) return;
   await putTest(id, { ...existing, assertions: cfg });
+}
+
+export async function updateTestTags(
+  id: string,
+  tags: string[],
+): Promise<void> {
+  const existing = await apiGetTest(id);
+  if (!existing) return;
+  await putTest(id, { ...existing, tags: normalizeTags(tags) });
 }

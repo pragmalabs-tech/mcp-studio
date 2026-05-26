@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { TagInput } from "@/components/ui/tag-input";
 import { recorder } from "@/lib/recorder/recorder";
 import { saveTest } from "@/lib/tests/storage";
 
@@ -20,6 +21,7 @@ interface SaveTestModalProps {
   endIndex: number;
   onOpenChange: (open: boolean) => void;
   onSaved?: () => void;
+  tagSuggestions?: readonly string[];
 }
 
 export function SaveTestModal({
@@ -28,9 +30,11 @@ export function SaveTestModal({
   endIndex,
   onOpenChange,
   onSaved,
+  tagSuggestions = [],
 }: SaveTestModalProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -49,6 +53,7 @@ export function SaveTestModal({
         description: description.trim() || undefined,
         createdAt: new Date().toISOString(),
         session,
+        tags: tags.length > 0 ? tags : undefined,
       };
 
       await saveTest(test);
@@ -57,6 +62,7 @@ export function SaveTestModal({
       // Reset and close
       setName("");
       setDescription("");
+      setTags([]);
       onSaved?.();
       onOpenChange(false);
     } catch (error) {
@@ -105,6 +111,16 @@ export function SaveTestModal({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Tags (optional)</Label>
+              <TagInput
+                value={tags}
+                onChange={setTags}
+                suggestions={tagSuggestions}
+                placeholder="Add tag…"
               />
             </div>
 

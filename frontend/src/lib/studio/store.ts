@@ -22,6 +22,7 @@ import {
   listResources,
   callTool,
   readResource,
+  registerSilentRefreshCallback,
   type McpToolInfo,
   type McpResourceInfo,
 } from "./api";
@@ -1804,3 +1805,12 @@ if (typeof window !== "undefined") {
     locale: s.locale,
   });
 }
+
+// Sync the store's oauth.expiresAt when a silent background refresh succeeds
+// via ensureValidToken(). Without this the auth panel timer stays "expired"
+// even though the token is valid and requests succeed.
+registerSilentRefreshCallback((expiresAt) => {
+  useStudioStore.setState((s) => ({
+    oauth: { ...s.oauth, expiresAt },
+  }));
+});

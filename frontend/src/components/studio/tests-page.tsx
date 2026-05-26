@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   FlaskConical,
   Play,
@@ -7,7 +7,10 @@ import {
   ChevronRight,
   Download,
   Loader2,
+  Plus,
+  X,
 } from "lucide-react";
+import { useSearch, useNavigate } from "@tanstack/react-router";
 import {
   Drawer,
   DrawerContent,
@@ -17,7 +20,15 @@ import {
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { loadTests, deleteTest, type SavedTest } from "@/lib/tests/storage";
+import { Badge } from "@/components/ui/badge";
+import { TagFilter } from "@/components/ui/tag-filter";
+import {
+  loadTests,
+  deleteTest,
+  updateTestTags,
+  type SavedTest,
+} from "@/lib/tests/storage";
+import { collectTags, normalizeTag } from "@/lib/tests/tags";
 import { runReplay, countReplayableActions } from "@/lib/replays/runner";
 import {
   loadReplaysForTest,
@@ -44,6 +55,30 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
   const setRunState = useStudioStore((s) => s.setRunState);
   const patchRunState = useStudioStore((s) => s.patchRunState);
   const setStudioMode = useStudioStore((s) => s.setStudioMode);
+
+  const { tags: rawTagParam } = useSearch({ from: "/" });
+  const navigate = useNavigate({ from: "/" });
+  const selectedTags = rawTagParam
+    ? rawTagParam.split(",").filter(Boolean)
+    : [];
+
+  function setSelectedTags(next: string[]) {
+    void navigate({
+      search: (prev) => {
+        const updated = { ...prev, tags: next.join(",") || undefined };
+        return updated;
+      },
+    });
+  }
+
+  const allTags = collectTags(tests);
+  const visibleTests =
+    selectedTags.length === 0
+      ? tests
+      : tests.filter((t) => {
+          const testTags = new Set(t.tags ?? []);
+          return selectedTags.every((tag) => testTags.has(tag));
+        });
 
   // Load tests when drawer opens — newest first so the most recently
   // recorded session is at the top.
@@ -136,7 +171,20 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
             </DrawerDescription>
           </DrawerHeader>
 
-          <ScrollArea className="h-[calc(100vh-9rem)] mt-4 -mx-2 px-2">
+          {allTags.length > 0 && (
+            <div className="mt-3 space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Filter by tag
+              </p>
+              <TagFilter
+                tags={allTags}
+                selected={selectedTags}
+                onSelectionChange={setSelectedTags}
+              />
+            </div>
+          )}
+
+          <ScrollArea className="h-[calc(100vh-9rem)] mt-3 -mx-2 px-2">
             {tests.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-center text-muted-foreground">
                 <FlaskConical className="h-12 w-12 mb-4 opacity-50" />
@@ -145,12 +193,17 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
                   Click Record Test in the toolbar to create your first test
                 </p>
               </div>
+            ) : visibleTests.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-center text-muted-foreground">
+                <p className="text-sm">No tests match the current filter</p>
+              </div>
             ) : (
               <div className="space-y-2 pb-4">
-                {tests.map((test) => (
+                {visibleTests.map((test) => (
                   <TestCard
                     key={test.id}
                     test={test}
+                    allTags={allTags}
                     disableReplay={runState !== null}
                     onRun={() => handleReplay(test)}
                     onDelete={async () => {
@@ -166,6 +219,13 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
                       setTests(tests.filter((t) => t.id !== test.id));
                     }}
                     onExport={() => handleExport(test)}
+                    onTagsChange={(updated) => {
+                      setTests((prev) =>
+                        prev.map((t) =>
+                          t.id === test.id ? { ...t, tags: updated } : t,
+                        ),
+                      );
+                    }}
                     onOpenReplay={(replay) => {
                       setReplayResult(replay);
                       setReplayDialogOpen(true);
@@ -191,19 +251,23 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
 
 interface TestCardProps {
   test: SavedTest;
+  allTags: readonly string[];
   disableReplay: boolean;
   onRun: () => void;
   onDelete: () => void;
   onExport: () => void;
+  onTagsChange: (tags: string[]) => void;
   onOpenReplay: (replay: SavedReplay) => void;
 }
 
 function TestCard({
   test,
+  allTags,
   disableReplay,
   onRun,
   onDelete,
   onExport,
+  onTagsChange,
   onOpenReplay,
 }: TestCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -250,6 +314,19 @@ function TestCard({
                 <span>·</span>
                 <span className="truncate">{capturedAt}</span>
               </div>
+              {(test.tags ?? []).length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {(test.tags ?? []).map((tag) => (
+                    <Badge
+                      key={tag}
+                      variant="secondary"
+                      className="text-[10px] px-1.5 py-0 font-normal"
+                    >
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
           </button>
           <div className="flex items-center gap-0.5 shrink-0">
@@ -291,6 +368,18 @@ function TestCard({
 
       {expanded && (
         <div className="border-t bg-muted/20 p-2 space-y-3">
+          <Section title="Tags">
+            <div className="px-2 pb-1">
+              <InlineTagEditor
+                tags={test.tags ?? []}
+                onChange={async (next) => {
+                  onTagsChange(next);
+                  await updateTestTags(test.id, next);
+                }}
+              />
+            </div>
+          </Section>
+
           <Section title="Actions">
             {test.session.actions.length === 0 ? (
               <div className="text-xs text-muted-foreground italic px-2 py-1">
@@ -340,6 +429,83 @@ function TestCard({
             )}
           </Section>
         </div>
+      )}
+    </div>
+  );
+}
+
+function InlineTagEditor({
+  tags,
+  onChange,
+}: {
+  tags: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [buffer, setBuffer] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function commit(raw: string) {
+    const tag = normalizeTag(raw);
+    if (tag && !tags.includes(tag)) onChange([...tags, tag]);
+    setBuffer("");
+  }
+
+  function startAdding() {
+    setAdding(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1 min-h-6">
+      {tags.map((tag) => (
+        <Badge
+          key={tag}
+          variant="secondary"
+          className="text-[10px] px-1.5 py-0 gap-0.5 font-normal"
+        >
+          {tag}
+          <button
+            type="button"
+            onClick={() => onChange(tags.filter((t) => t !== tag))}
+            className="ml-0.5 -mr-0.5 hover:text-foreground text-muted-foreground"
+            aria-label={`Remove ${tag}`}
+          >
+            <X className="h-2.5 w-2.5" />
+          </button>
+        </Badge>
+      ))}
+      {adding ? (
+        <input
+          ref={inputRef}
+          value={buffer}
+          onChange={(e) => setBuffer(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === ",") {
+              e.preventDefault();
+              commit(buffer);
+            } else if (e.key === "Escape") {
+              setAdding(false);
+              setBuffer("");
+            }
+          }}
+          onBlur={() => {
+            if (buffer.trim()) commit(buffer);
+            setAdding(false);
+            setBuffer("");
+          }}
+          placeholder="tag name…"
+          className="text-[11px] h-5 w-24 px-1.5 rounded border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring/50 dark:bg-input/30"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={startAdding}
+          className="text-[11px] flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-dashed border-border/60 text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+        >
+          <Plus className="h-3 w-3" />
+          Add tag
+        </button>
       )}
     </div>
   );

@@ -329,6 +329,14 @@ export function saveOAuthTokensForProxy(
 
 // ── OAuth auto-refresh ──
 
+type SilentRefreshCallback = (expiresAt: number | null) => void;
+let _silentRefreshCb: SilentRefreshCallback | null = null;
+
+/** Called once by the store to sync `oauth.expiresAt` after a silent refresh. */
+export function registerSilentRefreshCallback(cb: SilentRefreshCallback): void {
+  _silentRefreshCb = cb;
+}
+
 async function tryRefreshToken(): Promise<boolean> {
   const { refreshToken, clientId, tokenEndpoint } = loadOAuthTokens();
   if (!refreshToken || !clientId || !tokenEndpoint) return false;
@@ -340,6 +348,10 @@ async function tryRefreshToken(): Promise<boolean> {
       () => {},
     );
     saveOAuthTokens(tokens, clientId, tokenEndpoint);
+    const expiresAt = tokens.expires_in
+      ? Date.now() + tokens.expires_in * 1000
+      : null;
+    _silentRefreshCb?.(expiresAt);
     return true;
   } catch {
     return false;

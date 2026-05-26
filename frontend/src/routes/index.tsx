@@ -13,6 +13,7 @@ export const Route = createFileRoute("/")({
   component: StudioPage,
   validateSearch: (search: Record<string, unknown>) => ({
     proxy: (search.proxy as string) || undefined,
+    tags: (search.tags as string) || undefined,
   }),
 });
 
