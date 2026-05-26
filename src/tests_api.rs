@@ -6,13 +6,15 @@
 //! is intentionally absent so the storage layer doesn't have to evolve
 //! every time the frontend tweaks its shape.
 
+use std::path::{Path, PathBuf};
+
 use axum::Json;
-use axum::extract::Path;
+use axum::extract::{Path as AxumPath, State};
 use axum::http::StatusCode;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::server::AppError;
+use crate::server::{AppError, AppState};
 use crate::storage;
 
 #[derive(Serialize)]
@@ -51,8 +53,25 @@ fn lift_summary(name: &str, file: storage::JsonFile, value: &Value) -> TestSumma
     }
 }
 
-pub async fn list_tests() -> Result<Json<Vec<TestSummary>>, AppError> {
-    let dir = storage::tests_dir().ok_or_else(|| AppError::Internal("no home directory".into()))?;
+fn effective_tests_dir(state: &AppState) -> Result<PathBuf, AppError> {
+    if let Some(dir) = &state.tests_dir {
+        return Ok(dir.clone());
+    }
+    storage::tests_dir().ok_or_else(|| AppError::Internal("no home directory".into()))
+}
+
+fn resolve_path(dir: &Path, name: &str) -> Result<PathBuf, AppError> {
+    let slug = storage::safe_filename(name);
+    if slug != name {
+        return Err(AppError::BadRequest(format!(
+            "invalid test name `{name}` (must match safe slug, got `{slug}`)"
+        )));
+    }
+    Ok(dir.join(format!("{slug}.json")))
+}
+
+pub async fn list_tests(State(s): State<AppState>) -> Result<Json<Vec<TestSummary>>, AppError> {
+    let dir = effective_tests_dir(&s)?;
     let files = storage::list_json(&dir).map_err(|e| AppError::Internal(e.to_string()))?;
     let mut out = Vec::with_capacity(files.len());
     for file in files {
@@ -64,19 +83,12 @@ pub async fn list_tests() -> Result<Json<Vec<TestSummary>>, AppError> {
     Ok(Json(out))
 }
 
-fn resolve_path(name: &str) -> Result<std::path::PathBuf, AppError> {
-    let slug = storage::safe_filename(name);
-    if slug != name {
-        return Err(AppError::BadRequest(format!(
-            "invalid test name `{name}` (must match safe slug, got `{slug}`)"
-        )));
-    }
-    let dir = storage::tests_dir().ok_or_else(|| AppError::Internal("no home directory".into()))?;
-    Ok(dir.join(format!("{slug}.json")))
-}
-
-pub async fn get_test(Path(name): Path<String>) -> Result<Json<Value>, AppError> {
-    let path = resolve_path(&name)?;
+pub async fn get_test(
+    State(s): State<AppState>,
+    AxumPath(name): AxumPath<String>,
+) -> Result<Json<Value>, AppError> {
+    let dir = effective_tests_dir(&s)?;
+    let path = resolve_path(&dir, &name)?;
     if !path.exists() {
         return Err(AppError::NotFound(format!("test `{name}` not found")));
     }
@@ -85,10 +97,12 @@ pub async fn get_test(Path(name): Path<String>) -> Result<Json<Value>, AppError>
 }
 
 pub async fn put_test(
-    Path(name): Path<String>,
+    State(s): State<AppState>,
+    AxumPath(name): AxumPath<String>,
     Json(body): Json<Value>,
 ) -> Result<Json<TestSummary>, AppError> {
-    let path = resolve_path(&name)?;
+    let dir = effective_tests_dir(&s)?;
+    let path = resolve_path(&dir, &name)?;
     storage::write_json(&path, &body).map_err(|e| AppError::Internal(e.to_string()))?;
     let metadata = std::fs::metadata(&path).map_err(|e| AppError::Internal(e.to_string()))?;
     let modified_ms = metadata
@@ -108,8 +122,12 @@ pub async fn put_test(
     )))
 }
 
-pub async fn delete_test(Path(name): Path<String>) -> Result<StatusCode, AppError> {
-    let path = resolve_path(&name)?;
+pub async fn delete_test(
+    State(s): State<AppState>,
+    AxumPath(name): AxumPath<String>,
+) -> Result<StatusCode, AppError> {
+    let dir = effective_tests_dir(&s)?;
+    let path = resolve_path(&dir, &name)?;
     storage::delete_file(&path).map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }

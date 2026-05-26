@@ -31,6 +31,12 @@ async fn main() {
     run().await;
 }
 
+fn parse_tests_dir() -> Option<std::path::PathBuf> {
+    let args: Vec<String> = std::env::args().collect();
+    let pos = args.iter().position(|a| a == "--tests-dir")?;
+    args.get(pos + 1).map(std::path::PathBuf::from)
+}
+
 async fn run() {
     let listener = match tokio::net::TcpListener::bind(BIND_ADDR).await {
         Ok(l) => l,
@@ -44,6 +50,7 @@ async fn run() {
         config: Arc::new(RwLock::new(config::load())),
         tunnel: Arc::new(tunnel::TunnelState::new()),
         action_log: action_log::channel(),
+        tests_dir: parse_tests_dir(),
     };
 
     println!("Studio listening on {PUBLIC_URL}");

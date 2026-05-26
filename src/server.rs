@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::Json;
@@ -26,6 +27,8 @@ pub struct AppState {
     pub config: Arc<RwLock<Config>>,
     pub tunnel: Arc<TunnelState>,
     pub action_log: action_log::Sender,
+    /// When set, test CRUD ops read from this path instead of ~/.mcp-studio/tests/.
+    pub tests_dir: Option<PathBuf>,
 }
 
 pub fn router(state: AppState) -> Router {
