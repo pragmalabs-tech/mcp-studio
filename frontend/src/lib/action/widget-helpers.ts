@@ -59,6 +59,14 @@ export function resolveWidgetUri(
     }
   }
 
+  // Last resort: if the server exposes exactly one MCP app widget and nothing
+  // matched by name, use it. Servers like Excalidraw have a single canvas
+  // resource that is the primary UI for all their tools.
+  const appResources = uiResources.filter(
+    (r) => r.mimeType === "text/html;profile=mcp-app",
+  );
+  if (appResources.length === 1) return appResources[0].uri;
+
   return null;
 }
 

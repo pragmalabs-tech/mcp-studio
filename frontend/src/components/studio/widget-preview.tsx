@@ -186,17 +186,16 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
       prev.destroy();
       useStudioStore.setState({ _extAppsMock: null });
     }
-    let extAppsMock: ReturnType<typeof createClaudeMock> | null = null;
-    if (platform === "claude") {
-      extAppsMock = createClaudeMock(
-        iframe,
-        entry.mock,
-        (method, args) => logAction(method, args),
-        (name, args) => callTool(name, args),
-        (content) => addPendingMessage("claude", content),
-      );
-      useStudioStore.setState({ _extAppsMock: extAppsMock });
-    }
+    const extAppsMock = createClaudeMock(
+      iframe,
+      entry.mock,
+      (method, args) => logAction(method, args),
+      (name, args) => callTool(name, args),
+      platform === "claude"
+        ? (content) => addPendingMessage("claude", content)
+        : undefined,
+    );
+    useStudioStore.setState({ _extAppsMock: extAppsMock });
 
     const timer = setTimeout(() => {
       const snap = doc.documentElement.outerHTML;

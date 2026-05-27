@@ -503,11 +503,10 @@ async function doHandshake(): Promise<string> {
     const bodySid = meta?.sessionId as string | undefined;
     if (bodySid) sid = bodySid;
   }
-  if (!sid) {
-    throw new Error(
-      "Server did not return Mcp-Session-Id (header or _meta.sessionId)",
-    );
-  }
+  // Session ID is optional per MCP spec — stateless servers omit it.
+  // Use empty string as the "no session" sentinel; buildHeaders' `if (sid)`
+  // guard already skips the header when the value is falsy.
+  if (!sid) sid = "";
 
   // Send notifications/initialized using THIS handshake's session id, not
   // whatever happens to be in module state when this fetch runs. Concurrent

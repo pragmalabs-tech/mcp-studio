@@ -28,11 +28,9 @@ export interface ToolCallResult {
   /** Raw `tools/call` response from the MCP server. */
   tool: unknown;
   /** Resolved `ui://` URI when the response asked for a widget render,
-   *  null otherwise. Comparable across runs — same intent = same URI. */
+   *  null otherwise. Comparable across runs — same intent = same URI.
+   *  Also used as the key in `state.widgets` (stable, no separate UUID). */
   widget: string | null;
-  /** Action-generated id used as the key in `state.widgets`. Not
-   *  compared in replay; it's an internal pointer. */
-  widgetId: string | null;
   /** Post-render `outerHTML` of the iframe captured after `waitMs`.
    *  Review artifact only — never string-compared in assertions. Null
    *  when no widget rendered or when `<WidgetPreview>` didn't resolve
@@ -56,7 +54,7 @@ export class ToolCallAction extends Action<{
    *
    * Paths reach into `data.tool.*` now that the outcome is wrapped.
    * The `widget` URI is the comparable "did the same widget render?"
-   * signal; `widgetId` and `snapshot` are intentionally not points.
+   * signal; `snapshot` is intentionally not a point.
    */
   static assertablePoints: AssertablePoint[] = [
     {
@@ -149,7 +147,6 @@ export class ToolCallAction extends Action<{
         liveStore.resources,
       );
 
-      let widgetId: string | null = null;
       let snapshot: string | null = null;
 
       if (widgetUri) {
@@ -183,8 +180,7 @@ export class ToolCallAction extends Action<{
             displayMode: liveStore.displayMode,
           });
           const waitMs = this.data.waitMs ?? DEFAULT_WAIT_MS;
-          widgetId = crypto.randomUUID();
-          const ready = useStudioStore.getState().insertWidget(widgetId, {
+          const ready = useStudioStore.getState().insertWidget(widgetUri, {
             html,
             mock,
             waitMs,
@@ -208,7 +204,6 @@ export class ToolCallAction extends Action<{
       this.setResult(true, {
         tool: toolResponse,
         widget: widgetUri,
-        widgetId,
         snapshot,
       } satisfies ToolCallResult);
     } catch (err) {

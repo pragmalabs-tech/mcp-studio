@@ -1645,8 +1645,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         locale,
         displayMode,
       };
-      const id = crypto.randomUUID();
-      get().insertWidget(id, { html, mock, waitMs: 150 });
+      get().insertWidget(widgetUri, { html, mock, waitMs: 150 });
     } catch (e) {
       logAction("error", `Invalid JSON: ${(e as Error).message}`);
     }

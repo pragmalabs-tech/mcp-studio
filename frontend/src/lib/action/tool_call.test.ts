@@ -68,7 +68,6 @@ describe("ToolCallAction", () => {
     expect(action.result?.data).toEqual({
       tool: { temperature: 72 },
       widget: null,
-      widgetId: null,
       snapshot: null,
     });
     expect(action.change()).toEqual({
@@ -121,14 +120,12 @@ describe("ToolCallAction", () => {
     expect(mockedReadResource).toHaveBeenCalledWith(widgetUri);
     expect(insertWidget).toHaveBeenCalledOnce();
     const [id, entry] = insertWidget.mock.calls[0];
-    expect(typeof id).toBe("string");
-    expect(id.length).toBeGreaterThan(0);
+    expect(id).toBe(widgetUri);
     expect(entry.html).toContain("widget");
     expect(entry.waitMs).toBe(10);
 
     expect(action.result?.data).toMatchObject({
       widget: widgetUri,
-      widgetId: id,
       snapshot: "<snapshot>",
     });
     expect(action.change()).toEqual({
@@ -193,7 +190,6 @@ describe("ToolCallAction", () => {
         data: {
           tool: { ok: true },
           widget: null,
-          widgetId: null,
           snapshot: null,
         },
       },

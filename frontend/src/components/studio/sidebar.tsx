@@ -305,14 +305,17 @@ export function Sidebar() {
         <ProfilePanel />
 
         <div className="px-4 py-3 border-t text-[10px] text-muted-foreground flex items-center justify-between gap-2">
-          <a
-            href="https://pragmalabs.tech/studio"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-foreground transition-colors truncate"
-          >
-            pragmalabs.tech/studio
-          </a>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <a
+              href="https://pragmalabs.tech/studio"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-foreground transition-colors truncate"
+            >
+              pragmalabs.tech/studio
+            </a>
+            <span className="opacity-40 shrink-0">v{__APP_VERSION__}</span>
+          </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <Switch
               size="sm"
