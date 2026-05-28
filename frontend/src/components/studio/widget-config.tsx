@@ -190,7 +190,6 @@ export function WidgetConfig() {
             </>
           )}
         </div>
-
       </div>
 
       {/* Row 2: Protocol compatibility badges (after execution) */}

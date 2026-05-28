@@ -20,11 +20,15 @@ export function ProfilePanel() {
   const [open, setOpen] = useState(true);
   const [profilesOpen, setProfilesOpen] = useState(false);
 
-  // First-run prompt: once profiles have loaded, if there's still no URL
-  // configured, open the manager so the user has a target to talk to
-  // before any other panel becomes useful.
+  // First-run nudge: once profiles have loaded, pop the manager open if
+  //   - there's no URL set (nothing to talk to yet), or
+  //   - only the seeded `default` profile exists — the URL is a placeholder
+  //     pointing at the Excalidraw demo server, and we want the user to
+  //     notice they should set their own MCP target instead of silently
+  //     running against the demo.
   useEffect(() => {
-    if (!proxyUrl && profiles.length > 0) {
+    const onlyDefault = profiles.length === 1;
+    if (profiles.length > 0 && (!proxyUrl || onlyDefault)) {
       setProfilesOpen(true);
     }
     // Only on the initial transition from "no profiles loaded yet" — runs
