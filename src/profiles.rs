@@ -79,20 +79,36 @@ fn save(file: &ProfilesFile) -> io::Result<()> {
     storage::write_secure(&path, &bytes)
 }
 
+/// URL we seed the auto-created `default` profile with so new users have a
+/// working MCP target out of the box. Also back-fills an existing `default`
+/// profile if it was created before this default was introduced and still
+/// has no URL set.
+const DEFAULT_PROFILE_URL: &str = "https://mcp.excalidraw.com/mcp";
+
 /// Ensure at least one profile exists. Returns the file with a `default`
-/// profile inserted (and marked active) if the catalog was empty.
+/// profile inserted (and marked active) if the catalog was empty. If a
+/// `default` profile exists with no URL, populate it with the seed URL.
 fn ensure_default(mut file: ProfilesFile) -> ProfilesFile {
     if file.profiles.is_empty() {
         let default = Profile {
             id: random_id(),
             name: "default".into(),
-            server_url: String::new(),
+            server_url: DEFAULT_PROFILE_URL.into(),
             auth: None,
         };
         file.active_id = Some(default.id.clone());
         file.profiles.push(default);
-    } else if file.active_id.is_none() {
-        file.active_id = file.profiles.first().map(|p| p.id.clone());
+    } else {
+        if let Some(p) = file
+            .profiles
+            .iter_mut()
+            .find(|p| p.name == "default" && p.server_url.is_empty())
+        {
+            p.server_url = DEFAULT_PROFILE_URL.into();
+        }
+        if file.active_id.is_none() {
+            file.active_id = file.profiles.first().map(|p| p.id.clone());
+        }
     }
     file
 }

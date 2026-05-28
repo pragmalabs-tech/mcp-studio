@@ -166,10 +166,23 @@ export function ProfilesDialog({ open, onOpenChange }: Props) {
 
   useEffect(() => {
     if (open) {
-      setEditingId(null);
-      setAdding(false);
+      // Default to edit mode on the active profile so the URL/auth fields
+      // are immediately reachable — the most common reason for opening this
+      // dialog is to tweak the active target, not to switch between many.
+      const active = profiles.find((p) => p.id === activeProfileId);
+      if (active) {
+        setEditingId(active.id);
+        seedDraftFromProfile(active);
+        setAdding(false);
+      } else {
+        setEditingId(null);
+        setAdding(false);
+      }
       setError(null);
     }
+    // Intentionally only re-run on open transitions — `profiles`/active id
+    // changes while open shouldn't blow away the in-progress edit draft.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   function seedDraftFromProfile(p: Profile) {

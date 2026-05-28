@@ -99,7 +99,10 @@ export function StudioLayout() {
                 )}
               </div>
               <ResizableSplit
-                storageKey="mcp-studio:editor-split"
+                // -v2: previous storage held a ratio (0–1); pixel-based
+                // sizing uses a fresh key so a stale ratio can't be loaded
+                // as 0px tall.
+                storageKey="mcp-studio:editor-split-v2"
                 top={<RequestEditor />}
                 bottom={
                   <div className="flex-1 flex flex-col min-h-0">
@@ -195,9 +198,9 @@ export function StudioLayout() {
                     )}
                   </div>
                 }
-                defaultRatio={0.4}
-                minTopPx={100}
-                minBottomPx={200}
+                defaultBottomPx={320}
+                minTopPx={120}
+                minBottomPx={160}
               />
             </div>
           }

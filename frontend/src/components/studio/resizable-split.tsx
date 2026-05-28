@@ -9,35 +9,41 @@ import {
 interface ResizableSplitProps {
   top: ReactNode;
   bottom: ReactNode;
-  defaultRatio?: number;
+  /** Hardcoded default height (px) for the bottom pane. The top pane fills
+   *  whatever's left. Pixel-based (not ratio) so the bottom never shrinks
+   *  when content in the top pane grows. */
+  defaultBottomPx?: number;
   minTopPx?: number;
   minBottomPx?: number;
-  /** When set, persists the ratio in localStorage under this key. */
+  /** When set, persists the bottom-pane height (px) in localStorage. */
   storageKey?: string;
 }
 
 export function ResizableSplit({
   top,
   bottom,
-  defaultRatio = 0.55,
+  defaultBottomPx = 320,
   minTopPx = 100,
-  minBottomPx = 80,
+  minBottomPx = 120,
   storageKey,
 }: ResizableSplitProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [ratio, setRatio] = useState(() => {
-    if (!storageKey) return defaultRatio;
+  const [bottomPx, setBottomPx] = useState(() => {
+    if (!storageKey) return defaultBottomPx;
     const stored = localStorage.getItem(storageKey);
     const parsed = stored ? Number(stored) : NaN;
-    return Number.isFinite(parsed) && parsed > 0 && parsed < 1
+    // Stored value must be a plausible pixel height. Old ratio values
+    // (0 < v < 1) from a previous version are ignored — fall through to
+    // the default.
+    return Number.isFinite(parsed) && parsed >= minBottomPx
       ? parsed
-      : defaultRatio;
+      : defaultBottomPx;
   });
   const dragging = useRef(false);
 
   useEffect(() => {
-    if (storageKey) localStorage.setItem(storageKey, String(ratio));
-  }, [ratio, storageKey]);
+    if (storageKey) localStorage.setItem(storageKey, String(bottomPx));
+  }, [bottomPx, storageKey]);
 
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -47,10 +53,12 @@ export function ResizableSplit({
       const onMouseMove = (e: MouseEvent) => {
         if (!dragging.current || !containerRef.current) return;
         const rect = containerRef.current.getBoundingClientRect();
-        const y = e.clientY - rect.top;
-        const total = rect.height;
-        const clamped = Math.max(minTopPx, Math.min(total - minBottomPx, y));
-        setRatio(clamped / total);
+        const newBottom = rect.bottom - e.clientY;
+        const clamped = Math.max(
+          minBottomPx,
+          Math.min(rect.height - minTopPx, newBottom),
+        );
+        setBottomPx(clamped);
       };
 
       const onMouseUp = () => {
@@ -70,17 +78,15 @@ export function ResizableSplit({
       ref={containerRef}
       className="flex-1 flex flex-col min-h-0 overflow-hidden"
     >
-      <div
-        className="flex flex-col min-h-0 overflow-hidden"
-        style={{ flex: `0 0 ${ratio * 100}%` }}
-      >
-        {top}
-      </div>
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">{top}</div>
       <div
         onMouseDown={onMouseDown}
         className="shrink-0 h-1 cursor-row-resize hover:bg-primary/30 active:bg-primary/50 transition-colors"
       />
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      <div
+        className="shrink-0 flex flex-col overflow-hidden"
+        style={{ height: bottomPx }}
+      >
         {bottom}
       </div>
     </div>

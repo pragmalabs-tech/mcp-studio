@@ -112,7 +112,12 @@ export function RequestEditor() {
 
       {tab === "args" ? (
         <Textarea
-          className="flex-1 min-h-0 rounded-none border-0 resize-none font-mono text-xs focus-visible:ring-0 bg-background"
+          // `field-sizing-fixed` overrides the Textarea base's
+          // `field-sizing-content` — otherwise large tool inputs (e.g. an
+          // Excalidraw element blob pasted as one giant string) grow the
+          // textarea to fit, which through the surrounding flex split
+          // shrinks the bottom logs panel.
+          className="flex-1 min-h-0 rounded-none border-0 resize-none field-sizing-fixed font-mono text-xs focus-visible:ring-0 bg-background"
           value={editorValue}
           onChange={(e) => setEditorValue(e.target.value)}
           spellCheck={false}
