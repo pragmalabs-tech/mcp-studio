@@ -8,7 +8,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Platform, ViewportPreset } from "@/lib/studio/store";
 import { VIEWPORT_PRESETS } from "@/lib/studio/store";
@@ -55,22 +54,15 @@ export function WidgetConfig() {
     theme,
     displayMode,
     locale,
-    strictMode,
-    cspViolations,
     viewportPreset,
     viewportCustom,
     setPlatform,
     setTheme,
     setDisplayMode,
     setLocale,
-    setStrictMode,
     setViewportPreset,
     setViewportCustom,
   } = useStudioStore();
-
-  const cspErrorCount = cspViolations.filter(
-    (v) => v.severity === "error",
-  ).length;
 
   return (
     <div className="border-b shrink-0 text-xs">
@@ -199,26 +191,6 @@ export function WidgetConfig() {
           )}
         </div>
 
-        <Separator orientation="vertical" className="h-4" />
-
-        <div className="flex items-center gap-1.5">
-          <Switch
-            size="sm"
-            checked={strictMode}
-            onCheckedChange={setStrictMode}
-          />
-          <Label
-            className="text-muted-foreground text-xs whitespace-nowrap cursor-pointer"
-            onClick={() => setStrictMode(!strictMode)}
-          >
-            Strict CSP
-          </Label>
-          {cspErrorCount > 0 && (
-            <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-              {cspErrorCount}
-            </Badge>
-          )}
-        </div>
       </div>
 
       {/* Row 2: Protocol compatibility badges (after execution) */}
