@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("@/lib/studio/store", () => {
+vi.mock("@/lib/studio/stores/widget-store", () => {
   const state: Record<string, unknown> = {
     logAction: vi.fn(),
     widgets: {} as Record<string, unknown>,
@@ -9,7 +9,7 @@ vi.mock("@/lib/studio/store", () => {
     openTextInput: null,
   };
   return {
-    useStudioStore: {
+    useWidgetStore: {
       getState: () => state,
       setState: (patch: object | ((s: object) => object)) => {
         const next = typeof patch === "function" ? patch(state) : patch;
@@ -20,7 +20,7 @@ vi.mock("@/lib/studio/store", () => {
 });
 
 import { WidgetTextInputAction } from "./widget_text_input";
-import { useStudioStore } from "@/lib/studio/store";
+import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { ToolsCallEvent } from "@/lib/event/tools_call";
 import { WidgetRenderEvent } from "@/lib/event/widget_render";
 
@@ -34,7 +34,7 @@ function docOf(html: string): Document {
 function setupStore(html: string, widgetId = "w1") {
   const doc = docOf(html);
   const fakeIframe = { contentDocument: doc };
-  const s = useStudioStore.getState() as unknown as Record<string, unknown>;
+  const s = useWidgetStore.getState() as unknown as Record<string, unknown>;
   s.logAction = vi.fn();
   s.widgets = { [widgetId]: { html: "", mock: {}, waitMs: 0, snapshot: null } };
   s._iframeRef = fakeIframe as unknown as Record<string, unknown>;
@@ -55,7 +55,7 @@ describe("WidgetTextInputAction", () => {
   // ── execute() ────────────────────────────────────────────────────────────
 
   it("sets result.success=false when the iframe isn't mounted", async () => {
-    const s = useStudioStore.getState() as unknown as Record<string, unknown>;
+    const s = useWidgetStore.getState() as unknown as Record<string, unknown>;
     s._iframeRef = null;
     const action = new WidgetTextInputAction(
       "w1",
@@ -104,7 +104,7 @@ describe("WidgetTextInputAction", () => {
   it("sets the element value and dispatches input + change events", async () => {
     setupStore(`<input id="q" />`);
     const doc = (
-      useStudioStore.getState() as unknown as {
+      useWidgetStore.getState() as unknown as {
         _iframeRef: { contentDocument: Document };
       }
     )._iframeRef.contentDocument;
@@ -131,11 +131,11 @@ describe("WidgetTextInputAction", () => {
     const settled = action.execute();
 
     await Promise.resolve(); // let execute() reach the settle await
-    expect(useStudioStore.getState().openTextInput).toBe(action);
+    expect(useWidgetStore.getState().openTextInput).toBe(action);
 
     action.close();
     await settled;
-    expect(useStudioStore.getState().openTextInput).toBeNull();
+    expect(useWidgetStore.getState().openTextInput).toBeNull();
   });
 
   // ── recordFromUserInput + debounce ────────────────────────────────────────
@@ -152,7 +152,7 @@ describe("WidgetTextInputAction", () => {
 
     // Should still be open just before the debounce fires
     vi.advanceTimersByTime(WidgetTextInputAction.DEBOUNCE_MS - 1);
-    expect(useStudioStore.getState().openTextInput).toBe(action);
+    expect(useWidgetStore.getState().openTextInput).toBe(action);
 
     // Fire the debounce
     vi.advanceTimersByTime(1);
@@ -160,7 +160,7 @@ describe("WidgetTextInputAction", () => {
 
     expect(action.result?.success).toBe(true);
     expect(action.data.value).toBe("abc");
-    expect(useStudioStore.getState().openTextInput).toBeNull();
+    expect(useWidgetStore.getState().openTextInput).toBeNull();
   });
 
   it("updateValue resets the debounce timer and captures the latest value", async () => {
@@ -180,7 +180,7 @@ describe("WidgetTextInputAction", () => {
     action.updateValue("abc");
     vi.advanceTimersByTime(600);
     // Not yet resolved — last update was 600ms ago, debounce is 800ms
-    expect(useStudioStore.getState().openTextInput).toBe(action);
+    expect(useWidgetStore.getState().openTextInput).toBe(action);
 
     // Let the debounce fire
     vi.advanceTimersByTime(200);

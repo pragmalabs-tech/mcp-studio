@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useStudioStore } from "@/lib/studio/store";
+import { useProfileStore } from "@/lib/studio/stores/profile-store";
+import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { getRedirectUri } from "@/lib/studio/oauth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,14 +38,11 @@ export function AuthPanel() {
     authMethod,
     token,
     tokenDraft,
-    authOpen,
-    mcpError,
     oauth,
     setAuthMethod,
     setToken,
     saveToken,
     clearToken,
-    setAuthOpen,
     startOAuthFlow,
     signOut,
     setOAuthClientId,
@@ -54,7 +52,8 @@ export function AuthPanel() {
     applyCustomHeaders,
     setOAuthSelectedScopes,
     setOAuthDebugOpen,
-  } = useStudioStore();
+  } = useProfileStore();
+  const { authOpen, mcpError, setAuthOpen } = useWidgetStore();
   const [applyError, setApplyError] = useState<string | null>(null);
 
   const [timeRemaining, setTimeRemaining] = useState("");

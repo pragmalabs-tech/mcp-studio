@@ -10,7 +10,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { useStudioStore } from "@/lib/studio/store";
+import { useProfileStore } from "@/lib/studio/stores/profile-store";
 import {
   createProfile,
   deleteProfile,
@@ -150,10 +150,10 @@ function AuthFields({
 }
 
 export function ProfilesDialog({ open, onOpenChange }: Props) {
-  const profiles = useStudioStore((s) => s.profiles);
-  const activeProfileId = useStudioStore((s) => s.activeProfileId);
-  const refreshProfiles = useStudioStore((s) => s.refreshProfiles);
-  const activateAndApply = useStudioStore((s) => s.activateAndApply);
+  const profiles = useProfileStore((s) => s.profiles);
+  const activeProfileId = useProfileStore((s) => s.activeProfileId);
+  const refreshProfiles = useProfileStore((s) => s.refreshProfiles);
+  const activateAndApply = useProfileStore((s) => s.activateAndApply);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");

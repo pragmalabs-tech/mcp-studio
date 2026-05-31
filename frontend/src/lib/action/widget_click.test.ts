@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@/lib/studio/store", () => {
+vi.mock("@/lib/studio/stores/widget-store", () => {
   const state: Record<string, unknown> = {
     logAction: vi.fn(),
     widgets: {} as Record<string, unknown>,
@@ -9,7 +9,7 @@ vi.mock("@/lib/studio/store", () => {
     openClick: null,
   };
   return {
-    useStudioStore: {
+    useWidgetStore: {
       getState: () => state,
       setState: (patch: object | ((s: object) => object)) => {
         const next = typeof patch === "function" ? patch(state) : patch;
@@ -20,7 +20,7 @@ vi.mock("@/lib/studio/store", () => {
 });
 
 import { WidgetClickAction } from "./widget_click";
-import { useStudioStore } from "@/lib/studio/store";
+import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { ToolsCallEvent } from "@/lib/event/tools_call";
 import { WidgetRenderEvent } from "@/lib/event/widget_render";
 
@@ -34,7 +34,7 @@ function docOf(html: string): Document {
 function setupStore(html: string, widgetId = "w1") {
   const doc = docOf(html);
   const fakeIframe = { contentDocument: doc };
-  const s = useStudioStore.getState() as unknown as Record<string, unknown>;
+  const s = useWidgetStore.getState() as unknown as Record<string, unknown>;
   s.logAction = vi.fn();
   s.widgets = { [widgetId]: { html: "", mock: {}, waitMs: 0, snapshot: null } };
   s._iframeRef = fakeIframe as unknown as Record<string, unknown>;
@@ -48,7 +48,7 @@ describe("WidgetClickAction", () => {
   });
 
   it("sets result.success=false when the iframe isn't mounted", async () => {
-    const s = useStudioStore.getState() as unknown as Record<string, unknown>;
+    const s = useWidgetStore.getState() as unknown as Record<string, unknown>;
     s._iframeRef = null;
     const action = new WidgetClickAction("missing", ['[data-testid="x"]']);
     await action.execute();
@@ -93,10 +93,10 @@ describe("WidgetClickAction", () => {
     const settled = action.execute();
     // While execute() is awaiting close(), openClick should be set.
     await new Promise((r) => setTimeout(r, 5));
-    expect(useStudioStore.getState().openClick).toBe(action);
+    expect(useWidgetStore.getState().openClick).toBe(action);
     action.close();
     await settled;
-    expect(useStudioStore.getState().openClick).toBeNull();
+    expect(useWidgetStore.getState().openClick).toBeNull();
   });
 
   it("change() aggregates tools/call counters from captured events", async () => {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useStudioStore } from "@/lib/studio/store";
+import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -26,7 +26,7 @@ export function RequestEditor() {
     resetEditor,
     applyMock,
     execute,
-  } = useStudioStore();
+  } = useWidgetStore();
 
   const isWidget = selected?.type === "widget";
   const showExecute =
@@ -154,7 +154,7 @@ function TabButton({
 }
 
 function DefinitionView() {
-  const { selected } = useStudioStore();
+  const { selected } = useWidgetStore();
   if (!selected) return null;
 
   if (selected.type === "tool") {

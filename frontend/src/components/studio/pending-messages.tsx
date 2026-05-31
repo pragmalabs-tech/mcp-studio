@@ -1,8 +1,8 @@
-import { useStudioStore } from "@/lib/studio/store";
+import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { Button } from "@/components/ui/button";
 
 export function PendingMessages() {
-  const { pendingMessages, dismissMessage, clearMessages } = useStudioStore();
+  const { pendingMessages, dismissMessage, clearMessages } = useWidgetStore();
 
   if (pendingMessages.length === 0) return null;
 

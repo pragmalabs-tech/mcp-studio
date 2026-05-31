@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { ChevronsUpDown, Pencil, Plus } from "lucide-react";
 import { ProfilesDialog } from "@/components/studio/profiles-dialog";
-import { useStudioStore } from "@/lib/studio/store";
+import { useProfileStore } from "@/lib/studio/stores/profile-store";
+import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 
 /**
  * Sidebar panel for the active MCP profile (server URL + name). Click to
@@ -10,10 +11,10 @@ import { useStudioStore } from "@/lib/studio/store";
  * anything else.
  */
 export function ProfilePanel() {
-  const proxyUrl = useStudioStore((s) => s.proxyUrl);
-  const profiles = useStudioStore((s) => s.profiles);
-  const activeProfileId = useStudioStore((s) => s.activeProfileId);
-  const mcpError = useStudioStore((s) => s.mcpError);
+  const proxyUrl = useProfileStore((s) => s.proxyUrl);
+  const profiles = useProfileStore((s) => s.profiles);
+  const activeProfileId = useProfileStore((s) => s.activeProfileId);
+  const mcpError = useWidgetStore((s) => s.mcpError);
 
   const activeProfile = profiles.find((p) => p.id === activeProfileId) || null;
 

@@ -48,7 +48,7 @@ import { ReplayResultDialog } from "@/components/studio/replay-result-dialog";
 import { JsonView } from "@/components/ui/json-view";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { confirm } from "@/components/ui/confirm-dialog";
-import { useStudioStore } from "@/lib/studio/store";
+import { useTestStore } from "@/lib/studio/stores/test-store";
 
 interface TestsPageProps {
   open: boolean;
@@ -63,10 +63,10 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
     Array<{ test: SavedTest; replay: SavedReplay }>
   >([]);
   const [runAllDialogOpen, setRunAllDialogOpen] = useState(false);
-  const runState = useStudioStore((s) => s.runState);
-  const setRunState = useStudioStore((s) => s.setRunState);
-  const patchRunState = useStudioStore((s) => s.patchRunState);
-  const setStudioMode = useStudioStore((s) => s.setStudioMode);
+  const runState = useTestStore((s) => s.runState);
+  const setRunState = useTestStore((s) => s.setRunState);
+  const patchRunState = useTestStore((s) => s.patchRunState);
+  const setStudioMode = useTestStore((s) => s.setStudioMode);
 
   const { tags: rawTagParam } = useSearch({ from: "/" });
   const navigate = useNavigate({ from: "/" });
@@ -371,7 +371,7 @@ function TestCard({
   // Load (or refresh) this test's replay history when the card is expanded.
   // Also re-runs after a replay completes — `runState` flipping back to null
   // is the global "a replay just finished" signal.
-  const runState = useStudioStore((s) => s.runState);
+  const runState = useTestStore((s) => s.runState);
   useEffect(() => {
     if (!expanded) return;
     let cancelled = false;

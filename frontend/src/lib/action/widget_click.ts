@@ -1,7 +1,7 @@
 import { Action } from "./types";
 import type { StateChange, ToolState, WidgetState } from "@/lib/state/types";
 import type { AssertablePoint } from "@/lib/assertion/types";
-import { useStudioStore } from "@/lib/studio/store";
+import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 
 /**
  * Outcome data carried on `action.result.data`.
@@ -95,13 +95,13 @@ export class WidgetClickAction extends Action<{
     doc: Document,
     opts: { matchedSelector: string; matchedIndex: number },
   ): Promise<void> {
-    useStudioStore.setState({ openClick: this });
+    useWidgetStore.setState({ openClick: this });
     await new Promise<void>((resolve) => {
       this._closeResolve = resolve;
       setTimeout(resolve, 30_000);
     });
-    if (useStudioStore.getState().openClick === this) {
-      useStudioStore.setState({ openClick: null });
+    if (useWidgetStore.getState().openClick === this) {
+      useWidgetStore.setState({ openClick: null });
     }
     const snapshot = doc.documentElement.outerHTML;
     this.setResult(true, {
@@ -112,7 +112,7 @@ export class WidgetClickAction extends Action<{
   }
 
   async execute(): Promise<void> {
-    const store = useStudioStore.getState();
+    const store = useWidgetStore.getState();
     store.logAction("system", `Click widget ${this.data.widgetId}…`);
     const doc = store._iframeRef?.contentDocument;
     if (!doc) {
@@ -137,7 +137,7 @@ export class WidgetClickAction extends Action<{
       return;
     }
 
-    useStudioStore.setState({ openClick: this });
+    useWidgetStore.setState({ openClick: this });
     (el as HTMLElement).click();
 
     // Wait for external close. The 30s cap is a dev-safety net — orchestrators
@@ -147,8 +147,8 @@ export class WidgetClickAction extends Action<{
       setTimeout(resolve, 30_000);
     });
 
-    if (useStudioStore.getState().openClick === this) {
-      useStudioStore.setState({ openClick: null });
+    if (useWidgetStore.getState().openClick === this) {
+      useWidgetStore.setState({ openClick: null });
     }
 
     const snapshot = doc.documentElement.outerHTML;

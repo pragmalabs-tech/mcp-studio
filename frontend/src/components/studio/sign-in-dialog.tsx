@@ -9,15 +9,15 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useStudioStore } from "@/lib/studio/store";
+import { useProfileStore } from "@/lib/studio/stores/profile-store";
 import { authLogin, authVerify } from "@/lib/studio/cloud-api";
 
 type Step = "email" | "code";
 
 export function SignInDialog() {
-  const open = useStudioStore((s) => s.signInOpen);
-  const setOpen = useStudioStore((s) => s.setSignInOpen);
-  const cloudAuthCompleted = useStudioStore((s) => s.cloudAuthCompleted);
+  const open = useProfileStore((s) => s.signInOpen);
+  const setOpen = useProfileStore((s) => s.setSignInOpen);
+  const cloudAuthCompleted = useProfileStore((s) => s.cloudAuthCompleted);
 
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");

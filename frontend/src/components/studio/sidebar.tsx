@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { useStudioStore } from "@/lib/studio/store";
-import type { SelectedItem } from "@/lib/studio/store";
+import {
+  useWidgetStore,
+  type SelectedItem,
+} from "@/lib/studio/stores/widget-store";
 import type { McpToolInfo } from "@/lib/studio/api";
 import {
   ToolCategory,
@@ -43,9 +45,9 @@ export function Sidebar() {
     selected,
     loadAll,
     select,
-  } = useStudioStore();
-  const studioTheme = useStudioStore((s) => s.studioTheme);
-  const setStudioTheme = useStudioStore((s) => s.setStudioTheme);
+  } = useWidgetStore();
+  const studioTheme = useWidgetStore((s) => s.studioTheme);
+  const setStudioTheme = useWidgetStore((s) => s.setStudioTheme);
 
   const [filter, setFilter] = useState("");
   const [sections, setSections] = useState({

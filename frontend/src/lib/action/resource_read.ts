@@ -2,7 +2,7 @@ import { Action } from "./types";
 import { readResource } from "@/lib/studio/api";
 import type { StateChange } from "@/lib/state/types";
 import type { AssertablePoint } from "@/lib/assertion/types";
-import { useStudioStore } from "@/lib/studio/store";
+import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -44,7 +44,7 @@ export class ResourceReadAction extends Action<{ uri: string }> {
   }
 
   async execute(): Promise<void> {
-    const store = useStudioStore.getState();
+    const store = useWidgetStore.getState();
     store.logAction("system", `Executing resource ${this.data.uri}…`);
 
     try {
@@ -52,7 +52,7 @@ export class ResourceReadAction extends Action<{ uri: string }> {
       this.setResult(true, result);
       store.logAction("resources/read", { uri: this.data.uri, result });
 
-      useStudioStore.setState({
+      useWidgetStore.setState({
         lastResult: result,
         jsonOutput: JSON.stringify(result, null, 2),
       });

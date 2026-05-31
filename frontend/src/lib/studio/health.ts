@@ -14,11 +14,17 @@
  *
  * Restart triggers (auto): OAuth access token change, auth method change.
  * Restart triggers (manual): `recheck()` from the status dot.
+ *
+ * NOTE: This module deliberately does NOT import the profile-store or
+ * widget-store to avoid a circular dependency via api.ts. The auth-change
+ * restart and reconnect-loadAll subscriptions are wired up from those stores
+ * themselves after they are initialized.
  */
 
 import { create } from "zustand";
 import { probeMcpHealth, type McpHealth } from "./api";
-import { useStudioStore } from "./store";
+
+export type { McpHealth };
 
 const BASE_INTERVAL_MS = 2_000;
 const MAX_INTERVAL_MS = 10_000;
@@ -35,9 +41,6 @@ interface HealthStore {
 }
 
 export const useHealthStore = create<HealthStore>((set, get) => {
-  // Each `_start()` bumps `_generation`. The current loop checks the
-  // generation before applying its result; stale loops just drop their
-  // result and exit.
   async function tick() {
     const gen = get()._generation;
     const result = await probeMcpHealth();
@@ -79,8 +82,6 @@ export const useHealthStore = create<HealthStore>((set, get) => {
     },
     _set(status) {
       set({ status });
-      // A fresh authoritative result resets the backoff schedule. Stop a
-      // pending probe so the next tick honors the new interval.
       if (status === "connected") {
         const t = get()._timer;
         if (t) clearTimeout(t);
@@ -101,51 +102,14 @@ export function reportHealth(status: McpHealth): void {
   useHealthStore.getState()._set(status);
 }
 
-// Lazy singleton bootstrap. The first time any component calls
-// `useMcpHealth()` we kick the loop and wire the auth-change subscription.
-// Module-load side effects are avoided so tests that never call the hook
-// don't spawn fetches.
+// Lazy singleton bootstrap. Only starts the polling loop — subscriptions to
+// profile/widget stores are wired up from those stores themselves to avoid
+// the api.ts → health.ts → stores → api.ts circular initialization chain.
 let booted = false;
 function ensureBooted() {
   if (booted) return;
   booted = true;
-
   useHealthStore.getState()._start();
-
-  let prevToken = useStudioStore.getState().oauth.accessToken;
-  let prevMethod = useStudioStore.getState().authMethod;
-  useStudioStore.subscribe((state) => {
-    const nextToken = state.oauth.accessToken;
-    const nextMethod = state.authMethod;
-    if (nextToken !== prevToken || nextMethod !== prevMethod) {
-      prevToken = nextToken;
-      prevMethod = nextMethod;
-      useHealthStore.getState()._start();
-    }
-  });
-
-  // Health store is the single source of truth for connectivity. Only
-  // an explicit OFFLINE -> ONLINE transition triggers a refetch - the
-  // initial `checking -> connected` is just app boot (loadAll is already
-  // running), and `connected -> connected` ticks are noise.
-  //
-  // On the offline -> online edge:
-  //  - clear any stale `mcpError` left by a failed `loadAll`
-  //  - re-run `loadAll` so tools/resources reflect what the server
-  //    actually has now (which may have changed during downtime).
-  // We don't overwrite `mcpError` on disconnect because `loadAll`'s
-  // message usually carries more detail than a generic "unreachable".
-  const isOffline = (s: McpHealth) =>
-    s === "disconnected" || s === "unauthorized";
-  let prevStatus: McpHealth = useHealthStore.getState().status;
-  useHealthStore.subscribe((state) => {
-    if (state.status === "connected" && isOffline(prevStatus)) {
-      const s = useStudioStore.getState();
-      if (s.mcpError) useStudioStore.setState({ mcpError: null });
-      if (!s.loading) s.loadAll();
-    }
-    prevStatus = state.status;
-  });
 }
 
 export interface UseMcpHealthResult {

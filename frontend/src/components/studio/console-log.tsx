@@ -8,10 +8,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  useStudioStore,
+  useWidgetStore,
   type ConsoleEntry,
   type ConsoleLevel,
-} from "@/lib/studio/store";
+} from "@/lib/studio/stores/widget-store";
 import { Button } from "@/components/ui/button";
 
 const LEVEL_CLASS: Record<ConsoleLevel, string> = {
@@ -72,7 +72,7 @@ function ConsoleRow({ entry, index }: { entry: ConsoleEntry; index: number }) {
 }
 
 export function ConsoleLog() {
-  const { consoleEntries, clearConsoleEntries } = useStudioStore();
+  const { consoleEntries, clearConsoleEntries } = useWidgetStore();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { useStudioStore } from "@/lib/studio/store";
+import { useWidgetStore } from "@/lib/studio/stores/widget-store";
+import { useProfileStore } from "@/lib/studio/stores/profile-store";
+import { useTestStore } from "@/lib/studio/stores/test-store";
 import { Sidebar } from "@/components/studio/sidebar";
 import { RequestEditor } from "@/components/studio/request-editor";
 import { ActionLog } from "@/components/studio/action-log";
@@ -22,13 +24,13 @@ import { Badge } from "@/components/ui/badge";
 type BottomTab = "logs" | "console" | "csp" | "oauth";
 
 export function StudioLayout() {
-  const selected = useStudioStore((s) => s.selected);
-  const cspViolations = useStudioStore((s) => s.cspViolations);
-  const consoleEntries = useStudioStore((s) => s.consoleEntries);
-  const oauthDebugEvents = useStudioStore((s) => s.oauthDebugEvents);
-  const oauthDebugOpen = useStudioStore((s) => s.oauthDebugOpen);
-  const setOAuthDebugOpen = useStudioStore((s) => s.setOAuthDebugOpen);
-  const studioMode = useStudioStore((s) => s.studioMode);
+  const selected = useWidgetStore((s) => s.selected);
+  const cspViolations = useWidgetStore((s) => s.cspViolations);
+  const consoleEntries = useWidgetStore((s) => s.consoleEntries);
+  const oauthDebugEvents = useProfileStore((s) => s.oauthDebugEvents);
+  const oauthDebugOpen = useProfileStore((s) => s.oauthDebugOpen);
+  const setOAuthDebugOpen = useProfileStore((s) => s.setOAuthDebugOpen);
+  const studioMode = useTestStore((s) => s.studioMode);
   const [bottomTab, setBottomTab] = useState<BottomTab>("logs");
 
   // Auto-switch to OAuth tab when debugger is opened from auth panel

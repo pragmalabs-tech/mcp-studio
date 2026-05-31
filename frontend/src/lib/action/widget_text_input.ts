@@ -1,7 +1,7 @@
 import { Action } from "./types";
 import type { StateChange, ToolState, WidgetState } from "@/lib/state/types";
 import type { AssertablePoint } from "@/lib/assertion/types";
-import { useStudioStore } from "@/lib/studio/store";
+import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 
 export interface WidgetTextInputResult {
   matchedSelector: string | null;
@@ -79,7 +79,7 @@ export class WidgetTextInputAction extends Action<{
    *  First caller wins — subsequent calls are no-ops. */
   private _captureSnapshot(): void {
     if (this._frozenSnapshot !== undefined) return;
-    const doc = useStudioStore.getState()._iframeRef?.contentDocument;
+    const doc = useWidgetStore.getState()._iframeRef?.contentDocument;
     if (doc) this._frozenSnapshot = doc.documentElement.outerHTML;
   }
 
@@ -136,7 +136,7 @@ export class WidgetTextInputAction extends Action<{
     },
   ): Promise<void> {
     this.data.value = opts.initialValue;
-    useStudioStore.setState({ openTextInput: this });
+    useWidgetStore.setState({ openTextInput: this });
 
     await new Promise<void>((resolve) => {
       this._closeResolve = resolve;
@@ -144,8 +144,8 @@ export class WidgetTextInputAction extends Action<{
       this._resetDebounce();
     });
 
-    if (useStudioStore.getState().openTextInput === this) {
-      useStudioStore.setState({ openTextInput: null });
+    if (useWidgetStore.getState().openTextInput === this) {
+      useWidgetStore.setState({ openTextInput: null });
     }
     // _frozenSnapshot is always set by the time we reach here: close() calls
     // _captureSnapshot() as its first step, and every code path that resolves
@@ -158,7 +158,7 @@ export class WidgetTextInputAction extends Action<{
   }
 
   async execute(): Promise<void> {
-    const store = useStudioStore.getState();
+    const store = useWidgetStore.getState();
     store.logAction("system", `Text input widget ${this.data.widgetId}…`);
     const doc = store._iframeRef?.contentDocument;
     if (!doc) {
@@ -183,7 +183,7 @@ export class WidgetTextInputAction extends Action<{
       return;
     }
 
-    useStudioStore.setState({ openTextInput: this });
+    useWidgetStore.setState({ openTextInput: this });
 
     const inputEl = el as HTMLInputElement | HTMLTextAreaElement;
     // React overloads the element's value setter, so a plain assignment is
@@ -208,8 +208,8 @@ export class WidgetTextInputAction extends Action<{
       setTimeout(resolve, 30_000);
     });
 
-    if (useStudioStore.getState().openTextInput === this) {
-      useStudioStore.setState({ openTextInput: null });
+    if (useWidgetStore.getState().openTextInput === this) {
+      useWidgetStore.setState({ openTextInput: null });
     }
 
     this.setResult(true, {

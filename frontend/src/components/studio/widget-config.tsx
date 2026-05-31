@@ -1,4 +1,9 @@
-import { useStudioStore } from "@/lib/studio/store";
+import {
+  useWidgetStore,
+  VIEWPORT_PRESETS,
+  type Platform,
+  type ViewportPreset,
+} from "@/lib/studio/stores/widget-store";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -9,13 +14,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Platform, ViewportPreset } from "@/lib/studio/store";
-import { VIEWPORT_PRESETS } from "@/lib/studio/store";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 
 function ProtocolBadges() {
-  const detected = useStudioStore((s) => s.detectedProtocols);
+  const detected = useWidgetStore((s) => s.detectedProtocols);
   if (!detected) return null;
 
   return (
@@ -62,7 +65,7 @@ export function WidgetConfig() {
     setLocale,
     setViewportPreset,
     setViewportCustom,
-  } = useStudioStore();
+  } = useWidgetStore();
 
   return (
     <div className="border-b shrink-0 text-xs">

@@ -5,14 +5,14 @@ vi.mock("@/lib/studio/api", () => ({
   readResource: vi.fn(),
 }));
 
-vi.mock("@/lib/studio/store", () => {
+vi.mock("@/lib/studio/stores/widget-store", () => {
   const state: Record<string, unknown> = {
     logAction: vi.fn(),
     lastResult: null,
     jsonOutput: null,
   };
   return {
-    useStudioStore: {
+    useWidgetStore: {
       getState: () => state,
       setState: (patch: object | ((s: object) => object)) => {
         const next = typeof patch === "function" ? patch(state) : patch;

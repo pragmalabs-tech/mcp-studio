@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { StudioLayout } from "@/components/studio/studio-layout";
-import { useStudioStore } from "@/lib/studio/store";
+import { useProfileStore } from "@/lib/studio/stores/profile-store";
+import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import {
   getBaseUrl,
   loadOAuthTokens,
@@ -18,11 +19,11 @@ export const Route = createFileRoute("/")({
 });
 
 function StudioPage() {
-  const loadAll = useStudioStore((s) => s.loadAll);
-  const proxyConnected = useStudioStore((s) => s.proxyConnected);
-  const hydrateCloudAuth = useStudioStore((s) => s.hydrateCloudAuth);
-  const hydrateTunnel = useStudioStore((s) => s.hydrateTunnel);
-  const refreshProfiles = useStudioStore((s) => s.refreshProfiles);
+  const loadAll = useWidgetStore((s) => s.loadAll);
+  const proxyConnected = useProfileStore((s) => s.proxyConnected);
+  const hydrateCloudAuth = useProfileStore((s) => s.hydrateCloudAuth);
+  const hydrateTunnel = useProfileStore((s) => s.hydrateTunnel);
+  const refreshProfiles = useProfileStore((s) => s.refreshProfiles);
 
   useEffect(() => {
     if (proxyConnected) {
@@ -49,15 +50,14 @@ function StudioPage() {
     const hydrate = () => {
       const saved = loadOAuthTokens();
       if (!saved.accessToken) return;
-      const current = useStudioStore.getState().oauth;
+      const current = useProfileStore.getState().oauth;
       if (
         current.status === "connected" &&
         current.accessToken === saved.accessToken
       ) {
         return;
       }
-      useStudioStore.setState((s) => ({
-        authOpen: false,
+      useProfileStore.setState((s) => ({
         oauth: {
           ...s.oauth,
           status: "connected",
@@ -69,6 +69,7 @@ function StudioPage() {
           decodedToken: decodeToken(saved.accessToken!),
         },
       }));
+      useWidgetStore.setState({ authOpen: false });
       loadAll();
     };
 

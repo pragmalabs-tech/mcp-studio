@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useStudioStore } from "@/lib/studio/store";
+import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { renderHtml } from "@/lib/core/widget/render-html";
 import { createClaudeMock } from "@/lib/studio/mock-claude";
 import { callTool } from "@/lib/studio/api";
@@ -72,18 +72,18 @@ function isTextLikeInput(el: Element): boolean {
 export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
   const [tab, setTab] = useState<ViewTab>("preview");
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const activeWidgetId = useStudioStore((s) => s.activeWidgetId);
+  const activeWidgetId = useWidgetStore((s) => s.activeWidgetId);
   const targetId = widgetId ?? activeWidgetId;
-  const entry = useStudioStore((s) =>
+  const entry = useWidgetStore((s) =>
     targetId ? (s.widgets[targetId] ?? null) : null,
   );
-  const platform = useStudioStore((s) => s.platform);
-  const strictMode = useStudioStore((s) => s.strictMode);
-  const addConsoleEntry = useStudioStore((s) => s.addConsoleEntry);
-  const logAction = useStudioStore((s) => s.logAction);
-  const addPendingMessage = useStudioStore((s) => s.addPendingMessage);
-  const getViewportSize = useStudioStore((s) => s.getViewportSize);
-  const addCspViolation = useStudioStore((s) => s.addCspViolation);
+  const platform = useWidgetStore((s) => s.platform);
+  const strictMode = useWidgetStore((s) => s.strictMode);
+  const addConsoleEntry = useWidgetStore((s) => s.addConsoleEntry);
+  const logAction = useWidgetStore((s) => s.logAction);
+  const addPendingMessage = useWidgetStore((s) => s.addPendingMessage);
+  const getViewportSize = useWidgetStore((s) => s.getViewportSize);
+  const addCspViolation = useWidgetStore((s) => s.addCspViolation);
 
   // Publish iframe ref so other store consumers (mock-claude.ts,
   // WidgetClickAction) can reach it. We use a ref callback rather than a
@@ -96,7 +96,7 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
   // matches the live DOM.
   const setIframe = (el: HTMLIFrameElement | null) => {
     iframeRef.current = el;
-    useStudioStore.setState({ _iframeRef: el });
+    useWidgetStore.setState({ _iframeRef: el });
   };
 
   // Forward console messages from iframe to studio console, and bridge
@@ -181,10 +181,10 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
     }
 
     // ext-apps mock — owns the post-message JSON-RPC dance with the widget.
-    const prev = useStudioStore.getState()._extAppsMock;
+    const prev = useWidgetStore.getState()._extAppsMock;
     if (prev) {
       prev.destroy();
-      useStudioStore.setState({ _extAppsMock: null });
+      useWidgetStore.setState({ _extAppsMock: null });
     }
     const extAppsMock = createClaudeMock(
       iframe,
@@ -195,11 +195,11 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
         ? (content) => addPendingMessage("claude", content)
         : undefined,
     );
-    useStudioStore.setState({ _extAppsMock: extAppsMock });
+    useWidgetStore.setState({ _extAppsMock: extAppsMock });
 
     const timer = setTimeout(() => {
       const snap = doc.documentElement.outerHTML;
-      useStudioStore.getState().setSnapshot(targetId, snap);
+      useWidgetStore.getState().setSnapshot(targetId, snap);
       // Emit widget/render for the currently-active Action. URI source:
       // prefer the resource URI baked into the mock _meta; fall back to
       // the widgetId UUID so the event always carries a stable identifier.
@@ -251,10 +251,10 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
       const fallbackText =
         (target.textContent || "").trim().slice(0, 40) || undefined;
 
-      const prev = useStudioStore.getState().openClick;
+      const prev = useWidgetStore.getState().openClick;
       if (prev) prev.close();
       // Clicking a non-input element also finalizes any in-flight text input.
-      const prevText = useStudioStore.getState().openTextInput;
+      const prevText = useWidgetStore.getState().openTextInput;
       if (prevText) prevText.close();
 
       const action = new WidgetClickAction(targetId, candidates, fallbackText);
@@ -278,7 +278,7 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
       doc.removeEventListener("click", onClick, { capture: true });
       // Close any in-flight click when this widget is being swapped out so
       // its events don't get orphaned.
-      const open = useStudioStore.getState().openClick;
+      const open = useWidgetStore.getState().openClick;
       if (open) open.close();
     };
   }, [targetId]);
@@ -310,7 +310,7 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
 
       const inputEl = target as HTMLInputElement | HTMLTextAreaElement;
       const liveDoc = iframe.contentDocument ?? doc;
-      const openTextInput = useStudioStore.getState().openTextInput;
+      const openTextInput = useWidgetStore.getState().openTextInput;
 
       if (openTextInput && currentEl === target) {
         openTextInput.updateValue(inputEl.value);
@@ -352,13 +352,13 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
 
     return () => {
       doc.removeEventListener("keyup", onKeyup, { capture: true });
-      const open = useStudioStore.getState().openTextInput;
+      const open = useWidgetStore.getState().openTextInput;
       if (open) open.close();
     };
   }, [targetId]);
 
   const viewportSize = getViewportSize();
-  const actions = useStudioStore((s) => s.actions);
+  const actions = useWidgetStore((s) => s.actions);
 
   // Get the last tool call result for display when no widget
   const lastToolResult = (() => {

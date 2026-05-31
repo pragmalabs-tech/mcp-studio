@@ -1,13 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useStudioStore } from "./store";
-
-// The store has 7 deferred auto-side-effects (setTimeout(loadWidget|
-// applyMock, 50)) that fire on user-facing setters during recording for
-// UX. During REPLAY (studioMode === "test") they must be skipped — the
-// engine drives renders explicitly via widget.render Actions; an extra
-// loadWidget would fire a duplicate resources/read and pollute the
-// replay timeline. These tests pin down that gating.
+import { useWidgetStore } from "./stores/widget-store";
+import { useTestStore } from "./stores/test-store";
 
 describe("studio store replay-mode gating", () => {
   beforeEach(() => {
@@ -16,54 +10,54 @@ describe("studio store replay-mode gating", () => {
 
   afterEach(() => {
     vi.useRealTimers();
-    useStudioStore.setState({ studioMode: "normal" });
+    useTestStore.setState({ studioMode: "normal" });
   });
 
   function stubAutoReloaders() {
     const loadWidget = vi.fn();
     const applyMock = vi.fn();
-    useStudioStore.setState({ loadWidget, applyMock });
+    useWidgetStore.setState({ loadWidget, applyMock });
     return { loadWidget, applyMock };
   }
 
   it("setPlatform schedules loadWidget in normal mode", () => {
     const { loadWidget } = stubAutoReloaders();
-    useStudioStore.setState({ studioMode: "normal" });
-    useStudioStore.getState().setPlatform("claude");
+    useTestStore.setState({ studioMode: "normal" });
+    useWidgetStore.getState().setPlatform("claude");
     vi.advanceTimersByTime(100);
     expect(loadWidget).toHaveBeenCalled();
   });
 
   it("setPlatform skips loadWidget in test mode", () => {
     const { loadWidget } = stubAutoReloaders();
-    useStudioStore.setState({ studioMode: "test" });
-    useStudioStore.getState().setPlatform("claude");
+    useTestStore.setState({ studioMode: "test" });
+    useWidgetStore.getState().setPlatform("claude");
     vi.advanceTimersByTime(100);
     expect(loadWidget).not.toHaveBeenCalled();
   });
 
   it("setTheme schedules applyMock in normal mode", () => {
     const { applyMock } = stubAutoReloaders();
-    useStudioStore.setState({ studioMode: "normal" });
-    useStudioStore.getState().setTheme("dark");
+    useTestStore.setState({ studioMode: "normal" });
+    useWidgetStore.getState().setTheme("dark");
     vi.advanceTimersByTime(100);
     expect(applyMock).toHaveBeenCalled();
   });
 
   it("setTheme skips applyMock in test mode", () => {
     const { applyMock } = stubAutoReloaders();
-    useStudioStore.setState({ studioMode: "test" });
-    useStudioStore.getState().setTheme("dark");
+    useTestStore.setState({ studioMode: "test" });
+    useWidgetStore.getState().setTheme("dark");
     vi.advanceTimersByTime(100);
     expect(applyMock).not.toHaveBeenCalled();
   });
 
   it("setLocale, setDisplayMode, setStrictMode also skip in test mode", () => {
     const { loadWidget, applyMock } = stubAutoReloaders();
-    useStudioStore.setState({ studioMode: "test" });
-    useStudioStore.getState().setLocale("ja-JP");
-    useStudioStore.getState().setDisplayMode("fullscreen");
-    useStudioStore.getState().setStrictMode(true);
+    useTestStore.setState({ studioMode: "test" });
+    useWidgetStore.getState().setLocale("ja-JP");
+    useWidgetStore.getState().setDisplayMode("fullscreen");
+    useWidgetStore.getState().setStrictMode(true);
     vi.advanceTimersByTime(100);
     expect(loadWidget).not.toHaveBeenCalled();
     expect(applyMock).not.toHaveBeenCalled();

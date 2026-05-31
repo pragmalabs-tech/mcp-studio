@@ -5,7 +5,7 @@ vi.mock("@/lib/studio/api", () => ({
   readResource: vi.fn(),
 }));
 
-vi.mock("@/lib/studio/store", () => {
+vi.mock("@/lib/studio/stores/widget-store", () => {
   const state: Record<string, unknown> = {
     logAction: vi.fn(),
     insertWidget: vi.fn(),
@@ -19,7 +19,7 @@ vi.mock("@/lib/studio/store", () => {
     jsonOutput: null,
   };
   return {
-    useStudioStore: {
+    useWidgetStore: {
       getState: () => state,
       setState: (patch: object | ((s: object) => object)) => {
         const next = typeof patch === "function" ? patch(state) : patch;
@@ -31,13 +31,13 @@ vi.mock("@/lib/studio/store", () => {
 
 import { ToolCallAction } from "./tool_call";
 import { callTool, readResource } from "@/lib/studio/api";
-import { useStudioStore } from "@/lib/studio/store";
+import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 
 const mockedCallTool = vi.mocked(callTool);
 const mockedReadResource = vi.mocked(readResource);
 
 function resetStore() {
-  const s = useStudioStore.getState() as unknown as Record<string, unknown>;
+  const s = useWidgetStore.getState() as unknown as Record<string, unknown>;
   s.logAction = vi.fn();
   s.insertWidget = vi.fn();
   s.resources = [];
@@ -104,7 +104,7 @@ describe("ToolCallAction", () => {
     });
 
     const insertWidget = vi.fn().mockResolvedValue("<snapshot>");
-    const s = useStudioStore.getState() as unknown as Record<string, unknown>;
+    const s = useWidgetStore.getState() as unknown as Record<string, unknown>;
     s.resources = [
       {
         uri: widgetUri,
@@ -146,7 +146,7 @@ describe("ToolCallAction", () => {
 
     // Promise that never resolves — exercises raceWithTimeout's fallback.
     const insertWidget = vi.fn().mockReturnValue(new Promise(() => {}));
-    const s = useStudioStore.getState() as unknown as Record<string, unknown>;
+    const s = useWidgetStore.getState() as unknown as Record<string, unknown>;
     s.resources = [
       {
         uri: widgetUri,

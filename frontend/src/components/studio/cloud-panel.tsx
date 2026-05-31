@@ -9,7 +9,7 @@ import {
   Settings2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useStudioStore } from "@/lib/studio/store";
+import { useProfileStore } from "@/lib/studio/stores/profile-store";
 import { useMcpHealth } from "@/lib/studio/health";
 
 /**
@@ -18,12 +18,12 @@ import { useMcpHealth } from "@/lib/studio/health";
  * focused on test recording + saved-test access.
  */
 export function CloudPanel() {
-  const cloudAuth = useStudioStore((s) => s.cloudAuth);
-  const tunnel = useStudioStore((s) => s.tunnel);
-  const setSignInOpen = useStudioStore((s) => s.setSignInOpen);
-  const setPublishOpen = useStudioStore((s) => s.setPublishOpen);
-  const cloudSignOut = useStudioStore((s) => s.cloudSignOut);
-  const startTunnel = useStudioStore((s) => s.startTunnel);
+  const cloudAuth = useProfileStore((s) => s.cloudAuth);
+  const tunnel = useProfileStore((s) => s.tunnel);
+  const setSignInOpen = useProfileStore((s) => s.setSignInOpen);
+  const setPublishOpen = useProfileStore((s) => s.setPublishOpen);
+  const cloudSignOut = useProfileStore((s) => s.cloudSignOut);
+  const startTunnel = useProfileStore((s) => s.startTunnel);
   const { status: healthStatus } = useMcpHealth();
   // Publishing exposes the local MCP server through a tunnel - pointless
   // (and confusing) when the server isn't reachable locally.

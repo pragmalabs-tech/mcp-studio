@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { useStudioStore, type ActionEntry } from "@/lib/studio/store";
+import {
+  useWidgetStore,
+  type ActionEntry,
+} from "@/lib/studio/stores/widget-store";
 import { Button } from "@/components/ui/button";
 
 function LogEntry({ entry, index }: { entry: ActionEntry; index: number }) {
@@ -50,7 +53,7 @@ function LogEntry({ entry, index }: { entry: ActionEntry; index: number }) {
 }
 
 export function ActionLog() {
-  const { actions, clearActions } = useStudioStore();
+  const { actions, clearActions } = useWidgetStore();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

@@ -1,4 +1,7 @@
-import { useStudioStore, type CspViolation } from "@/lib/studio/store";
+import {
+  useWidgetStore,
+  type CspViolation,
+} from "@/lib/studio/stores/widget-store";
 import { Button } from "@/components/ui/button";
 import { useEffect, useRef, useState } from "react";
 
@@ -98,7 +101,7 @@ function ViolationEntry({ v }: { v: CspViolation }) {
 
 export function CspPanel() {
   const { cspViolations, clearCspViolations, strictMode, platform } =
-    useStudioStore();
+    useWidgetStore();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

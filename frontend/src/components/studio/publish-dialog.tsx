@@ -9,18 +9,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useStudioStore } from "@/lib/studio/store";
+import { useProfileStore } from "@/lib/studio/stores/profile-store";
 import {
   fetchTunnelEndpoints,
   type TunnelEndpoint,
 } from "@/lib/studio/cloud-api";
 
 export function PublishDialog() {
-  const open = useStudioStore((s) => s.publishOpen);
-  const setOpen = useStudioStore((s) => s.setPublishOpen);
-  const startTunnel = useStudioStore((s) => s.startTunnel);
-  const tunnel = useStudioStore((s) => s.tunnel);
-  const proxyUrl = useStudioStore((s) => s.proxyUrl);
+  const open = useProfileStore((s) => s.publishOpen);
+  const setOpen = useProfileStore((s) => s.setPublishOpen);
+  const startTunnel = useProfileStore((s) => s.startTunnel);
+  const tunnel = useProfileStore((s) => s.tunnel);
+  const proxyUrl = useProfileStore((s) => s.proxyUrl);
 
   const [subdomain, setSubdomain] = useState("");
   const [endpoints, setEndpoints] = useState<TunnelEndpoint[] | null>(null);

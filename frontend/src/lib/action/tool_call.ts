@@ -2,7 +2,7 @@ import { Action } from "./types";
 import { callTool, readResource } from "@/lib/studio/api";
 import type { StateChange } from "@/lib/state/types";
 import type { AssertablePoint } from "@/lib/assertion/types";
-import { useStudioStore } from "@/lib/studio/store";
+import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { validateToolResult } from "@/lib/studio/validate-tool-result";
 import { raceWithTimeout } from "@/lib/core/util/race-with-timeout";
 import { buildMockFromResponse, resolveWidgetUri } from "./widget-helpers";
@@ -109,7 +109,7 @@ export class ToolCallAction extends Action<{
   }
 
   async execute(): Promise<void> {
-    const store = useStudioStore.getState();
+    const store = useWidgetStore.getState();
     store.logAction("system", `Executing tool ${this.data.tool}…`);
 
     try {
@@ -126,7 +126,7 @@ export class ToolCallAction extends Action<{
       // ── Spec-compliance validation ──
       const issues = validateToolResult(toolResponse);
       if (issues.length > 0) {
-        useStudioStore.setState({ resultIssues: issues });
+        useWidgetStore.setState({ resultIssues: issues });
         for (const issue of issues) {
           store.logAction(
             issue.severity === "error" ? "error" : "warn",
@@ -140,7 +140,7 @@ export class ToolCallAction extends Action<{
         ?._meta ??
         (toolResponse as { meta?: Record<string, unknown> })?.meta ??
         {}) as Record<string, unknown>;
-      const liveStore = useStudioStore.getState();
+      const liveStore = useWidgetStore.getState();
       const widgetUri = resolveWidgetUri(
         meta,
         this.data.tool,
@@ -160,7 +160,7 @@ export class ToolCallAction extends Action<{
             };
             html = res?.contents?.[0]?.text ?? "";
             if (html) {
-              useStudioStore.setState((s) => ({
+              useWidgetStore.setState((s) => ({
                 widgetCache: { ...s.widgetCache, [widgetUri]: html },
               }));
             }
@@ -180,7 +180,7 @@ export class ToolCallAction extends Action<{
             displayMode: liveStore.displayMode,
           });
           const waitMs = this.data.waitMs ?? DEFAULT_WAIT_MS;
-          const ready = useStudioStore.getState().insertWidget(widgetUri, {
+          const ready = useWidgetStore.getState().insertWidget(widgetUri, {
             html,
             mock,
             waitMs,
@@ -193,7 +193,7 @@ export class ToolCallAction extends Action<{
       }
 
       // ── UI-facing view state ──
-      useStudioStore.setState({
+      useWidgetStore.setState({
         lastResult: toolResponse,
         jsonOutput: widgetUri ? null : JSON.stringify(toolResponse, null, 2),
       });

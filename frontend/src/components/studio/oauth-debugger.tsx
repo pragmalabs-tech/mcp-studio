@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useStudioStore } from "@/lib/studio/store";
+import { useProfileStore } from "@/lib/studio/stores/profile-store";
 import { Button } from "@/components/ui/button";
 import {
   STEP_LABELS,
@@ -350,7 +350,7 @@ function TokenPanel({ decoded }: { decoded: DecodedToken | null }) {
 // ── PKCE Debug ──
 
 function PkcePanel() {
-  const baseUrl = useStudioStore(() => {
+  const baseUrl = useProfileStore(() => {
     // Get base URL from the api module
     const params = new URLSearchParams(window.location.search);
     const proxy = params.get("proxy");
@@ -619,7 +619,7 @@ function FlowVisualization({
 
 export function OAuthDebugger() {
   const { oauthDebugEvents, clearOAuthDebugEvents, oauth, testOAuthEndpoints } =
-    useStudioStore();
+    useProfileStore();
 
   const [tab, setTab] = useState<DebugTab>("timeline");
   const [testing, setTesting] = useState(false);

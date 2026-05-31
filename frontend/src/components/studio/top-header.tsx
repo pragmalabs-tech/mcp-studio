@@ -16,17 +16,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useStudioStore, type RunState } from "@/lib/studio/store";
+import { useTestStore, type RunState } from "@/lib/studio/stores/test-store";
+import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { useMcpHealth } from "@/lib/studio/health";
 import { recorder } from "@/lib/recorder/recorder";
 import { actionLabel, actionSummary } from "@/lib/core/action-format";
 import type { McpHealth } from "@/lib/studio/api";
 
 export function TopHeader() {
-  const slicingState = useStudioStore((s) => s.slicingState);
-  const setSlicingState = useStudioStore((s) => s.setSlicingState);
-  const runState = useStudioStore((s) => s.runState);
-  const patchRunState = useStudioStore((s) => s.patchRunState);
+  const slicingState = useTestStore((s) => s.slicingState);
+  const setSlicingState = useTestStore((s) => s.setSlicingState);
+  const runState = useTestStore((s) => s.runState);
+  const patchRunState = useTestStore((s) => s.patchRunState);
   const { status: healthStatus } = useMcpHealth();
   // Gate destructive / network-bound controls on the server being live.
   // Stop Record stays enabled while disconnected so an in-flight slice
@@ -63,7 +64,7 @@ export function TopHeader() {
     // runs in a microtask after close(), so we await `action.recorded` —
     // otherwise markIndex() captures a buffer that doesn't yet include the
     // last click.
-    const open = useStudioStore.getState().openClick;
+    const open = useWidgetStore.getState().openClick;
     if (open) {
       open.close();
       await open.recorded;
