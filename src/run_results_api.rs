@@ -30,6 +30,11 @@ pub struct RunResultSummary {
     pub filter: Option<Value>,
     pub env: Option<Value>,
     pub summary: Option<Value>,
+    pub test_name: Option<String>,
+    pub status: Option<String>,
+    pub duration_ms: Option<u64>,
+    pub run_group_id: Option<String>,
+    pub profile_name: Option<String>,
 }
 
 fn lift_summary(id: &str, file: storage::JsonFile, value: &Value) -> RunResultSummary {
@@ -46,6 +51,23 @@ fn lift_summary(id: &str, file: storage::JsonFile, value: &Value) -> RunResultSu
     let filter = value.get("filter").cloned();
     let env = value.get("env").cloned();
     let summary = value.get("summary").cloned();
+    let test_name = value
+        .get("testName")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let status = value
+        .get("status")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let duration_ms = value.get("durationMs").and_then(|v| v.as_u64());
+    let run_group_id = value
+        .get("runGroupId")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let profile_name = value
+        .get("profileName")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     RunResultSummary {
         id: id.to_string(),
         size: file.size,
@@ -57,6 +79,11 @@ fn lift_summary(id: &str, file: storage::JsonFile, value: &Value) -> RunResultSu
         filter,
         env,
         summary,
+        test_name,
+        status,
+        duration_ms,
+        run_group_id,
+        profile_name,
     }
 }
 

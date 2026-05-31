@@ -30,6 +30,8 @@ export interface SavedReplay {
   durationMs: number;
   status: ReplayStatus;
   actions: ReplayedAction[];
+  runGroupId?: string;
+  profileName?: string;
 }
 
 export async function saveReplay(replay: SavedReplay): Promise<void> {

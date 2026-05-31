@@ -2,11 +2,13 @@ import { useState } from "react";
 import {
   FastForward,
   FlaskConical,
+  History,
   Circle,
   SkipForward,
   Square,
 } from "lucide-react";
 import { TestsPage } from "@/components/studio/tests-page";
+import { HistoryDrawer } from "@/components/studio/history-drawer";
 import { SaveTestModal } from "@/components/studio/save-test-modal";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +37,7 @@ export function TopHeader() {
   const recordDisabled = healthStatus !== "connected" && !slicingState;
 
   const [testsOpen, setTestsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [recordExplainerOpen, setRecordExplainerOpen] = useState(false);
   const [saveTestOpen, setSaveTestOpen] = useState(false);
   const [saveRange, setSaveRange] = useState<{
@@ -134,10 +137,20 @@ export function TopHeader() {
             <FlaskConical className="h-4 w-4" />
             Tests
           </button>
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            title="Run history"
+            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md hover:bg-muted text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <History className="h-4 w-4" />
+            History
+          </button>
         </>
       )}
 
       <TestsPage open={testsOpen} onOpenChange={setTestsOpen} />
+      <HistoryDrawer open={historyOpen} onOpenChange={setHistoryOpen} />
 
       {saveRange && (
         <SaveTestModal

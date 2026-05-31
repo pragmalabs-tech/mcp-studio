@@ -38,17 +38,13 @@ import {
 } from "@/lib/tests/storage";
 import { collectTags, normalizeTag } from "@/lib/tests/tags";
 import { runReplay, countReplayableActions } from "@/lib/replays/runner";
-import {
-  loadReplaysForTest,
-  deleteReplay,
-  type SavedReplay,
-} from "@/lib/replays/storage";
-import { liveReplayStatus } from "@/lib/replays/live-status";
+import { type SavedReplay } from "@/lib/replays/storage";
 import { ReplayResultDialog } from "@/components/studio/replay-result-dialog";
 import { JsonView } from "@/components/ui/json-view";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { confirm } from "@/components/ui/confirm-dialog";
 import { useTestStore } from "@/lib/studio/stores/test-store";
+import { useProfileStore } from "@/lib/studio/stores";
 
 interface TestsPageProps {
   open: boolean;
@@ -67,6 +63,11 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
   const setRunState = useTestStore((s) => s.setRunState);
   const patchRunState = useTestStore((s) => s.patchRunState);
   const setStudioMode = useTestStore((s) => s.setStudioMode);
+  const profiles = useProfileStore((s) => s.profiles);
+  const activeProfileId = useProfileStore((s) => s.activeProfileId);
+  const activeProfileName = profiles.find(
+    (p) => p.id === activeProfileId,
+  )?.name;
 
   const { tags: rawTagParam } = useSearch({ from: "/" });
   const navigate = useNavigate({ from: "/" });
@@ -144,6 +145,8 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
             patchRunState({ currentStep: step, currentAction: action });
           }
         },
+        runGroupId: crypto.randomUUID(),
+        profileName: activeProfileName,
       });
       setReplayResult(result);
       setReplayDialogOpen(true);
@@ -184,6 +187,7 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
     setStudioMode("test");
 
     const ctrl = new AbortController();
+    const batchGroupId = crypto.randomUUID();
     const results: Array<{ test: SavedTest; replay: SavedReplay }> = [];
 
     for (let i = 0; i < visibleTests.length; i++) {
@@ -209,6 +213,8 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
               patchRunState({ currentStep: step, currentAction: action });
             }
           },
+          runGroupId: batchGroupId,
+          profileName: activeProfileName,
         });
         results.push({ test, replay });
       } catch (err) {
@@ -310,10 +316,6 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
                         ),
                       );
                     }}
-                    onOpenReplay={(replay) => {
-                      setReplayResult(replay);
-                      setReplayDialogOpen(true);
-                    }}
                   />
                 ))}
               </div>
@@ -350,7 +352,6 @@ interface TestCardProps {
   onDelete: () => void;
   onExport: () => void;
   onTagsChange: (tags: string[]) => void;
-  onOpenReplay: (replay: SavedReplay) => void;
 }
 
 function TestCard({
@@ -361,29 +362,10 @@ function TestCard({
   onDelete,
   onExport,
   onTagsChange,
-  onOpenReplay,
 }: TestCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const [history, setHistory] = useState<SavedReplay[]>([]);
   const actionCount = test.session.actions.length;
   const capturedAt = new Date(test.session.capturedAt).toLocaleString();
-
-  // Load (or refresh) this test's replay history when the card is expanded.
-  // Also re-runs after a replay completes — `runState` flipping back to null
-  // is the global "a replay just finished" signal.
-  const runState = useTestStore((s) => s.runState);
-  useEffect(() => {
-    if (!expanded) return;
-    let cancelled = false;
-    void (async () => {
-      const all = await loadReplaysForTest(test.id);
-      if (cancelled) return;
-      setHistory(all.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [expanded, test.id, runState]);
 
   return (
     <div className="border rounded-lg overflow-hidden bg-card">
@@ -490,37 +472,6 @@ function TestCard({
               </div>
             )}
           </Section>
-
-          <Section title="Replay history" count={history.length}>
-            {history.length === 0 ? (
-              <div className="text-xs text-muted-foreground italic px-2 py-1">
-                No replays yet — hit play above to capture one.
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {history.map((replay) => (
-                  <ReplayHistoryRow
-                    key={replay.id}
-                    test={test}
-                    replay={replay}
-                    onOpen={() => onOpenReplay(replay)}
-                    onDelete={async () => {
-                      const ok = await confirm({
-                        title: "Delete this replay?",
-                        description:
-                          "Removes the saved replay result. The recorded test stays intact.",
-                        confirmLabel: "Delete",
-                        tone: "destructive",
-                      });
-                      if (!ok) return;
-                      await deleteReplay(replay.id);
-                      setHistory((h) => h.filter((r) => r.id !== replay.id));
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-          </Section>
         </div>
       )}
     </div>
@@ -622,50 +573,6 @@ function Section({
         )}
       </div>
       {children}
-    </div>
-  );
-}
-
-function ReplayHistoryRow({
-  test,
-  replay,
-  onOpen,
-  onDelete,
-}: {
-  test: SavedTest;
-  replay: SavedReplay;
-  onOpen: () => void;
-  onDelete: () => void;
-}) {
-  const when = new Date(replay.createdAt).toLocaleString();
-  // Re-derive status against the test's current assertion modes. The
-  // stored `replay.status` and per-step `assert` reports are frozen at
-  // run time; if the user later marks a previously-failing point as
-  // `flaky` / `ignore` in the dialog, this row should reflect that.
-  const { status, passed, total } = liveReplayStatus(test, replay);
-  return (
-    <div className="rounded bg-background/60 overflow-hidden flex items-center gap-2 hover:bg-accent/40 transition-colors">
-      <button
-        onClick={onOpen}
-        className="flex-1 min-w-0 px-2 py-1.5 text-left flex items-center gap-2"
-      >
-        <StatusBadge status={status} hideIcon className="shrink-0" />
-        <span className="text-[11px] text-muted-foreground truncate flex-1">
-          {when}
-        </span>
-        <span className="text-[11px] font-mono text-muted-foreground shrink-0">
-          {passed}/{total} · {replay.durationMs}ms
-        </span>
-      </button>
-      <Button
-        size="sm"
-        variant="ghost"
-        className="h-7 w-7 p-0 mr-1 text-destructive hover:text-destructive"
-        onClick={onDelete}
-        title="Delete replay"
-      >
-        <Trash2 className="h-3 w-3" />
-      </Button>
     </div>
   );
 }

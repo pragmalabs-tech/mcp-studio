@@ -43,6 +43,8 @@ export interface ReplayProgress {
 export interface ReplayOptions {
   signal?: AbortSignal;
   onProgress?: (info: ReplayProgress) => void;
+  runGroupId?: string;
+  profileName?: string;
 }
 
 /**
@@ -71,7 +73,7 @@ export async function runReplay(
   test: SavedTest,
   options: ReplayOptions = {},
 ): Promise<SavedReplay> {
-  const { signal, onProgress } = options;
+  const { signal, onProgress, runGroupId, profileName } = options;
 
   const steps = test.session.actions
     .map((source) => ({ source, action: reconstructAction(source.action) }))
@@ -166,6 +168,8 @@ export async function runReplay(
     durationMs: Math.round(nowMs() - runStart),
     status: !aborted && !anyFailed ? "passed" : "failed",
     actions: out,
+    runGroupId,
+    profileName,
   };
   await saveReplay(replay);
   return replay;

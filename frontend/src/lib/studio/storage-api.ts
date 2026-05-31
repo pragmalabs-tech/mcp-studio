@@ -34,6 +34,11 @@ export interface ReplaySummary {
   filter: unknown;
   env: unknown;
   summary: unknown;
+  test_name: string | null;
+  status: string | null;
+  duration_ms: number | null;
+  run_group_id: string | null;
+  profile_name: string | null;
 }
 
 async function asJson<T>(resp: Response): Promise<T> {
