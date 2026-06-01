@@ -104,25 +104,6 @@ export function WidgetConfig() {
 
         <div className="flex items-center gap-1.5">
           <Label className="text-muted-foreground text-xs whitespace-nowrap">
-            Display
-          </Label>
-          <Select
-            value={displayMode}
-            onValueChange={(v) => v && setDisplayMode(v)}
-          >
-            <SelectTrigger size="sm" className="text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="compact">Compact</SelectItem>
-              <SelectItem value="inline">Inline</SelectItem>
-              <SelectItem value="fullscreen">Fullscreen</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <Label className="text-muted-foreground text-xs whitespace-nowrap">
             Locale
           </Label>
           <Input
