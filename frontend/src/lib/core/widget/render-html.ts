@@ -64,6 +64,7 @@ export function renderHtml(opts: RenderOpts): RenderResult {
   // for the same reason as the bridge: inline scripts may be blocked.
   if (!strict) {
     scripts.push(consoleForwardScript());
+    scripts.push(contentHeightScript());
   }
 
   if (platform === "openai") {
@@ -163,6 +164,36 @@ function viewOnlyScript(): string {
       el.setAttribute('tabindex', '-1');
     });
   });
+})();
+</script>`;
+}
+
+/** Reports the actual rendered content height to the studio shell so the
+ *  preview container can shrink-wrap the widget instead of leaving empty
+ *  space when body/html have forced height:100%. Uses the bottom edge of
+ *  body's children (not scrollHeight) to skip background-only space. */
+function contentHeightScript(): string {
+  return `<script>
+(function () {
+  function measure() {
+    var max = 0;
+    var children = document.body ? document.body.children : [];
+    for (var i = 0; i < children.length; i++) {
+      var b = children[i].getBoundingClientRect();
+      if (b.bottom > max) max = b.bottom;
+    }
+    if (max > 10) {
+      window.parent.postMessage({ type: 'studio_content_height', height: Math.ceil(max) }, '*');
+    }
+  }
+  if (document.readyState === 'complete') {
+    setTimeout(measure, 50);
+  } else {
+    window.addEventListener('load', function () { setTimeout(measure, 50); });
+  }
+  if (typeof ResizeObserver !== 'undefined' && document.body) {
+    new ResizeObserver(measure).observe(document.body);
+  }
 })();
 </script>`;
 }
