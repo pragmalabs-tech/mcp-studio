@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { renderHtml } from "@/lib/core/widget/render-html";
 import { createClaudeMock } from "@/lib/studio/mock-claude";
@@ -12,14 +12,8 @@ import { WidgetClickAction } from "@/lib/action/widget_click";
 import { WidgetTextInputAction } from "@/lib/action/widget_text_input";
 import { captureSelector } from "@/lib/action/capture-selector";
 import { recorder } from "@/lib/recorder/recorder";
-import { CopyButton } from "@/components/ui/copy-button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useProfileStore } from "@/lib/studio/stores/profile-store";
 
-type ViewTab = "preview" | "mock" | "html";
-
-/** Convert a static-analysis finding into the panel-shaped violation.
- *  Duplicates the shape from store.toStaticViolation (kept local since
- *  the conversion is shallow). */
 function findingToViolation(finding: CspFinding, sourceFile: string) {
   return {
     id: `static_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -58,19 +52,7 @@ function isTextLikeInput(el: Element): boolean {
   return false;
 }
 
-/**
- * Renders the widget pointed at by `props.widgetId` (override) or
- * `store.activeWidgetId`. Mount effect writes HTML into the iframe, runs
- * CSP analysis, wires the ext-apps mock, and after `entry.waitMs`
- * captures `outerHTML` back into the store via `setSnapshot` — which
- * resolves the promise the originating Action is awaiting.
- *
- * Entries that already carry a `snapshot` short-circuit the mount cycle:
- * the comparison dialog can mount a second `<WidgetPreview>` pointing at
- * a recorded entry and see the captured DOM without a fresh wait.
- */
 export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
-  const [tab, setTab] = useState<ViewTab>("preview");
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const activeWidgetId = useWidgetStore((s) => s.activeWidgetId);
   const targetId = widgetId ?? activeWidgetId;
@@ -84,6 +66,11 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
   const addPendingMessage = useWidgetStore((s) => s.addPendingMessage);
   const getViewportSize = useWidgetStore((s) => s.getViewportSize);
   const addCspViolation = useWidgetStore((s) => s.addCspViolation);
+  const viewportPreset = useWidgetStore((s) => s.viewportPreset);
+  const profileName = useProfileStore((s) => {
+    const profile = s.profiles.find((p) => p.id === s.activeProfileId);
+    return profile?.name ?? null;
+  });
 
   // Publish iframe ref so other store consumers (mock-claude.ts,
   // WidgetClickAction) can reach it. We use a ref callback rather than a
@@ -243,7 +230,6 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
       if (!recorder.isCapturing()) return;
       const target = e.target as Element | null;
       if (!target) return;
-      // Text-like inputs are captured via the 'input' event handler below.
       if (isTextLikeInput(target)) return;
       const liveDoc = iframe.contentDocument ?? doc;
       const candidates = captureSelector(target, liveDoc);
@@ -253,7 +239,6 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
 
       const prev = useWidgetStore.getState().openClick;
       if (prev) prev.close();
-      // Clicking a non-input element also finalizes any in-flight text input.
       const prevText = useWidgetStore.getState().openTextInput;
       if (prevText) prevText.close();
 
@@ -276,8 +261,6 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
 
     return () => {
       doc.removeEventListener("click", onClick, { capture: true });
-      // Close any in-flight click when this widget is being swapped out so
-      // its events don't get orphaned.
       const open = useWidgetStore.getState().openClick;
       if (open) open.close();
     };
@@ -300,9 +283,6 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
 
     const onKeyup = (e: KeyboardEvent) => {
       if (!recorder.isCapturing()) return;
-      // Only react to keys that actually change the input's value. This
-      // prevents Tab, Escape, Arrow keys etc. from opening a spurious empty
-      // WidgetTextInputAction on the newly-focused element.
       if (e.key.length !== 1 && e.key !== "Backspace" && e.key !== "Delete")
         return;
       const target = e.target as Element | null;
@@ -317,10 +297,6 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
         return;
       }
 
-      // Different element or no open action — finalize previous, start fresh.
-      // close() captures the snapshot as its first step, so calling it here
-      // (in the keyup capture phase, before React's bubble phase) freezes the
-      // DOM before the new element's onChange re-render contaminates it.
       if (openTextInput) openTextInput.close();
       currentEl = target;
 
@@ -358,135 +334,37 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
   }, [targetId]);
 
   const viewportSize = getViewportSize();
-  const actions = useWidgetStore((s) => s.actions);
-
-  // Get the last tool call result for display when no widget
-  const lastToolResult = (() => {
-    const toolCalls = actions.filter((a) => a.method === "tools/call");
-    if (toolCalls.length === 0) return null;
-    const last = toolCalls[toolCalls.length - 1];
-    try {
-      const parsed = JSON.parse(last.args);
-      if (parsed.structuredContent) {
-        return JSON.stringify(parsed.structuredContent, null, 2);
-      }
-      if (parsed.result?.structuredContent) {
-        return JSON.stringify(parsed.result.structuredContent, null, 2);
-      }
-      if (parsed.result?.content?.[0]?.text) {
-        try {
-          const textContent = JSON.parse(parsed.result.content[0].text);
-          return JSON.stringify(textContent, null, 2);
-        } catch {
-          return parsed.result.content[0].text;
-        }
-      }
-      return JSON.stringify(parsed.result || parsed, null, 2);
-    } catch {
-      return last.args;
-    }
-  })();
-
-  const mockJson = entry
-    ? JSON.stringify(
-        {
-          toolInput: entry.mock.toolInput,
-          toolOutput: entry.mock.toolOutput,
-          _meta: entry.mock._meta,
-          widgetState: entry.mock.widgetState,
-          theme: entry.mock.theme,
-          locale: entry.mock.locale,
-          displayMode: entry.mock.displayMode,
-        },
-        null,
-        2,
-      )
-    : "";
-
-  const htmlSource = entry ? stripTunnelUrls(entry.html) : "";
-  const hasWidget = entry !== null;
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      {/* Tab bar */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b shrink-0">
-        <div className="flex items-center gap-3">
-          <TabButton
-            active={tab === "preview"}
-            onClick={() => setTab("preview")}
-          >
-            Preview
-          </TabButton>
-          <TabButton active={tab === "mock"} onClick={() => setTab("mock")}>
-            Data
-          </TabButton>
-          <TabButton active={tab === "html"} onClick={() => setTab("html")}>
-            HTML Source
-          </TabButton>
-        </div>
-        {tab === "mock" &&
-          (hasWidget ? (
-            <CopyButton value={mockJson} />
-          ) : lastToolResult ? (
-            <CopyButton value={lastToolResult} />
-          ) : null)}
-        {tab === "html" && hasWidget && <CopyButton value={htmlSource} />}
-        {tab === "preview" && !hasWidget && lastToolResult && (
-          <CopyButton value={lastToolResult} />
-        )}
-      </div>
-
-      {/* Content area */}
-      {!hasWidget ? (
-        tab === "preview" ? (
-          lastToolResult ? (
-            <ScrollArea className="flex-1 min-h-0">
-              <div className="p-3">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                  Tool Result
-                </div>
-                <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-background text-foreground select-text border border-border/40 rounded p-3">
-                  {lastToolResult}
-                </pre>
-              </div>
-            </ScrollArea>
-          ) : (
-            <div className="flex-1 flex items-center justify-center bg-muted/30 text-muted-foreground text-sm">
-              No data to display
-            </div>
-          )
-        ) : tab === "mock" ? (
-          lastToolResult ? (
-            <ScrollArea className="flex-1 min-h-0">
-              <div className="p-3">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                  Tool Result
-                </div>
-                <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-background text-foreground select-text border border-border/40 rounded p-3">
-                  {lastToolResult}
-                </pre>
-              </div>
-            </ScrollArea>
-          ) : (
-            <div className="flex-1 flex items-center justify-center bg-muted/30 text-muted-foreground text-sm">
-              No data to display
-            </div>
-          )
-        ) : (
-          <div className="flex-1 flex items-center justify-center bg-muted/30 text-muted-foreground text-sm">
-            No HTML source (not a widget)
+    <div className="flex-1 flex flex-col bg-muted/30 overflow-hidden min-h-0">
+      {/* App chrome header */}
+      <div className="flex items-center justify-between px-4 py-2 border-b bg-background/80 backdrop-blur-sm shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="size-5 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+            <span className="text-[9px] font-bold text-primary leading-none">
+              {(profileName ?? "M")[0].toUpperCase()}
+            </span>
           </div>
-        )
-      ) : tab === "preview" ? (
-        <div className="flex-1 flex items-center justify-center bg-muted/30 p-4 overflow-auto">
+          <span className="text-xs font-medium text-foreground truncate">
+            {profileName ?? "MCP App"}
+          </span>
+        </div>
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wider shrink-0 ml-3">
+          {viewportPreset === "custom"
+            ? `${viewportSize.width}×${viewportSize.height}`
+            : viewportPreset}
+        </span>
+      </div>
+      {/* Widget centered with padding — scrollable so tall widgets stay accessible */}
+      <div className="flex-1 overflow-auto">
+        <div className="flex justify-center px-6 py-6 min-h-full">
           <div
             style={{
               width: viewportSize.width,
               height: viewportSize.height,
               maxWidth: "100%",
-              maxHeight: "100%",
             }}
-            className="bg-background border rounded-lg shadow-lg overflow-hidden"
+            className="bg-background border rounded-lg shadow-lg overflow-hidden shrink-0"
           >
             <iframe
               ref={setIframe}
@@ -496,43 +374,7 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
             />
           </div>
         </div>
-      ) : tab === "mock" ? (
-        <ScrollArea className="flex-1 min-h-0">
-          <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-background text-foreground select-text p-3">
-            {mockJson || "{}"}
-          </pre>
-        </ScrollArea>
-      ) : (
-        <ScrollArea className="flex-1 min-h-0">
-          <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-background text-foreground select-text p-3">
-            {htmlSource}
-          </pre>
-        </ScrollArea>
-      )}
+      </div>
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`text-[10px] font-semibold uppercase tracking-wider transition-colors py-0.5 ${
-        active
-          ? "text-foreground border-b-2 border-primary"
-          : "text-muted-foreground hover:text-foreground"
-      }`}
-    >
-      {children}
-    </button>
   );
 }

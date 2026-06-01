@@ -7,8 +7,8 @@ import { RequestEditor } from "@/components/studio/request-editor";
 import { ActionLog } from "@/components/studio/action-log";
 import { ConsoleLog } from "@/components/studio/console-log";
 import { PendingMessages } from "@/components/studio/pending-messages";
-import { WidgetConfig } from "@/components/studio/widget/widget-config";
-import { WidgetPreview } from "@/components/studio/widget/widget-preview";
+import { WidgetConfig } from "@/components/studio/preview/preview-config";
+import { Preview } from "@/components/studio/preview/preview";
 import { CspPanel } from "@/components/studio/csp-panel";
 import { OAuthDebugger } from "@/components/studio/oauth-debugger";
 import {
@@ -211,7 +211,7 @@ export function StudioLayout() {
           <ResizablePanel defaultSize={55} minSize={35}>
             <div className="flex flex-col h-full min-w-0">
               <WidgetConfig />
-              <WidgetPreview />
+              <Preview />
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>
