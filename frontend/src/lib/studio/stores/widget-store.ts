@@ -271,7 +271,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
   theme: "dark",
   locale: "en-US",
   displayMode: "compact",
-  viewportPreset: "mobile" as ViewportPreset,
+  viewportPreset: "desktop" as ViewportPreset,
   viewportCustom: { width: 430, height: 932 },
 
   selected: null,

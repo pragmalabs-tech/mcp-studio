@@ -55,13 +55,11 @@ export function WidgetConfig() {
   const {
     platform,
     theme,
-    displayMode,
     locale,
     viewportPreset,
     viewportCustom,
     setPlatform,
     setTheme,
-    setDisplayMode,
     setLocale,
     setViewportPreset,
     setViewportCustom,

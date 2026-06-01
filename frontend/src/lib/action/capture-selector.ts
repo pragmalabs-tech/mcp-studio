@@ -90,17 +90,6 @@ function formSemantics(el: Element): string[] {
 }
 
 export function captureSelector(el: Element, root: Document): string[] {
-  console.log("[captureSelector] element:", el, {
-    tag: el.tagName.toLowerCase(),
-    id: el.id || null,
-    name: el.getAttribute("name"),
-    type: (el as HTMLInputElement).type || null,
-    ariaLabel: el.getAttribute("aria-label"),
-    placeholder: el.getAttribute("placeholder"),
-    testid: TESTID_ATTRS.map((a) => el.getAttribute(a)).find(Boolean) ?? null,
-    classes: Array.from(el.classList),
-  });
-
   const candidates: string[] = [];
 
   // 1. Explicit test IDs
@@ -130,6 +119,5 @@ export function captureSelector(el: Element, root: Document): string[] {
 
   const unique = candidates.filter((sel) => isUnique(sel, el, root));
 
-  console.log("[captureSelector] candidates (unique):", unique);
   return unique.slice(0, MAX_CANDIDATES);
 }
