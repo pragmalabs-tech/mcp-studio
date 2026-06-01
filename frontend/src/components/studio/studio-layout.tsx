@@ -12,9 +12,10 @@ import { WidgetPreview } from "@/components/studio/widget/widget-preview";
 import { CspPanel } from "@/components/studio/csp-panel";
 import { OAuthDebugger } from "@/components/studio/oauth-debugger";
 import {
-  ResizableSplit,
-  ResizableHorizontalSplit,
-} from "@/components/studio/resizable-split";
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from "@/components/ui/resizable";
 import { TopHeader } from "@/components/studio/top-header";
 import { SignInDialog } from "@/components/studio/sign-in-dialog";
 import { PublishDialog } from "@/components/studio/publish-dialog";
@@ -74,13 +75,13 @@ export function StudioLayout() {
         )}
         <Sidebar />
 
-        <ResizableHorizontalSplit
-          storageKey="mcp-studio:layout-split"
-          defaultRatio={0.45}
-          minLeftPx={360}
-          minRightPx={480}
-          left={
-            <div className="flex-1 flex flex-col min-w-0">
+        <ResizablePanelGroup
+          orientation="horizontal"
+          autoSaveId="mcp-studio:layout-split"
+          className="flex-1 min-h-0"
+        >
+          <ResizablePanel defaultSize={45} minSize={28}>
+            <div className="flex flex-col h-full min-w-0">
               <div className="flex items-center gap-2 px-4 py-2 border-b shrink-0">
                 <span className="font-semibold text-sm truncate">
                   {headerLabel}
@@ -100,14 +101,17 @@ export function StudioLayout() {
                   </Badge>
                 )}
               </div>
-              <ResizableSplit
-                // -v2: previous storage held a ratio (0–1); pixel-based
-                // sizing uses a fresh key so a stale ratio can't be loaded
-                // as 0px tall.
-                storageKey="mcp-studio:editor-split-v2"
-                top={<RequestEditor />}
-                bottom={
-                  <div className="flex-1 flex flex-col min-h-0">
+              <ResizablePanelGroup
+                orientation="vertical"
+                autoSaveId="mcp-studio:editor-split-v2"
+                className="flex-1 min-h-0"
+              >
+                <ResizablePanel defaultSize={58} minSize={15}>
+                  <RequestEditor />
+                </ResizablePanel>
+                <ResizableHandle withHandle />
+                <ResizablePanel defaultSize={42} minSize={20}>
+                  <div className="flex flex-col h-full min-h-0">
                     <PendingMessages />
                     <div className="flex border-b shrink-0">
                       <button
@@ -199,20 +203,18 @@ export function StudioLayout() {
                       <OAuthDebugger />
                     )}
                   </div>
-                }
-                defaultBottomPx={320}
-                minTopPx={120}
-                minBottomPx={160}
-              />
+                </ResizablePanel>
+              </ResizablePanelGroup>
             </div>
-          }
-          right={
-            <div className="flex-1 flex flex-col min-w-0">
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel defaultSize={55} minSize={35}>
+            <div className="flex flex-col h-full min-w-0">
               <WidgetConfig />
               <WidgetPreview />
             </div>
-          }
-        />
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
     </div>
   );

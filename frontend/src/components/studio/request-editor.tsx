@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { CopyButton } from "@/components/ui/copy-button";
+import CodeMirror, { EditorView } from "@uiw/react-codemirror";
+import { json } from "@codemirror/lang-json";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Tooltip,
@@ -23,7 +24,6 @@ export function RequestEditor() {
     editorValue,
     toolExecuting,
     setEditorValue,
-    resetEditor,
     applyMock,
     execute,
   } = useWidgetStore();
@@ -77,14 +77,6 @@ export function RequestEditor() {
         <div className="flex gap-1.5">
           {tab === "args" ? (
             <>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 text-xs px-2"
-                onClick={resetEditor}
-              >
-                Reset
-              </Button>
               {isWidget && (
                 <Button
                   variant="ghost"
@@ -111,16 +103,13 @@ export function RequestEditor() {
       </div>
 
       {tab === "args" ? (
-        <Textarea
-          // `field-sizing-fixed` overrides the Textarea base's
-          // `field-sizing-content` — otherwise large tool inputs (e.g. an
-          // Excalidraw element blob pasted as one giant string) grow the
-          // textarea to fit, which through the surrounding flex split
-          // shrinks the bottom logs panel.
-          className="flex-1 min-h-0 rounded-none border-0 resize-none field-sizing-fixed font-mono text-xs focus-visible:ring-0 bg-background"
+        <CodeMirror
           value={editorValue}
-          onChange={(e) => setEditorValue(e.target.value)}
-          spellCheck={false}
+          onChange={setEditorValue}
+          extensions={[json(), EditorView.lineWrapping]}
+          theme="dark"
+          basicSetup={{ lineNumbers: false, foldGutter: false }}
+          className="flex-1 min-h-0 overflow-auto text-xs [&_.cm-editor]:h-full [&_.cm-scroller]:h-full [&_.cm-editor.cm-focused]:outline-none"
         />
       ) : (
         <DefinitionView />

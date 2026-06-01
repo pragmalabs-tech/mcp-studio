@@ -254,7 +254,6 @@ interface WidgetState {
   setSnapshot: (id: string, snapshot: string) => void;
   loadWidget: () => Promise<void>;
   applyMock: () => void;
-  resetEditor: () => void;
   execute: () => Promise<void>;
 }
 
@@ -714,21 +713,6 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
       logAction("system", "Mock data applied (reload)");
     } catch (e) {
       logAction("error", `Invalid JSON: ${(e as Error).message}`);
-    }
-  },
-
-  resetEditor: () => {
-    const { selected, loadWidget } = get();
-    if (!selected) return;
-    if (selected.type === "tool") {
-      set({ editorValue: toolArgsFromSchema(selected.tool.inputSchema) });
-    } else if (selected.type === "resource") {
-      set({
-        editorValue: JSON.stringify({ uri: selected.resource.uri }, null, 2),
-      });
-    }
-    if (useTestStore.getState().studioMode !== "test") {
-      setTimeout(loadWidget, 50);
     }
   },
 
