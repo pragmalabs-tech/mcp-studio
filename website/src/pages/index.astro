@@ -1,0 +1,76 @@
+---
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+
+// TODO: replace with real YouTube video ID when ready
+const VIDEO_ID = "";
+---
+
+<Base>
+  <Nav />
+
+  <main class="max-w-5xl mx-auto px-4">
+
+    <!-- Hero -->
+    <section class="pt-24 pb-10">
+      <p class="text-[10px] font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-6">
+        [ MCP Studio ]
+      </p>
+      <h1 class="text-4xl sm:text-5xl font-bold leading-tight text-[var(--foreground)] mb-6 max-w-2xl">
+        The interactive test studio for MCP apps.
+      </h1>
+      <p class="text-sm text-[var(--muted-foreground)] max-w-xl leading-relaxed mb-10">
+        Just interact with your MCP app in Studio — inspect tool calls, interact with widgets live
+        in your browser and turn any session into a
+        <span class="text-[var(--foreground)] font-semibold">repeatable end-to-end test with one click.</span>
+      </p>
+
+      <!-- Terminal -->
+      <div class="border border-[var(--border)] bg-[var(--card)] overflow-hidden mb-8">
+        <div class="flex items-center gap-1.5 px-3 py-2 border-b border-[var(--border)]">
+          <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
+          <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
+          <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
+          <span class="ml-2 text-[10px] text-[var(--muted-foreground)]">terminal</span>
+        </div>
+        <pre class="px-4 py-4 text-xs text-[var(--foreground)] leading-relaxed"><code><span class="text-[var(--muted-foreground)]"># Install</span>
+<span class="text-emerald-400">$</span> curl -fsSL https://dl.pragmalabs.tech/mcp-studio/install.sh | sh
+
+<span class="text-[var(--muted-foreground)]"># Run</span>
+<span class="text-emerald-400">$</span> mcp-studio</code></pre>
+      </div>
+
+      <a
+        href="/docs"
+        class="inline-flex items-center h-9 px-4 text-xs font-medium border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:border-[var(--foreground)] transition-colors"
+      >
+        Read the docs
+      </a>
+
+    </section>
+
+    <!-- Video -->
+    <section class="pb-20">
+      {VIDEO_ID ? (
+        <div class="border border-[var(--border)] overflow-hidden aspect-video">
+          <iframe
+            src={`https://www.youtube.com/embed/${VIDEO_ID}`}
+            title="MCP Studio demo"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen
+            class="w-full h-full"
+          />
+        </div>
+      ) : (
+        <div class="border border-dashed border-[var(--border)] aspect-video flex flex-col items-center justify-center gap-3 text-[var(--muted-foreground)]">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span class="text-xs">Video coming soon</span>
+        </div>
+      )}
+    </section>
+
+  </main>
+
+  <Footer />
+</Base>
