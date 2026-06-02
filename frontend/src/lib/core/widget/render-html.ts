@@ -186,13 +186,37 @@ function contentHeightScript(): string {
       window.parent.postMessage({ type: 'studio_content_height', height: Math.ceil(max) }, '*');
     }
   }
-  if (document.readyState === 'complete') {
-    setTimeout(measure, 50);
-  } else {
-    window.addEventListener('load', function () { setTimeout(measure, 50); });
+
+  var pending = false;
+  function scheduleMeasure() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(function () { pending = false; measure(); });
   }
-  if (typeof ResizeObserver !== 'undefined' && document.body) {
-    new ResizeObserver(measure).observe(document.body);
+
+  function observe(ro, el) {
+    try { ro.observe(el); } catch (_) {}
+  }
+
+  function init() {
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    var ro = new ResizeObserver(scheduleMeasure);
+    observe(ro, document.documentElement);
+    if (!document.body) return;
+    observe(ro, document.body);
+    Array.prototype.forEach.call(document.body.children, function (el) { observe(ro, el); });
+    // Re-observe whenever new children are added to body
+    new MutationObserver(function () {
+      Array.prototype.forEach.call(document.body.children, function (el) { observe(ro, el); });
+      scheduleMeasure();
+    }).observe(document.body, { childList: true });
+  }
+
+  if (document.readyState === 'complete') {
+    setTimeout(init, 50);
+  } else {
+    window.addEventListener('load', function () { setTimeout(init, 50); });
   }
 })();
 </script>`;
