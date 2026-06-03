@@ -5,6 +5,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { WidgetPreview } from "./widget-preview";
+import { selectedIsWidgetTool } from "./utils";
 
 type ViewTab = "preview" | "mock" | "html";
 
@@ -16,6 +17,9 @@ export function Preview({ widgetId }: { widgetId?: string } = {}) {
     targetId ? (s.widgets[targetId] ?? null) : null,
   );
   const actions = useWidgetStore((s) => s.actions);
+
+  const selected = useWidgetStore((s) => s.selected);
+  const isWidgetTool = selectedIsWidgetTool(selected);
 
   const hasWidget = entry !== null;
 
@@ -63,43 +67,49 @@ export function Preview({ widgetId }: { widgetId?: string } = {}) {
 
   const htmlSource = entry ? stripTunnelUrls(entry.html) : "";
 
+  const effectiveTab =
+    !isWidgetTool && (tab === "preview" || tab === "html") ? "mock" : tab;
+
   return (
     <Tabs
-      value={tab}
+      value={effectiveTab}
       onValueChange={(v) => setTab(v as ViewTab)}
       className="flex-1 flex flex-col min-h-0 gap-0"
     >
       {/* Tab bar */}
       <div className="flex items-center justify-between px-3 py-1 border-b shrink-0">
         <TabsList variant="line" className="h-auto gap-3 p-0">
-          <TabsTrigger
-            value="preview"
-            className="text-[10px] font-semibold uppercase tracking-wider px-0 py-1 h-auto rounded-none"
-          >
-            Preview
-          </TabsTrigger>
+          {isWidgetTool && (
+            <TabsTrigger
+              value="preview"
+              className="text-[10px] font-semibold uppercase tracking-wider px-0 py-1 h-auto rounded-none"
+            >
+              Preview
+            </TabsTrigger>
+          )}
           <TabsTrigger
             value="mock"
             className="text-[10px] font-semibold uppercase tracking-wider px-0 py-1 h-auto rounded-none"
           >
             Data
           </TabsTrigger>
-          <TabsTrigger
-            value="html"
-            className="text-[10px] font-semibold uppercase tracking-wider px-0 py-1 h-auto rounded-none"
-          >
-            HTML Source
-          </TabsTrigger>
+          {isWidgetTool && (
+            <TabsTrigger
+              value="html"
+              className="text-[10px] font-semibold uppercase tracking-wider px-0 py-1 h-auto rounded-none"
+            >
+              HTML Source
+            </TabsTrigger>
+          )}
         </TabsList>
-        {tab === "mock" &&
+        {effectiveTab === "mock" &&
           (hasWidget ? (
             <CopyButton value={mockJson} />
           ) : lastToolResult ? (
             <CopyButton value={lastToolResult} />
           ) : null)}
-        {tab === "html" && hasWidget && <CopyButton value={htmlSource} />}
-        {tab === "preview" && !hasWidget && lastToolResult && (
-          <CopyButton value={lastToolResult} />
+        {effectiveTab === "html" && isWidgetTool && hasWidget && (
+          <CopyButton value={htmlSource} />
         )}
       </div>
 
