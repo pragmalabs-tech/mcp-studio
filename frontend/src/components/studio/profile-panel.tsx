@@ -18,7 +18,7 @@ export function ProfilePanel() {
 
   const activeProfile = profiles.find((p) => p.id === activeProfileId) || null;
 
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [profilesOpen, setProfilesOpen] = useState(false);
 
   // First-run nudge: once profiles have loaded, pop the manager open if
