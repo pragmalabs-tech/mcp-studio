@@ -10,16 +10,21 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
   const viewportSize = getViewportSize();
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 p-3 bg-muted/20">
-      <ChatShell
-        platform={platform}
-        theme={theme}
-        viewportPreset={viewportPreset}
-        viewportWidth={viewportSize.width}
-        viewportHeight={viewportSize.height}
+    <div className="flex-1 flex flex-col items-center min-h-0 p-3 bg-muted/20">
+      <div
+        className="flex-1 flex flex-col min-h-0 w-full"
+        style={{ maxWidth: viewportSize.width }}
       >
-        <WidgetRenderer widgetId={widgetId} />
-      </ChatShell>
+        <ChatShell
+          platform={platform}
+          theme={theme}
+          viewportPreset={viewportPreset}
+          viewportWidth={viewportSize.width}
+          viewportHeight={viewportSize.height}
+        >
+          <WidgetRenderer widgetId={widgetId} />
+        </ChatShell>
+      </div>
     </div>
   );
 }

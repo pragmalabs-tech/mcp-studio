@@ -50,7 +50,7 @@ function FakeChatInput({
   return (
     <div className="shrink-0 px-4 pb-4 pt-2">
       <div
-        className="max-w-2xl mx-auto flex items-center gap-2 px-3 py-2.5"
+        className="flex items-center gap-2 px-3 py-2.5"
         style={{
           border: `1px solid ${colors.border}`,
           backgroundColor: colors.inputBg,
@@ -139,7 +139,7 @@ export function ChatShell({
 
       {/* Messages */}
       <div className="flex-1 overflow-auto">
-        <div className="max-w-2xl mx-auto w-full px-4 py-6 flex flex-col gap-4">
+        <div className="w-full px-16 py-6 flex flex-col gap-4">
           <FakeUserMessage colors={colors} />
           <div className="text-sm" style={{ color: colors.text }}>
             Let me show this:
