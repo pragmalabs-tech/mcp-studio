@@ -62,7 +62,7 @@ echo
 echo "Installed mcp-studio v${version} to $INSTALL_DIR/mcp-studio"
 case ":$PATH:" in
   *":$INSTALL_DIR:"*)
-    echo "Run:  mcp-studio open"
+    echo "Run:  mcp-studio"
     ;;
   *)
     echo
