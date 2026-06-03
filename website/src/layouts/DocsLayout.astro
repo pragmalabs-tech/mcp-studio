@@ -1,0 +1,89 @@
+---
+import Base from "./Base.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+
+export interface Props {
+  title?: string;
+  current?: string;
+}
+
+const { title, current } = Astro.props;
+
+const nav = [
+  {
+    group: "Getting started",
+    items: [
+      { label: "Overview", href: "/docs" },
+    ],
+  },
+  {
+    group: "Manual testing",
+    items: [
+      { label: "Tool calls", href: "/docs/manual-testing#tools" },
+      { label: "Resources", href: "/docs/manual-testing#resources" },
+      { label: "Widget resource", href: "/docs/manual-testing#widget" },
+    ],
+  },
+  {
+    group: "Automation E2E Testing",
+    items: [
+      { label: "Record a session", href: "/docs/automation#record" },
+      { label: "Replay & run", href: "/docs/automation#replay" },
+    ],
+  },
+  {
+    group: "Testing with real AI",
+    items: [
+      { label: "ChatGPT, Claude, Copilot", href: "/docs/publishing" },
+    ],
+  },
+];
+
+const pathname = Astro.url.pathname;
+---
+
+<Base title={title}>
+  <Nav />
+
+  <div class="max-w-5xl mx-auto px-4 flex gap-12 min-h-screen">
+    <!-- Sidebar -->
+    <aside class="hidden md:block w-44 shrink-0 pt-12">
+      <nav class="sticky top-20 flex flex-col gap-6">
+        {nav.map((section) => (
+          <div>
+            <p class="text-[10px] uppercase tracking-widest text-[var(--muted-foreground)] mb-2">
+              {section.group}
+            </p>
+            <ul class="flex flex-col gap-0.5">
+              {section.items.map((item) => {
+                const active = pathname === item.href || pathname.startsWith(item.href.split("#")[0] + "/") && item.href.includes("#");
+                return (
+                  <li>
+                    <a
+                      href={item.href}
+                      class={`block text-xs py-0.5 transition-colors ${
+                        active
+                          ? "text-[var(--foreground)]"
+                          : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                      }`}
+                    >
+                      {item.label}
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </nav>
+    </aside>
+
+    <!-- Content -->
+    <main class="flex-1 pt-12 pb-24 min-w-0">
+      <slot />
+    </main>
+  </div>
+
+  <Footer />
+</Base>

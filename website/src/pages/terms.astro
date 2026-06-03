@@ -1,0 +1,91 @@
+---
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+---
+
+<Base title="Terms of Service — MCP Studio">
+  <Nav />
+
+  <main class="max-w-2xl mx-auto px-4 pt-16 pb-24">
+
+    <p class="text-[10px] font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-4">
+      [ Legal ]
+    </p>
+    <h1 class="text-2xl font-bold text-[var(--foreground)] mb-2">Terms of Service</h1>
+    <p class="text-xs text-[var(--muted-foreground)] mb-12">Last updated: June 2025</p>
+
+    <div class="flex flex-col gap-10 text-xs text-[var(--muted-foreground)] leading-relaxed">
+
+      <section>
+        <h2 class="text-sm font-semibold text-[var(--foreground)] mb-3">Acceptance</h2>
+        <p>
+          By downloading or using MCP Studio, you agree to these terms. If you do not agree, do not use the software.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-sm font-semibold text-[var(--foreground)] mb-3">What MCP Studio is</h2>
+        <p>
+          MCP Studio is a local development tool for testing MCP servers. It runs entirely on your
+          machine. Pragma Labs does not have access to your MCP servers, credentials, test data, or
+          any other information processed by the application.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-sm font-semibold text-[var(--foreground)] mb-3">Permitted use</h2>
+        <p class="mb-3">You may use MCP Studio to:</p>
+        <ul class="flex flex-col gap-2 mb-3">
+          {[
+            "Test and debug MCP servers you own or have permission to test",
+            "Record and replay test sessions for your own development workflows",
+            "Publish your local MCP server to a tunnel URL for testing purposes",
+          ].map((item) => (
+            <li class="flex gap-2">
+              <span class="mt-1.5 shrink-0 w-1 h-1 bg-[var(--muted-foreground)]"></span>
+              {item}
+            </li>
+          ))}
+        </ul>
+        <p>You may not use MCP Studio to test or access systems you do not have authorization to access.</p>
+      </section>
+
+      <section>
+        <h2 class="text-sm font-semibold text-[var(--foreground)] mb-3">Tunnel service</h2>
+        <p>
+          The Publish feature is provided as-is. We may change or discontinue tunnel availability
+          at any time. Tunnel subdomains are not guaranteed to be permanent. Do not use tunnel URLs
+          in production environments.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-sm font-semibold text-[var(--foreground)] mb-3">No warranty</h2>
+        <p>
+          MCP Studio is provided "as is" without warranty of any kind. Pragma Labs is not liable
+          for any damages arising from your use of the software.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-sm font-semibold text-[var(--foreground)] mb-3">Changes</h2>
+        <p>
+          We may update these terms at any time. Continued use of MCP Studio after changes constitutes
+          acceptance of the revised terms.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-sm font-semibold text-[var(--foreground)] mb-3">Contact</h2>
+        <p>
+          Questions: <a href="mailto:team@pragmalabs.tech" class="text-[var(--foreground)] hover:underline">team@pragmalabs.tech</a>
+        </p>
+      </section>
+
+    </div>
+
+  </main>
+
+  <Footer />
+</Base>
