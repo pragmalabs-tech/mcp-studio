@@ -1,6 +1,5 @@
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { ChatShell } from "./chat-shell";
-import { FullscreenChatShell } from "./fullscreen-chat-shell";
 import { WidgetRenderer } from "./widget-renderer";
 
 export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
@@ -18,6 +17,7 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
     viewportPreset,
     viewportWidth: viewportSize.width,
     viewportHeight: viewportSize.height,
+    isFullscreen,
   };
 
   return (
@@ -26,15 +26,9 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
         className="flex-1 flex flex-col min-h-0 w-full"
         style={{ maxWidth: viewportSize.width }}
       >
-        {isFullscreen ? (
-          <FullscreenChatShell {...shellProps}>
-            <WidgetRenderer widgetId={widgetId} fullscreen />
-          </FullscreenChatShell>
-        ) : (
-          <ChatShell {...shellProps}>
-            <WidgetRenderer widgetId={widgetId} />
-          </ChatShell>
-        )}
+        <ChatShell {...shellProps}>
+          <WidgetRenderer widgetId={widgetId} fullscreen={isFullscreen} />
+        </ChatShell>
       </div>
     </div>
   );

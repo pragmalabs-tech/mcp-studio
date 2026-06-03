@@ -704,6 +704,13 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
         return;
       }
 
+      // OpenAI ext-apps protocol (no legacy window.openai globals) — update in-place.
+      if (get()._extAppsMock) {
+        get()._extAppsMock?.update(mock);
+        logAction("system", "Mock data applied");
+        return;
+      }
+
       set((s) => ({
         widgets: {
           ...s.widgets,

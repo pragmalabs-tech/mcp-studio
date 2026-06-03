@@ -58,6 +58,9 @@ export function WidgetRenderer({
   fullscreen,
 }: { widgetId?: string; fullscreen?: boolean } = {}) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const lastRenderedRef = useRef<{ targetId: string; html: string } | null>(
+    null,
+  );
   const [autoHeight, setAutoHeight] = useState<number | null>(null);
 
   const activeWidgetId = useWidgetStore((s) => s.activeWidgetId);
@@ -82,15 +85,6 @@ export function WidgetRenderer({
     setAutoHeight(null);
   }, [targetId]);
 
-  // Publish iframe ref so other store consumers (mock-claude.ts,
-  // WidgetClickAction) can reach it. We use a ref callback rather than a
-  // `useEffect(() => …, [])` because the <iframe> is conditionally
-  // rendered (only when a widget is active + the preview tab is open).
-  // The [] effect would fire once at component mount with iframeRef.current
-  // still null (the iframe hasn't appeared yet) and never re-publish — so
-  // store._iframeRef would stay null forever. The ref callback fires
-  // every time the iframe element mounts/unmounts, so the store always
-  // matches the live DOM.
   const setIframe = (el: HTMLIFrameElement | null) => {
     iframeRef.current = el;
     useWidgetStore.setState({ _iframeRef: el });
@@ -156,7 +150,16 @@ export function WidgetRenderer({
     const iframe = iframeRef.current;
     if (!iframe?.contentDocument) return;
 
-    // Always (re)create the mock so it survives the snapshot update cycle.
+    const htmlChanged =
+      lastRenderedRef.current?.targetId !== targetId ||
+      lastRenderedRef.current?.html !== entry.html;
+
+    // Only mock data changed (theme/locale/displayMode) — update in-place.
+    // No cleanup returned so the mock stays alive across this re-run.
+    if (!htmlChanged && entry.snapshot !== null) {
+      useWidgetStore.getState()._extAppsMock?.update(entry.mock);
+      return;
+    }
     const prev = useWidgetStore.getState()._extAppsMock;
     if (prev) {
       prev.destroy();
@@ -170,14 +173,18 @@ export function WidgetRenderer({
       platform === "claude"
         ? (content) => addPendingMessage("claude", content)
         : undefined,
-      (mode) => useWidgetStore.getState().setDisplayMode(mode),
+      (mode) => useWidgetStore.setState({ displayMode: mode }),
     );
     useWidgetStore.setState({ _extAppsMock: extAppsMock });
 
-    // HTML already written — no need to re-render.
+    // Snapshot exists — HTML already written (e.g. switching to a previously
+    // rendered widget). Mock is live; no cleanup here so it survives future
+    // mock-data-only re-runs until HTML actually changes.
     if (entry.snapshot !== null) {
-      return () => extAppsMock?.destroy();
+      return;
     }
+
+    lastRenderedRef.current = { targetId, html: entry.html };
 
     const { html: finalHtml } = renderHtml({
       html: entry.html,
@@ -213,10 +220,9 @@ export function WidgetRenderer({
       eventBus.emit(new WidgetRenderEvent(targetId, uri, { success: true }));
     }, entry.waitMs);
 
-    return () => {
-      clearTimeout(timer);
-      extAppsMock?.destroy();
-    };
+    // Only cancel the snapshot timer on cleanup — mock destruction is handled
+    // either by the next HTML-change run (above) or the unmount effect (below).
+    return () => clearTimeout(timer);
   }, [
     targetId,
     entry,
@@ -226,6 +232,14 @@ export function WidgetRenderer({
     addPendingMessage,
     addCspViolation,
   ]);
+
+  // Destroy the mock when this component unmounts.
+  useEffect(() => {
+    return () => {
+      useWidgetStore.getState()._extAppsMock?.destroy();
+      useWidgetStore.setState({ _extAppsMock: null });
+    };
+  }, []);
 
   // Click capture — own effect, depends only on `targetId`.
   useEffect(() => {
