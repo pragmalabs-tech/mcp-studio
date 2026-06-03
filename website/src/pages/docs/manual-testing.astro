@@ -3,62 +3,108 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
 ---
 
 <DocsLayout title="Manual testing — MCP Studio" current="manual-testing">
-
-  <p class="text-[10px] font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-4">
+  <p
+    class="text-[10px] font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-4"
+  >
     [ Manual testing ]
   </p>
-  <h1 class="text-2xl font-bold text-[var(--foreground)] mb-4">Manual testing</h1>
-  <p class="text-sm text-[var(--muted-foreground)] max-w-lg leading-relaxed mb-12">
-    [Intro: test tools, resources, and widget responses without writing any test code.]
+  <h1 class="text-2xl font-bold text-[var(--foreground)] mb-4">
+    Manual testing
+  </h1>
+  <p
+    class="text-sm text-[var(--muted-foreground)] max-w-lg leading-relaxed mb-12"
+  >
+    [Intro: test tools, resources, and widget responses without writing any test
+    code.]
   </p>
 
   <!-- Tools -->
   <section id="tools" class="mb-12">
-    <h2 class="text-sm font-semibold text-[var(--foreground)] mb-1">Tool calls</h2>
-    <p class="text-xs text-[var(--muted-foreground)] leading-relaxed mb-4 max-w-lg">
-      [How to pick a tool from the sidebar, fill in arguments, and run it. Mention the Args / Definition tabs.]
+    <h2 class="text-sm font-semibold text-[var(--foreground)] mb-1">
+      Tool calls
+    </h2>
+    <p
+      class="text-xs text-[var(--muted-foreground)] leading-relaxed mb-4 max-w-lg"
+    >
+      [How to pick a tool from the sidebar, fill in arguments, and run it.
+      Mention the Args / Definition tabs.]
     </p>
     <!-- placeholder screenshot / diagram -->
-    <div class="border border-dashed border-[var(--border)] h-40 flex items-center justify-center text-xs text-[var(--muted-foreground)]">
+    <div
+      class="border border-dashed border-[var(--border)] h-40 flex items-center justify-center text-xs text-[var(--muted-foreground)]"
+    >
       screenshot: tool call editor
     </div>
   </section>
 
   <!-- Resources -->
   <section id="resources" class="mb-12">
-    <h2 class="text-sm font-semibold text-[var(--foreground)] mb-1">Resources</h2>
-    <p class="text-xs text-[var(--muted-foreground)] leading-relaxed mb-4 max-w-lg">
-      [How to pick a resource, enter a URI, and read its contents. Mention the result pane.]
+    <h2 class="text-sm font-semibold text-[var(--foreground)] mb-1">
+      Resources
+    </h2>
+    <p
+      class="text-xs text-[var(--muted-foreground)] leading-relaxed mb-4 max-w-lg"
+    >
+      [How to pick a resource, enter a URI, and read its contents. Mention the
+      result pane.]
     </p>
-    <div class="border border-dashed border-[var(--border)] h-40 flex items-center justify-center text-xs text-[var(--muted-foreground)]">
+    <div
+      class="border border-dashed border-[var(--border)] h-40 flex items-center justify-center text-xs text-[var(--muted-foreground)]"
+    >
       screenshot: resource reader
     </div>
   </section>
 
   <!-- Widget resource -->
   <section id="widget" class="mb-12">
-    <h2 class="text-sm font-semibold text-[var(--foreground)] mb-1">Widget resource</h2>
-    <p class="text-xs text-[var(--muted-foreground)] leading-relaxed mb-4 max-w-lg">
-      [Explain widget resources: inject mock tool data, pick platform (Claude/OpenAI), theme, viewport, and interact live in the preview pane.]
+    <h2 class="text-sm font-semibold text-[var(--foreground)] mb-1">
+      Widget resource
+    </h2>
+    <p
+      class="text-xs text-[var(--muted-foreground)] leading-relaxed mb-4 max-w-lg"
+    >
+      [Explain widget resources: inject mock tool data, pick platform
+      (Claude/OpenAI), theme, viewport, and interact live in the preview pane.]
     </p>
 
     <div class="border border-[var(--border)] bg-[var(--card)] p-4 mb-4">
-      <p class="text-[10px] uppercase tracking-widest text-[var(--muted-foreground)] mb-3">Test data tab</p>
-      <p class="text-xs text-[var(--muted-foreground)] leading-relaxed max-w-md">
-        [Describe the Test Data editor: inject <code class="text-[var(--foreground)] bg-[var(--secondary)] px-1">toolInput</code>, <code class="text-[var(--foreground)] bg-[var(--secondary)] px-1">toolOutput</code>, and <code class="text-[var(--foreground)] bg-[var(--secondary)] px-1">widgetState</code> as JSON to simulate different AI responses without calling a real model.]
+      <p
+        class="text-[10px] uppercase tracking-widest text-[var(--muted-foreground)] mb-3"
+      >
+        Test data tab
+      </p>
+      <p
+        class="text-xs text-[var(--muted-foreground)] leading-relaxed max-w-md"
+      >
+        [Describe the Test Data editor: inject <code
+          class="text-[var(--foreground)] bg-[var(--secondary)] px-1"
+          >toolInput</code
+        >, <code class="text-[var(--foreground)] bg-[var(--secondary)] px-1"
+          >toolOutput</code
+        >, and <code class="text-[var(--foreground)] bg-[var(--secondary)] px-1"
+          >widgetState</code
+        > as JSON to simulate different AI responses without calling a real model.]
       </p>
     </div>
 
     <div class="border border-[var(--border)] bg-[var(--card)] p-4 mb-4">
-      <p class="text-[10px] uppercase tracking-widest text-[var(--muted-foreground)] mb-3">Platform and viewport</p>
-      <p class="text-xs text-[var(--muted-foreground)] leading-relaxed max-w-md">
-        [Describe platform selector (Claude / OpenAI) and viewport presets (Mobile / Tablet / Desktop / Custom). Mention compatibility badges.]
+      <p
+        class="text-[10px] uppercase tracking-widest text-[var(--muted-foreground)] mb-3"
+      >
+        Platform and viewport
+      </p>
+      <p
+        class="text-xs text-[var(--muted-foreground)] leading-relaxed max-w-md"
+      >
+        [Describe platform selector (Claude / OpenAI) and viewport presets
+        (Mobile / Tablet / Desktop / Custom). Mention compatibility badges.]
       </p>
     </div>
 
-    <div class="border border-dashed border-[var(--border)] h-40 flex items-center justify-center text-xs text-[var(--muted-foreground)]">
+    <div
+      class="border border-dashed border-[var(--border)] h-40 flex items-center justify-center text-xs text-[var(--muted-foreground)]"
+    >
       screenshot: widget preview pane
     </div>
   </section>
-
 </DocsLayout>

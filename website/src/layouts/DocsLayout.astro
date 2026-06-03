@@ -15,6 +15,7 @@ const nav = [
     group: "Getting started",
     items: [
       { label: "Overview", href: "/docs" },
+      { label: "Your first test", href: "/docs/first-test" },
     ],
   },
   {
@@ -34,9 +35,7 @@ const nav = [
   },
   {
     group: "Testing with real AI",
-    items: [
-      { label: "ChatGPT, Claude, Copilot", href: "/docs/publishing" },
-    ],
+    items: [{ label: "ChatGPT, Claude, Copilot", href: "/docs/publishing" }],
   },
 ];
 
@@ -50,32 +49,34 @@ const pathname = Astro.url.pathname;
     <!-- Sidebar -->
     <aside class="hidden md:block w-44 shrink-0 pt-12">
       <nav class="sticky top-20 flex flex-col gap-6">
-        {nav.map((section) => (
-          <div>
-            <p class="text-[10px] uppercase tracking-widest text-[var(--muted-foreground)] mb-2">
-              {section.group}
-            </p>
-            <ul class="flex flex-col gap-0.5">
-              {section.items.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(item.href.split("#")[0] + "/") && item.href.includes("#");
-                return (
-                  <li>
-                    <a
-                      href={item.href}
-                      class={`block text-xs py-0.5 transition-colors ${
-                        active
-                          ? "text-[var(--foreground)]"
-                          : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                      }`}
-                    >
-                      {item.label}
-                    </a>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
+        {
+          nav.map((section) => {
+            const sectionActive = section.items.some(
+              (item) => pathname === item.href.split("#")[0],
+            );
+            return (
+              <div>
+                <p
+                  class={`text-[10px] uppercase tracking-widest mb-2 transition-colors ${sectionActive ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]"}`}
+                >
+                  {section.group}
+                </p>
+                <ul class="flex flex-col gap-0.5">
+                  {section.items.map((item) => (
+                    <li>
+                      <a
+                        href={item.href}
+                        class="block text-xs py-0.5 text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+                      >
+                        {item.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })
+        }
       </nav>
     </aside>
 

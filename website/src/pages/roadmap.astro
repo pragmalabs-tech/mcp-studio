@@ -8,64 +8,152 @@ import Footer from "../components/Footer.astro";
   <Nav />
 
   <main class="max-w-5xl mx-auto px-4 pt-16 pb-24">
-
-    <p class="text-[10px] font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-4">
+    <p
+      class="text-[10px] font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-4"
+    >
       [ Roadmap ]
     </p>
     <h1 class="text-2xl font-bold text-[var(--foreground)] mb-4">Roadmap</h1>
-    <p class="text-sm text-[var(--muted-foreground)] max-w-lg leading-relaxed mb-12">
-      [One line: what's shipping now, what's next.]
+    <p
+      class="text-sm text-[var(--muted-foreground)] max-w-lg leading-relaxed mb-12"
+    >
+      Right now, you can test your MCP server manually, record sessions, and
+      automate them in 5 minutes.
     </p>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-12">
-
       <!-- Shipped -->
       <div>
-        <p class="text-[10px] uppercase tracking-widest text-[var(--muted-foreground)] mb-4">Shipped</p>
+        <p
+          class="text-[10px] uppercase tracking-widest text-[var(--muted-foreground)] mb-4"
+        >
+          Shipped
+        </p>
         <ul class="flex flex-col gap-3">
-          {[
-            { label: "Manual test: tool calls", desc: "Call any MCP tool with custom arguments and inspect the result." },
-            { label: "Manual test: resources", desc: "Read any resource URI and inspect the response." },
-            { label: "Widget resource", desc: "Preview and interact with widget resources. Inject mock data, switch platform and viewport." },
-            { label: "Automation E2E Testing", desc: "Record a session and replay it as a repeatable test." },
-            { label: "Assertions", desc: "Per-point assertion modes: exact, shape, flaky, ignore." },
-            { label: "Testing with ChatGPT, Claude, Copilot", desc: "Expose your local server on a public tunnel URL and connect it to any AI that supports MCP." },
-            { label: "Tags and run all", desc: "Organize tests with tags. Run all or filter by tag." },
-          ].map((item) => (
-            <li class="flex gap-3">
-              <span class="mt-1 shrink-0 w-3 h-3 border border-emerald-400 bg-emerald-400 opacity-60"></span>
-              <div>
-                <p class="text-xs font-semibold text-[var(--foreground)]">{item.label}</p>
-                <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">{item.desc}</p>
-              </div>
-            </li>
-          ))}
+          {
+            [
+              {
+                label: "Manual test: tool calls",
+                desc: "Call any MCP tool with custom arguments and inspect the result.",
+              },
+              {
+                label: "Manual test: resources",
+                desc: "Read any resource URI and inspect the response.",
+              },
+              {
+                label: "Widget resource",
+                desc: "Preview and interact with widget resources. Inject mock data, switch platform and viewport.",
+              },
+              {
+                label: "Automation E2E Testing",
+                desc: "Record a session and replay it as a repeatable test.",
+              },
+              {
+                label: "Assertions",
+                desc: "Per-point assertion modes: exact, shape, flaky, ignore.",
+              },
+              {
+                label: "Testing with ChatGPT, Claude, Copilot",
+                desc: "Expose your local server on a public tunnel URL and connect it to any AI that supports MCP.",
+              },
+              {
+                label: "Tags and run all",
+                desc: "Organize tests with tags. Run all or filter by tag.",
+              },
+            ].map((item) => (
+              <li class="flex gap-3">
+                <span class="mt-1 shrink-0 w-3 h-3 border border-emerald-400 bg-emerald-400 opacity-60" />
+                <div>
+                  <p class="text-xs font-semibold text-[var(--foreground)]">
+                    {item.label}
+                  </p>
+                  <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">
+                    {item.desc}
+                  </p>
+                </div>
+              </li>
+            ))
+          }
         </ul>
       </div>
 
       <!-- Incoming -->
       <div>
-        <p class="text-[10px] uppercase tracking-widest text-[var(--muted-foreground)] mb-4">Incoming</p>
+        <p
+          class="text-[10px] uppercase tracking-widest text-[var(--muted-foreground)] mb-4"
+        >
+          Incoming
+        </p>
         <ul class="flex flex-col gap-3">
-          {[
-            { label: "Better assertions", desc: "[Description of planned assertion improvements.]" },
-            { label: "AI-native use", desc: "Let Claude or another AI call your MCP server directly through the studio." },
-            { label: "Programmable logic", desc: "Write custom code to handle special cases in your tests." },
-            { label: "CI/CD integration", desc: "Run your test suite in a pipeline with a single command." },
-          ].map((item) => (
-            <li class="flex gap-3">
-              <span class="mt-1 shrink-0 w-3 h-3 border border-[var(--border)]"></span>
-              <div>
-                <p class="text-xs font-semibold text-[var(--foreground)]">{item.label}</p>
-                <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">{item.desc}</p>
-              </div>
-            </li>
-          ))}
+          {
+            [
+              {
+                label: "Better assertions",
+                desc: "[Description of planned assertion improvements.]",
+              },
+              {
+                label: "AI-native use",
+                desc: "Let Claude or another AI call your MCP server directly through the studio.",
+              },
+              {
+                label: "Programmable logic",
+                desc: "Write custom code to handle special cases in your tests.",
+              },
+              {
+                label: "CI/CD integration",
+                desc: "Run your test suite in a pipeline with a single command.",
+              },
+            ].map((item) => (
+              <li class="flex gap-3">
+                <span class="mt-1 shrink-0 w-3 h-3 border border-[var(--border)]" />
+                <div>
+                  <p class="text-xs font-semibold text-[var(--foreground)]">
+                    {item.label}
+                  </p>
+                  <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">
+                    {item.desc}
+                  </p>
+                </div>
+              </li>
+            ))
+          }
         </ul>
       </div>
-
     </div>
 
+    <!-- Request a feature -->
+    <div class="mt-16 border border-[var(--border)] p-6 max-w-md">
+      <p
+        class="text-[10px] uppercase tracking-widest text-[var(--muted-foreground)] mb-3"
+      >
+        Request a feature
+      </p>
+      <p class="text-xs text-[var(--muted-foreground)] leading-relaxed mb-4">
+        Have something in mind? Reach out and tell us what you want to do and
+        why it matters.
+      </p>
+      <div class="flex flex-col gap-2">
+        <div
+          class="flex items-center gap-2 text-xs text-[var(--muted-foreground)]"
+        >
+          <span class="text-[var(--foreground)]">Email</span>
+          <span>team@pragmalabs.tech</span>
+        </div>
+        <div
+          class="flex items-center gap-2 text-xs text-[var(--muted-foreground)]"
+        >
+          <span class="text-[var(--foreground)]">LinkedIn</span>
+          <a
+            href="https://linkedin.com/in/cptrodgers"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="hover:text-[var(--foreground)] transition-colors"
+          >
+            linkedin.com/in/cptrodgers
+          </a>
+        </div>
+      </div>
+    </div>
   </main>
 
   <Footer />
