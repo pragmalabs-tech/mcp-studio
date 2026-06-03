@@ -27,7 +27,15 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
         style={{ maxWidth: viewportSize.width }}
       >
         <ChatShell {...shellProps}>
-          <WidgetRenderer widgetId={widgetId} fullscreen={isFullscreen} />
+          <WidgetRenderer
+            widgetId={widgetId}
+            fullscreen={isFullscreen}
+            onExitFullscreen={
+              isFullscreen
+                ? () => useWidgetStore.getState().setDisplayMode("inline")
+                : undefined
+            }
+          />
         </ChatShell>
       </div>
     </div>

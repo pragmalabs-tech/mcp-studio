@@ -56,7 +56,12 @@ function isTextLikeInput(el: Element): boolean {
 export function WidgetRenderer({
   widgetId,
   fullscreen,
-}: { widgetId?: string; fullscreen?: boolean } = {}) {
+  onExitFullscreen,
+}: {
+  widgetId?: string;
+  fullscreen?: boolean;
+  onExitFullscreen?: () => void;
+} = {}) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const lastRenderedRef = useRef<{ targetId: string; html: string } | null>(
     null,
@@ -403,11 +408,21 @@ export function WidgetRenderer({
           {avatarLetter}
         </div>
         <span
-          className="text-xs font-medium truncate"
+          className="text-xs font-medium truncate flex-1"
           style={{ color: headerText }}
         >
           {profileName ?? "App"}
         </span>
+        {fullscreen && onExitFullscreen && (
+          <button
+            onClick={onExitFullscreen}
+            className="flex items-center justify-center w-5 h-5 rounded hover:opacity-60 transition-opacity shrink-0"
+            style={{ color: headerText }}
+            title="Exit fullscreen"
+          >
+            ✕
+          </button>
+        )}
       </div>
       <iframe
         ref={setIframe}
