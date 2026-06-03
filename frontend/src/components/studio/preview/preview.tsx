@@ -5,7 +5,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { WidgetPreview } from "./widget-preview";
-import { selectedIsWidgetTool } from "./utils";
+import { selectedIsWidgetTool, extractResourceResult } from "./utils";
 
 type ViewTab = "preview" | "mock" | "html";
 
@@ -20,10 +20,12 @@ export function Preview({ widgetId }: { widgetId?: string } = {}) {
 
   const selected = useWidgetStore((s) => s.selected);
   const isWidgetTool = selectedIsWidgetTool(selected);
+  const isResource = selected?.type === "resource";
 
   const hasWidget = entry !== null;
 
   const lastToolResult = (() => {
+    if (isResource) return null;
     const toolCalls = actions.filter((a) => a.method === "tools/call");
     if (toolCalls.length === 0) return null;
     const last = toolCalls[toolCalls.length - 1];
@@ -49,6 +51,11 @@ export function Preview({ widgetId }: { widgetId?: string } = {}) {
     }
   })();
 
+  const resourceResult = isResource ? extractResourceResult(actions) : null;
+  const hasResourceHtml =
+    resourceResult?.htmlContent !== null &&
+    resourceResult?.htmlContent !== undefined;
+
   const mockJson = entry
     ? JSON.stringify(
         {
@@ -67,8 +74,28 @@ export function Preview({ widgetId }: { widgetId?: string } = {}) {
 
   const htmlSource = entry ? stripTunnelUrls(entry.html) : "";
 
+  const showPreviewTab = isWidgetTool || hasResourceHtml;
+  const showHtmlTab = isWidgetTool || hasResourceHtml;
+
   const effectiveTab =
-    !isWidgetTool && (tab === "preview" || tab === "html") ? "mock" : tab;
+    !showPreviewTab && tab === "preview"
+      ? "mock"
+      : !showHtmlTab && tab === "html"
+        ? "mock"
+        : tab;
+
+  const copyValue = (() => {
+    if (effectiveTab === "mock") {
+      if (hasWidget) return mockJson;
+      if (resourceResult) return resourceResult.dataJson;
+      return lastToolResult;
+    }
+    if (effectiveTab === "html") {
+      if (hasWidget) return htmlSource;
+      if (hasResourceHtml) return resourceResult!.htmlContent!;
+    }
+    return null;
+  })();
 
   return (
     <Tabs
@@ -79,7 +106,7 @@ export function Preview({ widgetId }: { widgetId?: string } = {}) {
       {/* Tab bar */}
       <div className="flex items-center justify-between px-3 py-1 border-b shrink-0">
         <TabsList variant="line" className="h-auto gap-3 p-0">
-          {isWidgetTool && (
+          {showPreviewTab && (
             <TabsTrigger
               value="preview"
               className="text-[10px] font-semibold uppercase tracking-wider px-0 py-1 h-auto rounded-none"
@@ -93,7 +120,7 @@ export function Preview({ widgetId }: { widgetId?: string } = {}) {
           >
             Data
           </TabsTrigger>
-          {isWidgetTool && (
+          {showHtmlTab && (
             <TabsTrigger
               value="html"
               className="text-[10px] font-semibold uppercase tracking-wider px-0 py-1 h-auto rounded-none"
@@ -102,34 +129,22 @@ export function Preview({ widgetId }: { widgetId?: string } = {}) {
             </TabsTrigger>
           )}
         </TabsList>
-        {effectiveTab === "mock" &&
-          (hasWidget ? (
-            <CopyButton value={mockJson} />
-          ) : lastToolResult ? (
-            <CopyButton value={lastToolResult} />
-          ) : null)}
-        {effectiveTab === "html" && isWidgetTool && hasWidget && (
-          <CopyButton value={htmlSource} />
-        )}
+        {copyValue && <CopyButton value={copyValue} />}
       </div>
 
       <TabsContent value="preview" className="flex-1 min-h-0 flex flex-col">
         {hasWidget ? (
           <WidgetPreview widgetId={widgetId} />
-        ) : lastToolResult ? (
-          <ScrollArea className="flex-1 min-h-0">
-            <div className="p-3">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                Tool Result
-              </div>
-              <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-background text-foreground select-text border border-border/40 rounded p-3">
-                {lastToolResult}
-              </pre>
-            </div>
-          </ScrollArea>
+        ) : hasResourceHtml ? (
+          <iframe
+            srcDoc={resourceResult!.htmlContent!}
+            sandbox="allow-scripts"
+            className="flex-1 w-full border-0"
+            title="Resource Preview"
+          />
         ) : (
           <div className="flex-1 flex items-center justify-center bg-muted/30 text-muted-foreground text-sm">
-            No data to display
+            No preview available
           </div>
         )}
       </TabsContent>
@@ -140,6 +155,17 @@ export function Preview({ widgetId }: { widgetId?: string } = {}) {
             <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-background text-foreground select-text p-3">
               {mockJson || "{}"}
             </pre>
+          </ScrollArea>
+        ) : resourceResult ? (
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="p-3">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                Resource Result
+              </div>
+              <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-background text-foreground select-text border border-border/40 rounded p-3">
+                {resourceResult.dataJson}
+              </pre>
+            </div>
           </ScrollArea>
         ) : lastToolResult ? (
           <ScrollArea className="flex-1 min-h-0">
@@ -166,9 +192,15 @@ export function Preview({ widgetId }: { widgetId?: string } = {}) {
               {htmlSource}
             </pre>
           </ScrollArea>
+        ) : hasResourceHtml ? (
+          <ScrollArea className="flex-1 min-h-0">
+            <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-background text-foreground select-text p-3">
+              {resourceResult!.htmlContent}
+            </pre>
+          </ScrollArea>
         ) : (
           <div className="flex-1 flex items-center justify-center bg-muted/30 text-muted-foreground text-sm">
-            No HTML source (not a widget)
+            No HTML source
           </div>
         )}
       </TabsContent>

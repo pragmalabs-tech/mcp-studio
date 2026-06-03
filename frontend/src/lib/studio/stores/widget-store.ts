@@ -254,6 +254,7 @@ interface WidgetState {
   setSnapshot: (id: string, snapshot: string) => void;
   loadWidget: () => Promise<void>;
   applyMock: () => void;
+  injectMockData: (mockJson: string) => void;
   execute: () => Promise<void>;
 }
 
@@ -718,6 +719,34 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
         },
       }));
       logAction("system", "Mock data applied (reload)");
+    } catch (e) {
+      logAction("error", `Invalid JSON: ${(e as Error).message}`);
+    }
+  },
+
+  injectMockData: (mockJson) => {
+    const { theme, locale, displayMode, activeWidgetId, widgets, logAction } =
+      get();
+    if (!activeWidgetId || !widgets[activeWidgetId]) return;
+    try {
+      const parsed = JSON.parse(mockJson);
+      const mock: import("../mock-openai").MockData = {
+        toolInput: parsed.toolInput ?? {},
+        toolOutput: parsed.toolOutput ?? {},
+        _meta: parsed._meta ?? {},
+        widgetState: parsed.widgetState ?? null,
+        theme,
+        locale,
+        displayMode,
+      };
+      set((s) => ({
+        widgets: {
+          ...s.widgets,
+          [activeWidgetId]: { ...s.widgets[activeWidgetId], mock },
+        },
+      }));
+      get()._extAppsMock?.update(mock);
+      logAction("system", "Mock data injected");
     } catch (e) {
       logAction("error", `Invalid JSON: ${(e as Error).message}`);
     }

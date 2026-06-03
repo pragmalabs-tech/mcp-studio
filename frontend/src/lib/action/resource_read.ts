@@ -56,6 +56,29 @@ export class ResourceReadAction extends Action<{ uri: string }> {
         lastResult: result,
         jsonOutput: JSON.stringify(result, null, 2),
       });
+
+      // If the resource returned HTML content, load it into the widget iframe
+      // so the existing MCP Apps mock protocol (postMessage) can be used.
+      const res = result as {
+        contents?: { mimeType?: string; text?: string }[];
+      };
+      const first = res?.contents?.[0];
+      if (first?.mimeType?.includes("text/html") && first.text) {
+        const { theme, locale, displayMode } = useWidgetStore.getState();
+        store.insertWidget(this.data.uri, {
+          html: first.text,
+          mock: {
+            toolInput: {},
+            toolOutput: {},
+            _meta: {},
+            widgetState: null,
+            theme,
+            locale,
+            displayMode,
+          },
+          waitMs: 0,
+        });
+      }
     } catch (err) {
       const message = errorMessage(err);
       store.logAction("error", message);

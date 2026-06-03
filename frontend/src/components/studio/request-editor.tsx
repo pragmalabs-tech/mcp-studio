@@ -16,7 +16,13 @@ import type {
   McpToolAnnotations,
 } from "@/lib/studio/api";
 
-type Tab = "args" | "definition";
+type Tab = "args" | "definition" | "testdata";
+
+const DEFAULT_INJECT_JSON = JSON.stringify(
+  { toolInput: {}, toolOutput: {} },
+  null,
+  2,
+);
 
 export function RequestEditor() {
   const {
@@ -25,10 +31,17 @@ export function RequestEditor() {
     toolExecuting,
     setEditorValue,
     applyMock,
+    injectMockData,
     execute,
   } = useWidgetStore();
 
+  const activeWidgetId = useWidgetStore((s) => s.activeWidgetId);
+  const hasWidget = useWidgetStore((s) =>
+    activeWidgetId ? !!s.widgets[activeWidgetId] : false,
+  );
+
   const isWidget = selected?.type === "widget";
+  const isResourceWithWidget = selected?.type === "resource" && hasWidget;
   const showExecute =
     selected?.type === "tool" || selected?.type === "resource";
   // Definition is only meaningful when the selection is an MCP tool or
@@ -38,6 +51,7 @@ export function RequestEditor() {
     selected?.type === "tool" || selected?.type === "resource";
 
   const [tab, setTab] = useState<Tab>("args");
+  const [injectJson, setInjectJson] = useState(DEFAULT_INJECT_JSON);
 
   // Reset to the args tab when the selection changes so users don't land
   // on a stale Definition view after switching tools.
@@ -67,6 +81,14 @@ export function RequestEditor() {
               >
                 Definition
               </TabButton>
+              {isResourceWithWidget && (
+                <TabButton
+                  active={tab === "testdata"}
+                  onClick={() => setTab("testdata")}
+                >
+                  Test Data
+                </TabButton>
+              )}
             </>
           ) : (
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -75,7 +97,7 @@ export function RequestEditor() {
           )}
         </div>
         <div className="flex gap-1.5">
-          {tab === "args" ? (
+          {tab === "args" && (
             <>
               {isWidget && (
                 <Button
@@ -98,7 +120,16 @@ export function RequestEditor() {
                 </Button>
               )}
             </>
-          ) : null}
+          )}
+          {tab === "testdata" && (
+            <Button
+              size="sm"
+              className="h-6 text-xs px-2"
+              onClick={() => injectMockData(injectJson)}
+            >
+              ▶ Inject
+            </Button>
+          )}
         </div>
       </div>
 
@@ -106,6 +137,15 @@ export function RequestEditor() {
         <CodeMirror
           value={editorValue}
           onChange={setEditorValue}
+          extensions={[json(), EditorView.lineWrapping]}
+          theme="dark"
+          basicSetup={{ lineNumbers: false, foldGutter: false }}
+          className="flex-1 min-h-0 overflow-auto text-xs [&_.cm-editor]:h-full [&_.cm-scroller]:h-full [&_.cm-editor.cm-focused]:outline-none"
+        />
+      ) : tab === "testdata" ? (
+        <CodeMirror
+          value={injectJson}
+          onChange={setInjectJson}
           extensions={[json(), EditorView.lineWrapping]}
           theme="dark"
           basicSetup={{ lineNumbers: false, foldGutter: false }}
