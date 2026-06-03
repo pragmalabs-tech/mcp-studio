@@ -4,18 +4,22 @@ import { WidgetRenderer } from "./widget-renderer";
 
 export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
   const platform = useWidgetStore((s) => s.platform);
+  const theme = useWidgetStore((s) => s.theme);
   const viewportPreset = useWidgetStore((s) => s.viewportPreset);
   const getViewportSize = useWidgetStore((s) => s.getViewportSize);
   const viewportSize = getViewportSize();
 
   return (
-    <ChatShell
-      platform={platform}
-      viewportPreset={viewportPreset}
-      viewportWidth={viewportSize.width}
-      viewportHeight={viewportSize.height}
-    >
-      <WidgetRenderer widgetId={widgetId} />
-    </ChatShell>
+    <div className="flex-1 flex flex-col min-h-0 p-3 bg-muted/20">
+      <ChatShell
+        platform={platform}
+        theme={theme}
+        viewportPreset={viewportPreset}
+        viewportWidth={viewportSize.width}
+        viewportHeight={viewportSize.height}
+      >
+        <WidgetRenderer widgetId={widgetId} />
+      </ChatShell>
+    </div>
   );
 }

@@ -69,10 +69,11 @@ export function WidgetRenderer({ widgetId }: { widgetId?: string } = {}) {
   const addPendingMessage = useWidgetStore((s) => s.addPendingMessage);
   const getViewportSize = useWidgetStore((s) => s.getViewportSize);
   const addCspViolation = useWidgetStore((s) => s.addCspViolation);
-  useProfileStore((s) => {
+  const profileName = useProfileStore((s) => {
     const profile = s.profiles.find((p) => p.id === s.activeProfileId);
     return profile?.name ?? null;
   });
+  const theme = useWidgetStore((s) => s.theme);
 
   useEffect(() => {
     setAutoHeight(null);
@@ -327,6 +328,16 @@ export function WidgetRenderer({ widgetId }: { widgetId?: string } = {}) {
     ? Math.min(autoHeight, viewportSize.height)
     : viewportSize.height;
 
+  const isDark = theme === "dark";
+  const headerBg = isDark ? "#1a1a1a" : "#f5f5f5";
+  const headerBorder = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
+  const headerText = isDark ? "#e5e5e5" : "#111111";
+  const avatarLetter = profileName ? profileName[0].toUpperCase() : "A";
+
+  const meta = (entry?.mock?._meta ?? {}) as Record<string, unknown>;
+  const ui = meta.ui as Record<string, unknown> | undefined;
+  const showBorder = ui?.prefersBorder === true;
+
   return (
     <div
       style={{
@@ -334,9 +345,36 @@ export function WidgetRenderer({ widgetId }: { widgetId?: string } = {}) {
         height: displayHeight,
         maxWidth: "100%",
         backgroundColor: widgetColors.background,
+        border: showBorder ? `1px solid ${headerBorder}` : undefined,
+        borderRadius: "0.5rem",
+        overflow: "hidden",
       }}
-      className="rounded-2xl overflow-hidden border shrink-0"
+      className="shrink-0"
     >
+      {/* App header */}
+      <div
+        className="flex items-center gap-2 px-3 py-2 shrink-0"
+        style={{
+          backgroundColor: headerBg,
+          borderBottom: `1px solid ${headerBorder}`,
+        }}
+      >
+        <div
+          className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-semibold shrink-0"
+          style={{
+            backgroundColor: isDark ? "#333333" : "#d4d4d4",
+            color: headerText,
+          }}
+        >
+          {avatarLetter}
+        </div>
+        <span
+          className="text-xs font-medium truncate"
+          style={{ color: headerText }}
+        >
+          {profileName ?? "App"}
+        </span>
+      </div>
       <iframe
         ref={setIframe}
         style={{ height: viewportSize.height }}
