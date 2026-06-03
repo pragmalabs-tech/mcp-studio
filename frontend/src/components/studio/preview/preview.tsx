@@ -7,6 +7,30 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { WidgetPreview } from "./widget-preview";
 import { selectedIsWidgetTool, extractResourceResult } from "./utils";
 
+function ReloadButton() {
+  const reloadWidget = useWidgetStore((s) => s.reloadWidget);
+  const [loading, setLoading] = useState(false);
+  return (
+    <button
+      type="button"
+      title="Reload widget (picks up latest HTML)"
+      disabled={loading}
+      onClick={async () => {
+        setLoading(true);
+        try {
+          await reloadWidget();
+        } finally {
+          setLoading(false);
+        }
+      }}
+      className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+    >
+      <span className={loading ? "animate-spin" : ""}>↻</span>
+      <span>Reload Widget</span>
+    </button>
+  );
+}
+
 type ViewTab = "preview" | "mock" | "html";
 
 export function Preview({ widgetId }: { widgetId?: string } = {}) {
@@ -129,7 +153,10 @@ export function Preview({ widgetId }: { widgetId?: string } = {}) {
             </TabsTrigger>
           )}
         </TabsList>
-        {copyValue && <CopyButton value={copyValue} />}
+        <div className="flex items-center gap-2">
+          {hasWidget && <ReloadButton />}
+          {copyValue && <CopyButton value={copyValue} />}
+        </div>
       </div>
 
       <TabsContent value="preview" className="flex-1 min-h-0 flex flex-col">

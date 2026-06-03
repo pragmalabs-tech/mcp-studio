@@ -255,6 +255,7 @@ interface WidgetState {
   loadWidget: () => Promise<void>;
   applyMock: () => void;
   injectMockData: (mockJson: string) => void;
+  reloadWidget: () => Promise<void>;
   execute: () => Promise<void>;
 }
 
@@ -749,6 +750,50 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
       logAction("system", "Mock data injected");
     } catch (e) {
       logAction("error", `Invalid JSON: ${(e as Error).message}`);
+    }
+  },
+
+  reloadWidget: async () => {
+    const { activeWidgetId, widgets, theme, locale, displayMode, logAction } =
+      get();
+    if (!activeWidgetId) return;
+
+    // Clear cached HTML so the next fetch is fresh
+    set((s) => ({
+      widgetCache: { ...s.widgetCache, [activeWidgetId]: "" },
+    }));
+
+    logAction("system", `Reloading widget ${activeWidgetId}…`);
+    try {
+      const res = (await readResource(activeWidgetId)) as {
+        contents?: { text?: string }[];
+      };
+      const html = res?.contents?.[0]?.text ?? "";
+      if (!html.trim()) {
+        logAction("error", "Reload failed: empty HTML response");
+        return;
+      }
+      set((s) => ({
+        widgetCache: { ...s.widgetCache, [activeWidgetId]: html },
+      }));
+      // Preserve the current mock data so injected test data survives the reload
+      const currentMock = widgets[activeWidgetId]?.mock ?? {
+        toolInput: {},
+        toolOutput: {},
+        _meta: {},
+        widgetState: null,
+        theme,
+        locale,
+        displayMode,
+      };
+      get().insertWidget(activeWidgetId, {
+        html,
+        mock: currentMock,
+        waitMs: 0,
+      });
+      logAction("system", "Widget reloaded");
+    } catch (e) {
+      logAction("error", `Reload failed: ${(e as Error).message}`);
     }
   },
 
