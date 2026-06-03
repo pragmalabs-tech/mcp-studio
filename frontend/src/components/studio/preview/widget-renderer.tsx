@@ -153,9 +153,31 @@ export function WidgetRenderer({
   // Mount + snapshot effect — fires when the target entry changes.
   useEffect(() => {
     if (!targetId || !entry) return;
-    if (entry.snapshot !== null) return;
     const iframe = iframeRef.current;
     if (!iframe?.contentDocument) return;
+
+    // Always (re)create the mock so it survives the snapshot update cycle.
+    const prev = useWidgetStore.getState()._extAppsMock;
+    if (prev) {
+      prev.destroy();
+      useWidgetStore.setState({ _extAppsMock: null });
+    }
+    const extAppsMock = createClaudeMock(
+      iframe,
+      entry.mock,
+      (method, args) => logAction(method, args),
+      (name, args) => callTool(name, args),
+      platform === "claude"
+        ? (content) => addPendingMessage("claude", content)
+        : undefined,
+      (mode) => useWidgetStore.getState().setDisplayMode(mode),
+    );
+    useWidgetStore.setState({ _extAppsMock: extAppsMock });
+
+    // HTML already written — no need to re-render.
+    if (entry.snapshot !== null) {
+      return () => extAppsMock?.destroy();
+    }
 
     const { html: finalHtml } = renderHtml({
       html: entry.html,
@@ -176,23 +198,6 @@ export function WidgetRenderer({
     for (const finding of findings) {
       addCspViolation(findingToViolation(finding, targetId));
     }
-
-    const prev = useWidgetStore.getState()._extAppsMock;
-    if (prev) {
-      prev.destroy();
-      useWidgetStore.setState({ _extAppsMock: null });
-    }
-    const extAppsMock = createClaudeMock(
-      iframe,
-      entry.mock,
-      (method, args) => logAction(method, args),
-      (name, args) => callTool(name, args),
-      platform === "claude"
-        ? (content) => addPendingMessage("claude", content)
-        : undefined,
-      (mode) => useWidgetStore.getState().setDisplayMode(mode),
-    );
-    useWidgetStore.setState({ _extAppsMock: extAppsMock });
 
     const timer = setTimeout(() => {
       const snap = doc.documentElement.outerHTML;

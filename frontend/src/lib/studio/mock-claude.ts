@@ -35,10 +35,11 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
   let currentMock = { ...mock };
   let widgetAvailableModes: string[] = ["inline", "fullscreen"];
 
-  // Claude only accepts "inline" | "fullscreen" | "pip" as displayMode
+  // Canonical display modes per MCP Apps spec: "inline" | "fullscreen" | "pip"
+  // "compact" is the legacy OpenAI alias for "inline"
   function toClaudeDisplayMode(mode: string): string {
     if (mode === "fullscreen" || mode === "pip") return mode;
-    return "inline"; // "compact" and others map to "inline"
+    return "inline";
   }
 
   function sendResponse(id: string | number, result: unknown) {
@@ -190,8 +191,11 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
 
         case "ui/request-display-mode":
         case "ui/requestDisplayMode": {
-          const requested = (params as { mode?: string }).mode || "inline";
-          const honored = widgetAvailableModes.includes(requested)
+          const raw = (params as { mode?: string }).mode || "inline";
+          const requested = toClaudeDisplayMode(raw); // normalize "compact" → "inline"
+          const honored = widgetAvailableModes
+            .map(toClaudeDisplayMode)
+            .includes(requested)
             ? requested
             : toClaudeDisplayMode(currentMock.displayMode);
           sendResponse(id, { mode: honored });

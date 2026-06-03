@@ -269,7 +269,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
   platform: "openai",
   theme: "dark",
   locale: "en-US",
-  displayMode: "compact",
+  displayMode: "inline",
   viewportPreset: "desktop" as ViewportPreset,
   viewportCustom: { width: 430, height: 932 },
 

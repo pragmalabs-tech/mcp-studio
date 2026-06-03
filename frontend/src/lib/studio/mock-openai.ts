@@ -132,5 +132,5 @@ export const DEFAULT_MOCK: MockData = {
   widgetState: null,
   theme: "dark",
   locale: "en-US",
-  displayMode: "compact",
+  displayMode: "inline",
 };
