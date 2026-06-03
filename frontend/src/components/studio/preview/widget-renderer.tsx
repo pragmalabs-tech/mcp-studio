@@ -53,7 +53,10 @@ function isTextLikeInput(el: Element): boolean {
   return false;
 }
 
-export function WidgetRenderer({ widgetId }: { widgetId?: string } = {}) {
+export function WidgetRenderer({
+  widgetId,
+  fullscreen,
+}: { widgetId?: string; fullscreen?: boolean } = {}) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [autoHeight, setAutoHeight] = useState<number | null>(null);
 
@@ -340,16 +343,27 @@ export function WidgetRenderer({ widgetId }: { widgetId?: string } = {}) {
 
   return (
     <div
-      style={{
-        width: viewportSize.width,
-        height: displayHeight,
-        maxWidth: "100%",
-        backgroundColor: widgetColors.background,
-        border: showBorder ? `1px solid ${headerBorder}` : undefined,
-        borderRadius: "0.5rem",
-        overflow: "hidden",
-      }}
-      className="shrink-0"
+      style={
+        fullscreen
+          ? {
+              width: "100%",
+              height: "100%",
+              backgroundColor: widgetColors.background,
+              border: showBorder ? `1px solid ${headerBorder}` : undefined,
+              borderRadius: "0.5rem",
+              overflow: "hidden",
+            }
+          : {
+              width: viewportSize.width,
+              height: displayHeight,
+              maxWidth: "100%",
+              backgroundColor: widgetColors.background,
+              border: showBorder ? `1px solid ${headerBorder}` : undefined,
+              borderRadius: "0.5rem",
+              overflow: "hidden",
+            }
+      }
+      className={fullscreen ? "" : "shrink-0"}
     >
       {/* App header */}
       <div
@@ -377,8 +391,8 @@ export function WidgetRenderer({ widgetId }: { widgetId?: string } = {}) {
       </div>
       <iframe
         ref={setIframe}
-        style={{ height: viewportSize.height }}
-        className="w-full block"
+        style={{ height: fullscreen ? "100%" : viewportSize.height }}
+        className={fullscreen ? "w-full h-full block" : "w-full block"}
         sandbox="allow-scripts allow-forms allow-modals allow-popups allow-same-origin"
         title="Widget Preview"
       />

@@ -1,7 +1,7 @@
 import type { Platform } from "@/lib/studio/stores/types";
-import { getThemeColors, FakeUserMessage, FakeChatInput } from "./shell-shared";
+import { getThemeColors, FakeChatInput } from "./shell-shared";
 
-interface ChatShellProps {
+interface FullscreenChatShellProps {
   platform: Platform;
   theme: string;
   viewportPreset: string;
@@ -10,20 +10,20 @@ interface ChatShellProps {
   children: React.ReactNode;
 }
 
-export function ChatShell({
+export function FullscreenChatShell({
   platform,
   theme,
   viewportPreset,
   viewportWidth,
   viewportHeight,
   children,
-}: ChatShellProps) {
+}: FullscreenChatShellProps) {
   const isDark = theme === "dark";
   const colors = getThemeColors(isDark);
 
   return (
     <div
-      className="flex-1 flex flex-col overflow-hidden rounded-lg"
+      className="flex-1 flex flex-col overflow-hidden rounded-lg relative"
       style={{
         backgroundColor: colors.bg,
         border: `1px solid ${colors.border}`,
@@ -47,18 +47,22 @@ export function ChatShell({
         </span>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-auto">
-        <div className="w-full px-16 py-6 flex flex-col gap-4">
-          <FakeUserMessage colors={colors} />
-          <div className="text-sm" style={{ color: colors.text }}>
-            Let me show this:
-          </div>
-          {children}
+      {/* Widget fills all remaining space with slight padding */}
+      <div className="flex-1 overflow-hidden relative p-3">
+        {children}
+
+        {/* Chat input overlaid at the bottom */}
+        <div
+          className="absolute bottom-0 left-0 right-0 z-10"
+          style={{
+            background: isDark
+              ? "linear-gradient(to top, rgba(17,17,17,0.95) 60%, transparent)"
+              : "linear-gradient(to top, rgba(255,255,255,0.95) 60%, transparent)",
+          }}
+        >
+          <FakeChatInput platform={platform} colors={colors} />
         </div>
       </div>
-
-      <FakeChatInput platform={platform} colors={colors} />
     </div>
   );
 }
