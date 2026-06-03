@@ -190,6 +190,7 @@ export function WidgetRenderer({
       platform === "claude"
         ? (content) => addPendingMessage("claude", content)
         : undefined,
+      (mode) => useWidgetStore.getState().setDisplayMode(mode),
     );
     useWidgetStore.setState({ _extAppsMock: extAppsMock });
 

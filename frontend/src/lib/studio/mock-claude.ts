@@ -13,6 +13,8 @@ export interface ExtAppsMockOptions {
   hostName?: string;
   /** Called when the widget sends ui/initialize — signals ext-apps protocol usage */
   onProtocolDetected?: () => void;
+  /** Called when the widget requests a display mode change and it is honored */
+  onDisplayModeChange?: (mode: string) => void;
 }
 
 /**
@@ -28,8 +30,10 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
     onMessage,
     hostName = "mcp-studio",
     onProtocolDetected,
+    onDisplayModeChange,
   } = opts;
   let currentMock = { ...mock };
+  let widgetAvailableModes: string[] = ["inline", "fullscreen"];
 
   // Claude only accepts "inline" | "fullscreen" | "pip" as displayMode
   function toClaudeDisplayMode(mode: string): string {
@@ -83,8 +87,14 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
 
       switch (method) {
         case "initialize":
-        case "ui/initialize":
+        case "ui/initialize": {
           onProtocolDetected?.();
+          const appCaps = (
+            params as { appCapabilities?: { availableDisplayModes?: string[] } }
+          ).appCapabilities;
+          if (appCaps?.availableDisplayModes?.length) {
+            widgetAvailableModes = appCaps.availableDisplayModes;
+          }
           sendResponse(id, {
             protocolVersion: "2026-01-26",
             hostInfo: { name: hostName, version: "1.0.0" },
@@ -106,6 +116,7 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
           onAction("ext-apps:init", "Handshake complete");
           setTimeout(() => sendToolData(), 50);
           break;
+        }
 
         case "ui/message":
           onAction("sendMessage", params);
@@ -178,12 +189,25 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
           break;
 
         case "ui/request-display-mode":
-        case "ui/requestDisplayMode":
-          onAction("requestDisplayMode", params);
-          sendResponse(id, {
-            mode: (params as { mode?: string }).mode || "inline",
-          });
+        case "ui/requestDisplayMode": {
+          const requested = (params as { mode?: string }).mode || "inline";
+          const honored = widgetAvailableModes.includes(requested)
+            ? requested
+            : toClaudeDisplayMode(currentMock.displayMode);
+          sendResponse(id, { mode: honored });
+          if (honored === requested) {
+            currentMock = { ...currentMock, displayMode: honored };
+            onDisplayModeChange?.(honored);
+            sendNotification("ui/notifications/host-context-changed", {
+              theme: currentMock.theme,
+              displayMode: honored,
+              locale: currentMock.locale,
+              availableDisplayModes: ["inline", "fullscreen"],
+            });
+          }
+          onAction("requestDisplayMode", { requested, honored });
           break;
+        }
 
         case "notifications/size-changed":
         case "ui/sendSizeChanged":
@@ -225,7 +249,6 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
   };
 }
 
-/** Backward-compatible wrapper — same signature as before. */
 export function createClaudeMock(
   iframe: HTMLIFrameElement,
   mock: MockData,
@@ -235,6 +258,7 @@ export function createClaudeMock(
     args: Record<string, unknown>,
   ) => Promise<unknown>,
   onMessage?: (content: unknown) => void,
+  onDisplayModeChange?: (mode: string) => void,
 ) {
   return createExtAppsMock({
     iframe,
@@ -242,6 +266,7 @@ export function createClaudeMock(
     onAction,
     onToolCall,
     onMessage,
+    onDisplayModeChange,
     hostName: "mcp-studio",
   });
 }

@@ -56,13 +56,11 @@ export function WidgetConfig() {
     platform,
     theme,
     locale,
-    displayMode,
     viewportPreset,
     viewportCustom,
     setPlatform,
     setTheme,
     setLocale,
-    setDisplayMode,
     setViewportPreset,
     setViewportCustom,
   } = useWidgetStore();
@@ -111,26 +109,6 @@ export function WidgetConfig() {
             onChange={(e) => setLocale(e.target.value)}
             className="h-7 text-xs w-20"
           />
-        </div>
-
-        <Separator orientation="vertical" className="h-4" />
-
-        <div className="flex items-center gap-1.5">
-          <Label className="text-muted-foreground text-xs whitespace-nowrap">
-            Display
-          </Label>
-          <Select
-            value={displayMode}
-            onValueChange={(v) => v && setDisplayMode(v)}
-          >
-            <SelectTrigger size="sm" className="text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="inline">Inline</SelectItem>
-              <SelectItem value="fullscreen">Fullscreen</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
 
         <Separator orientation="vertical" className="h-4" />
