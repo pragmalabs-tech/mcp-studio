@@ -1,0 +1,231 @@
+// @vitest-environment happy-dom
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { WidgetInputEvent } from "./types";
+
+// ── Mocks ──────────────────────────────────────────────────────────────────
+// The segmenter is pure policy: it decides which Action to build and drives
+// its open-window. We mock the Action classes as spies so the tests assert the
+// *decision* (which action, with what args, and which lifecycle calls) without
+// exercising real settle windows or DOM dispatch.
+
+const h = vi.hoisted(() => {
+  const recorderState = { capturing: true };
+  const busState = { active: null as unknown };
+  return {
+    recorderState,
+    busState,
+    recorder: {
+      isCapturing: vi.fn(() => recorderState.capturing),
+      record: vi.fn(),
+    },
+    eventBus: {
+      setActive: vi.fn((a: unknown) => {
+        busState.active = a;
+      }),
+      current: vi.fn(() => busState.active),
+    },
+  };
+});
+const { recorderState, recorder, eventBus } = h;
+vi.mock("@/lib/recorder/recorder", () => ({ recorder: h.recorder }));
+vi.mock("@/lib/event", () => ({ eventBus: h.eventBus }));
+
+vi.mock("@/lib/action/widget_click", () => ({
+  WidgetClickAction: vi.fn(function (
+    this: Record<string, unknown>,
+    widgetId: string,
+    candidates: string[],
+    fallback?: string,
+  ) {
+    this.data = { widgetId, candidates, fallback };
+    this.recordFromUserClick = vi.fn().mockResolvedValue(undefined);
+    this.change = vi.fn(() => ({ widgets: {} }));
+    this.markRecorded = vi.fn();
+  }),
+}));
+
+vi.mock("@/lib/action/widget_text_input", () => ({
+  WidgetTextInputAction: vi.fn(function (
+    this: Record<string, unknown>,
+    widgetId: string,
+    candidates: string[],
+    value: string,
+  ) {
+    this.data = { widgetId, candidates, value };
+    this.recordFromUserInput = vi.fn().mockResolvedValue(undefined);
+    this.change = vi.fn(() => ({ widgets: {} }));
+    this.markRecorded = vi.fn();
+  }),
+}));
+
+const storeState: Record<string, unknown> = {};
+vi.mock("@/lib/studio/stores/widget-store", () => ({
+  useWidgetStore: { getState: () => storeState },
+}));
+
+import { handleWidgetInput } from "./segmenter";
+import { WidgetClickAction } from "@/lib/action/widget_click";
+import { WidgetTextInputAction } from "@/lib/action/widget_text_input";
+
+const ClickMock = WidgetClickAction as unknown as ReturnType<typeof vi.fn>;
+const TextMock = WidgetTextInputAction as unknown as ReturnType<typeof vi.fn>;
+
+function fakeDoc(): Document {
+  return new DOMParser().parseFromString(
+    "<!doctype html><html></html>",
+    "text/html",
+  );
+}
+
+function resetStore() {
+  storeState.activeWidgetId = "w1";
+  storeState._iframeRef = { contentDocument: fakeDoc() };
+  storeState.openClick = null;
+  storeState.openTextInput = null;
+}
+
+function clickEvt(
+  over: Partial<WidgetInputEvent["target"]> = {},
+): WidgetInputEvent {
+  return {
+    kind: "click",
+    target: { candidates: ["#btn"], isTextLike: false, text: "Save", ...over },
+  };
+}
+
+function keyEvt(
+  key: string,
+  over: Partial<WidgetInputEvent["target"]> = {},
+): WidgetInputEvent {
+  return {
+    kind: "keyup",
+    key,
+    target: {
+      candidates: ['input[name="q"]'],
+      isTextLike: true,
+      value: "hi",
+      ...over,
+    },
+  };
+}
+
+/** Flush the microtask queue so recordFromUser*().then(...) runs. */
+const flush = () => Promise.resolve();
+
+describe("handleWidgetInput", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    recorderState.capturing = true;
+    h.busState.active = null;
+    resetStore();
+  });
+
+  // ── gating ─────────────────────────────────────────────────────────────
+  it("ignores events when the recorder isn't capturing", () => {
+    recorderState.capturing = false;
+    handleWidgetInput(clickEvt());
+    expect(ClickMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores events when there is no active widget", () => {
+    storeState.activeWidgetId = null;
+    handleWidgetInput(clickEvt());
+    expect(ClickMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores events with no selector candidates", () => {
+    handleWidgetInput(clickEvt({ candidates: [] }));
+    expect(ClickMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores events when the iframe document is missing", () => {
+    storeState._iframeRef = null;
+    handleWidgetInput(clickEvt());
+    expect(ClickMock).not.toHaveBeenCalled();
+  });
+
+  // ── click ────────────────────────────────────────────────────────────────
+  it("builds a WidgetClickAction for a click on a non-text element", async () => {
+    handleWidgetInput(clickEvt());
+
+    expect(ClickMock).toHaveBeenCalledTimes(1);
+    expect(ClickMock).toHaveBeenCalledWith("w1", ["#btn"], "Save");
+    const action = ClickMock.mock.instances[0] as Record<string, any>;
+    expect(action.recordFromUserClick).toHaveBeenCalledWith(expect.anything(), {
+      matchedSelector: "#btn",
+      matchedIndex: 0,
+    });
+    expect(eventBus.setActive).toHaveBeenCalledWith(action);
+
+    await flush();
+    expect(recorder.record).toHaveBeenCalledWith(action, {
+      stateChange: { widgets: {} },
+    });
+    expect(action.markRecorded).toHaveBeenCalled();
+    expect(eventBus.setActive).toHaveBeenLastCalledWith(null);
+  });
+
+  it("ignores a click on a text-like element (routed to text input instead)", () => {
+    handleWidgetInput(clickEvt({ isTextLike: true }));
+    expect(ClickMock).not.toHaveBeenCalled();
+  });
+
+  it("closes any open click/text windows before starting a new click", () => {
+    const openClick = { close: vi.fn() };
+    const openText = { close: vi.fn(), data: { candidates: ["x"] } };
+    storeState.openClick = openClick;
+    storeState.openTextInput = openText;
+    handleWidgetInput(clickEvt());
+    expect(openClick.close).toHaveBeenCalled();
+    expect(openText.close).toHaveBeenCalled();
+  });
+
+  // ── text input ─────────────────────────────────────────────────────────
+  it("builds a WidgetTextInputAction for an editing keyup on a text field", () => {
+    handleWidgetInput(keyEvt("a", { value: "a" }));
+    expect(TextMock).toHaveBeenCalledTimes(1);
+    expect(TextMock).toHaveBeenCalledWith("w1", ['input[name="q"]'], "a");
+    const action = TextMock.mock.instances[0] as Record<string, any>;
+    expect(action.recordFromUserInput).toHaveBeenCalledWith(expect.anything(), {
+      matchedSelector: 'input[name="q"]',
+      matchedIndex: 0,
+      initialValue: "a",
+    });
+  });
+
+  it("coalesces successive keystrokes on the same field via updateValue", () => {
+    const openText = {
+      data: { candidates: ['input[name="q"]'] },
+      updateValue: vi.fn(),
+      close: vi.fn(),
+    };
+    storeState.openTextInput = openText;
+    handleWidgetInput(keyEvt("b", { value: "ab" }));
+    expect(openText.updateValue).toHaveBeenCalledWith("ab");
+    expect(TextMock).not.toHaveBeenCalled();
+  });
+
+  it("closes the prior text window and opens a new one for a different field", () => {
+    const openText = {
+      data: { candidates: ['input[name="other"]'] },
+      updateValue: vi.fn(),
+      close: vi.fn(),
+    };
+    storeState.openTextInput = openText;
+    handleWidgetInput(keyEvt("a", { value: "a" }));
+    expect(openText.close).toHaveBeenCalled();
+    expect(openText.updateValue).not.toHaveBeenCalled();
+    expect(TextMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores non-editing keys (e.g. Shift, ArrowLeft)", () => {
+    handleWidgetInput(keyEvt("Shift"));
+    handleWidgetInput(keyEvt("ArrowLeft"));
+    expect(TextMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores keyup on a non-text element", () => {
+    handleWidgetInput(keyEvt("a", { isTextLike: false }));
+    expect(TextMock).not.toHaveBeenCalled();
+  });
+});

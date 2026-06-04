@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildMockFromResponse, resolveWidgetUri } from "./widget-helpers";
+import { buildMockFromResponse, resolveWidgetUri } from "./index";
 import type { McpResourceInfo } from "@/lib/studio/api";
 
 const resources: McpResourceInfo[] = [

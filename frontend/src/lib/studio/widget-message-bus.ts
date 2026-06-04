@@ -1,9 +1,7 @@
 import { useWidgetStore } from "./stores/widget-store";
 import { callTool } from "./api";
-import { recorder } from "../recorder/recorder";
-import { eventBus } from "../event";
-import { WidgetClickAction } from "../action/widget_click";
-import { WidgetTextInputAction } from "../action/widget_text_input";
+import { handleWidgetInput } from "@/lib/action/utils/widget-interaction-capture/segmenter";
+import type { WidgetInputEvent } from "@/lib/action/utils/widget-interaction-capture/types";
 
 let started = false;
 
@@ -88,58 +86,13 @@ async function handleMessage(e: MessageEvent): Promise<void> {
     return;
   }
 
-  if (data.type === "studio_widget_click") {
-    const targetId = store.activeWidgetId;
-    if (!recorder.isCapturing() || !targetId) return;
-    const candidates = data.candidates as string[];
-    const fallbackText = data.fallbackText as string | undefined;
-    if (!candidates?.length) return;
-    const doc = store._iframeRef?.contentDocument ?? null;
-    if (!doc) return;
-    store.openClick?.close();
-    store.openTextInput?.close();
-    const action = new WidgetClickAction(targetId, candidates, fallbackText);
-    eventBus.setActive(action);
-    void action
-      .recordFromUserClick(doc, {
-        matchedSelector: candidates[0],
-        matchedIndex: 0,
-      })
-      .then(() => {
-        if (eventBus.current() === action) eventBus.setActive(null);
-        recorder.record(action, { stateChange: action.change() });
-        action.markRecorded();
-      });
-    return;
-  }
-
-  if (data.type === "studio_widget_keyup") {
-    const targetId = store.activeWidgetId;
-    if (!recorder.isCapturing() || !targetId) return;
-    const candidates = data.candidates as string[];
-    const value = data.value as string;
-    if (!candidates?.length) return;
-    const openTextInput = store.openTextInput;
-    if (openTextInput && openTextInput.data.candidates[0] === candidates[0]) {
-      openTextInput.updateValue(value);
-      return;
-    }
-    if (openTextInput) openTextInput.close();
-    const doc = store._iframeRef?.contentDocument ?? null;
-    if (!doc) return;
-    const action = new WidgetTextInputAction(targetId, candidates, value);
-    eventBus.setActive(action);
-    void action
-      .recordFromUserInput(doc, {
-        matchedSelector: candidates[0],
-        matchedIndex: 0,
-        initialValue: value,
-      })
-      .then(() => {
-        if (eventBus.current() === action) eventBus.setActive(null);
-        recorder.record(action, { stateChange: action.change() });
-        action.markRecorded();
-      });
+  if (data.type === "studio_input") {
+    handleWidgetInput({
+      kind: data.kind,
+      target: data.target,
+      key: data.key,
+      ts: typeof data.ts === "number" ? data.ts : undefined,
+    } as WidgetInputEvent);
     return;
   }
 }

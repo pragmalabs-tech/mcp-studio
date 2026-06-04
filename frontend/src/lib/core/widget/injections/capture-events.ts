@@ -87,24 +87,44 @@ export const captureEventsInjection: Injection = {
     return false;
   }
 
+  // Serialize a target element into plain facts the host can reason about.
+  // Selector capture must run here — it needs the live element. Everything
+  // else (what the interaction *means*) is decided by the host segmenter.
+  function describeTarget(el) {
+    var textLike = isTextLike(el);
+    var target = {
+      candidates: captureSelector(el, document),
+      tag: el.tagName.toLowerCase(),
+      isTextLike: textLike,
+    };
+    var type = el.getAttribute('type');
+    if (type) target.type = type;
+    var text = (el.textContent || '').trim().slice(0, 40);
+    if (text) target.text = text;
+    if (textLike) target.value = el.value;
+    return target;
+  }
+
+  // Dumb forwarder: emit every interaction; the host decides what to do with
+  // it. No meaning is assigned here.
+  function emit(kind, e, extra) {
+    var target = e.target;
+    if (!target) return;
+    var desc = describeTarget(target);
+    if (!desc.candidates.length) return;
+    var msg = { type: 'studio_input', kind: kind, target: desc, ts: e.timeStamp };
+    if (extra) for (var k in extra) msg[k] = extra[k];
+    window.parent.postMessage(msg, '*');
+  }
+
   document.addEventListener('click', function (e) {
     if (!e.isTrusted) return;
-    var target = e.target;
-    if (!target || isTextLike(target)) return;
-    var candidates = captureSelector(target, document);
-    if (!candidates.length) return;
-    var fallbackText = (target.textContent || '').trim().slice(0, 40) || undefined;
-    window.parent.postMessage({ type: 'studio_widget_click', candidates: candidates, fallbackText: fallbackText }, '*');
+    emit('click', e);
   }, true);
 
   document.addEventListener('keyup', function (e) {
     if (!e.isTrusted) return;
-    var target = e.target;
-    if (!target || !isTextLike(target)) return;
-    if (e.key.length !== 1 && e.key !== 'Backspace' && e.key !== 'Delete') return;
-    var candidates = captureSelector(target, document);
-    if (!candidates.length) return;
-    window.parent.postMessage({ type: 'studio_widget_keyup', candidates: candidates, value: target.value, key: e.key }, '*');
+    emit('keyup', e, { key: e.key });
   }, true);
 })();
 </script>`,

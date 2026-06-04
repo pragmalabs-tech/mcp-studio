@@ -11,7 +11,7 @@ import {
 import { DEFAULT_MOCK, type MockData } from "../mock-openai";
 import { type ResultIssue } from "../validate-tool-result";
 import { ToolCallAction, ResourceReadAction, type Action } from "@/lib/action";
-import { resolveWidgetUri as resolveWidgetUriHelper } from "@/lib/action/widget-helpers";
+import { resolveWidgetUri as resolveWidgetUriHelper } from "@/lib/action/utils/widget-helpers";
 import { migrateLocalStorageToBackend } from "../storage-migration";
 import { createClaudeMock } from "../mock-claude";
 import { recorder } from "../../recorder/recorder";

@@ -5,7 +5,10 @@ import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { validateToolResult } from "@/lib/studio/validate-tool-result";
 import { raceWithTimeout } from "@/lib/core/util/race-with-timeout";
-import { buildMockFromResponse, resolveWidgetUri } from "./widget-helpers";
+import {
+  buildMockFromResponse,
+  resolveWidgetUri,
+} from "./utils/widget-helpers";
 
 const DEFAULT_WAIT_MS = 150;
 

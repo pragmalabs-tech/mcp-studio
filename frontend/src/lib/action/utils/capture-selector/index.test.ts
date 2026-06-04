@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from "vitest";
-import { captureSelector } from "./capture-selector";
+import { captureSelector } from "./index";
 
 function docOf(html: string): Document {
   const parser = new DOMParser();
