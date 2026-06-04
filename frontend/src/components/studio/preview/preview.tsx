@@ -96,7 +96,7 @@ export function Preview({ widgetId }: { widgetId?: string } = {}) {
       )
     : "";
 
-  const htmlSource = entry ? stripTunnelUrls(entry.html) : "";
+  const htmlSource = entry ? stripTunnelUrls(entry.originalHtml) : "";
 
   const showPreviewTab = isWidgetTool || hasResourceHtml;
   const showHtmlTab = isWidgetTool || hasResourceHtml;

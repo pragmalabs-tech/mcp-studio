@@ -66,7 +66,7 @@ export class ResourceReadAction extends Action<{ uri: string }> {
       if (first?.mimeType?.includes("text/html") && first.text) {
         const { theme, locale, displayMode } = useWidgetStore.getState();
         store.insertWidget(this.data.uri, {
-          html: first.text,
+          originalHtml: first.text,
           mock: {
             toolInput: {},
             toolOutput: {},

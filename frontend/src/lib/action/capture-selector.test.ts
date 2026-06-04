@@ -67,13 +67,13 @@ describe("captureSelector", () => {
     expect(sels[0]).toContain("button:nth-of-type(2)");
   });
 
-  it("caps the list at 3 candidates", () => {
+  it("caps the list at MAX_CANDIDATES (4)", () => {
     const doc = docOf(
       `<button data-testid="x" data-test="y" data-cy="z" id="b" class="c">go</button>`,
     );
     const el = doc.querySelector("button")!;
     const sels = captureSelector(el, doc);
-    expect(sels.length).toBeLessThanOrEqual(3);
+    expect(sels.length).toBeLessThanOrEqual(4);
   });
 
   it("CSS-escapes values with special characters", () => {

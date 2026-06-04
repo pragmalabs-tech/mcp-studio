@@ -36,7 +36,16 @@ function setupStore(html: string, widgetId = "w1") {
   const fakeIframe = { contentDocument: doc };
   const s = useWidgetStore.getState() as unknown as Record<string, unknown>;
   s.logAction = vi.fn();
-  s.widgets = { [widgetId]: { html: "", mock: {}, waitMs: 0, snapshot: null } };
+  s.widgets = {
+    [widgetId]: {
+      id: widgetId,
+      originalHtml: "",
+      injectedHtml: "",
+      mock: {},
+      waitMs: 0,
+      snapshot: null,
+    },
+  };
   s._iframeRef = fakeIframe as unknown as Record<string, unknown>;
   s.openClick = null;
   return { doc };

@@ -7,12 +7,8 @@
  *
  * Fixed-order operations:
  *   1. tunnel-rewrite
- *   2. each entry in `metas` (in order)
- *   3. each entry in `scripts` (in order)
- *
- * All injections use the same `<head>`-replace pattern, so the LAST
- * item injected ends up FIRST inside `<head>`. Callers that care about
- * absolute ordering should reverse their lists accordingly.
+ *   2. metas (in array order) then scripts (in array order) — single insert
+ *      at start of <head>, so DOM order matches array order with metas first.
  */
 
 export interface InjectOpts {
@@ -35,11 +31,9 @@ export function inject(html: string, opts: InjectOpts): string {
   if (opts.rewriteTunnel !== undefined) {
     out = out.replace(TUNNEL_RE, opts.rewriteTunnel);
   }
-  for (const meta of opts.metas ?? []) {
-    out = out.replace(HEAD_OPEN_RE, `<head$1>${meta}`);
-  }
-  for (const script of opts.scripts ?? []) {
-    out = out.replace(HEAD_OPEN_RE, `<head$1>${script}`);
+  const insertions = [...(opts.metas ?? []), ...(opts.scripts ?? [])].join("");
+  if (insertions) {
+    out = out.replace(HEAD_OPEN_RE, `<head$1>${insertions}`);
   }
   return out;
 }

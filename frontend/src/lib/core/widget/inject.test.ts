@@ -43,20 +43,20 @@ describe("inject", () => {
     expect(out).toContain(`<head><script>1</script>`);
   });
 
-  it("applies metas in order, then scripts in order (last-in = first-in-head)", () => {
+  it("applies metas in array order, then scripts in array order", () => {
     const out = inject(PAGE, {
       metas: [`<meta name="a">`, `<meta name="b">`],
       scripts: [`<script>1</script>`, `<script>2</script>`],
     });
-    // Each replace prepends after <head>, so the LAST script ends up first.
+    // Items are inserted in natural array order: first item appears first in head.
     const idxA = out.indexOf(`<meta name="a">`);
     const idxB = out.indexOf(`<meta name="b">`);
     const idx1 = out.indexOf(`<script>1</script>`);
     const idx2 = out.indexOf(`<script>2</script>`);
-    expect(idxB).toBeLessThan(idxA);
-    expect(idx2).toBeLessThan(idx1);
-    // Scripts are injected after metas, so they appear earlier in head.
-    expect(idx2).toBeLessThan(idxB);
+    expect(idxA).toBeLessThan(idxB);
+    expect(idx1).toBeLessThan(idx2);
+    // Metas are inserted before scripts, so they appear first in head.
+    expect(idxA).toBeLessThan(idx1);
   });
 
   it("leaves the rest of the HTML untouched", () => {

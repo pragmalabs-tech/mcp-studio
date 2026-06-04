@@ -65,8 +65,10 @@ export interface PendingMessage {
   content: unknown;
 }
 
-export interface WidgetEntry {
-  html: string;
+export interface Widget {
+  id: string;
+  originalHtml: string;
+  injectedHtml: string;
   mock: MockData;
   waitMs: number;
   snapshot: string | null;

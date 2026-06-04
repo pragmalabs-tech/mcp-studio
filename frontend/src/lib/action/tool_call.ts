@@ -181,7 +181,7 @@ export class ToolCallAction extends Action<{
           });
           const waitMs = this.data.waitMs ?? DEFAULT_WAIT_MS;
           const ready = useWidgetStore.getState().insertWidget(widgetUri, {
-            html,
+            originalHtml: html,
             mock,
             waitMs,
           });

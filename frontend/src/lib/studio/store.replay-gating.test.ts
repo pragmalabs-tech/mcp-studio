@@ -20,15 +20,16 @@ describe("studio store replay-mode gating", () => {
     return { loadWidget, applyMock };
   }
 
-  it("setPlatform schedules loadWidget in normal mode", () => {
+  it("setPlatform updates platform and does not call loadWidget", () => {
     const { loadWidget } = stubAutoReloaders();
     useTestStore.setState({ studioMode: "normal" });
     useWidgetStore.getState().setPlatform("claude");
     vi.advanceTimersByTime(100);
-    expect(loadWidget).toHaveBeenCalled();
+    expect(useWidgetStore.getState().platform).toBe("claude");
+    expect(loadWidget).not.toHaveBeenCalled();
   });
 
-  it("setPlatform skips loadWidget in test mode", () => {
+  it("setPlatform skips reInjectAll in test mode", () => {
     const { loadWidget } = stubAutoReloaders();
     useTestStore.setState({ studioMode: "test" });
     useWidgetStore.getState().setPlatform("claude");

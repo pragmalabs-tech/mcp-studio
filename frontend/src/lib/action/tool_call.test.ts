@@ -121,7 +121,7 @@ describe("ToolCallAction", () => {
     expect(insertWidget).toHaveBeenCalledOnce();
     const [id, entry] = insertWidget.mock.calls[0];
     expect(id).toBe(widgetUri);
-    expect(entry.html).toContain("widget");
+    expect(entry.originalHtml).toContain("widget");
     expect(entry.waitMs).toBe(10);
 
     expect(action.result?.data).toMatchObject({

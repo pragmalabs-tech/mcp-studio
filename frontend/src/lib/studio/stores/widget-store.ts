@@ -18,6 +18,9 @@ import { recorder } from "../../recorder/recorder";
 import { eventBus } from "@/lib/event";
 import type { WidgetClickAction } from "@/lib/action/widget_click";
 import type { WidgetTextInputAction } from "@/lib/action/widget_text_input";
+import { renderHtml } from "@/lib/core/widget/render-html";
+import { analyze } from "@/lib/core/csp/analyze";
+import { stripTunnelUrls } from "@/lib/core/widget/inject";
 import { useTestStore } from "./test-store";
 import type {
   Platform,
@@ -28,7 +31,7 @@ import type {
   ConsoleLevel,
   ConsoleEntry,
   PendingMessage,
-  WidgetEntry,
+  Widget,
   CspViolation,
 } from "./types";
 
@@ -42,7 +45,7 @@ export type {
   ConsoleLevel,
   ConsoleEntry,
   PendingMessage,
-  WidgetEntry,
+  Widget,
   CspViolation,
 };
 
@@ -171,6 +174,26 @@ function formatTimestamp(): string {
   );
 }
 
+function reInjectAll(
+  get: () => WidgetState,
+  set: (partial: Partial<WidgetState>) => void,
+): void {
+  const { widgets, platform, strictMode } = get();
+  if (!Object.keys(widgets).length) return;
+  const updated = Object.fromEntries(
+    Object.entries(widgets).map(([id, entry]) => {
+      const { html: injectedHtml } = renderHtml({
+        html: entry.originalHtml,
+        mock: entry.mock,
+        platform,
+        strict: strictMode,
+      });
+      return [id, { ...entry, injectedHtml, snapshot: null }];
+    }),
+  );
+  set({ widgets: updated });
+}
+
 interface WidgetState {
   // Tools & resources (loaded by loadAll)
   tools: McpToolInfo[];
@@ -210,8 +233,9 @@ interface WidgetState {
 
   // Widget registry
   widgetCache: Record<string, string>;
-  widgets: Record<string, WidgetEntry>;
+  widgets: Record<string, Widget>;
   activeWidgetId: string | null;
+  autoHeight: number | null;
 
   // Protocol detection
   detectedProtocols: { legacyOpenAI: boolean; extApps: boolean } | null;
@@ -247,9 +271,10 @@ interface WidgetState {
   addCspViolation: (v: CspViolation) => void;
   clearCspViolations: () => void;
   setProtocolDetected: (protocol: "legacy_openai" | "ext_apps") => void;
+  setAutoHeight: (h: number | null) => void;
   insertWidget: (
     id: string,
-    entry: Omit<WidgetEntry, "snapshot">,
+    entry: Omit<Widget, "id" | "snapshot" | "injectedHtml">,
   ) => Promise<string | null>;
   setSnapshot: (id: string, snapshot: string) => void;
   loadWidget: () => Promise<void>;
@@ -296,6 +321,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
   widgetCache: {},
   widgets: {},
   activeWidgetId: null,
+  autoHeight: null,
 
   detectedProtocols: null,
 
@@ -432,7 +458,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
   setPlatform: (p) => {
     set({ platform: p });
     if (useTestStore.getState().studioMode !== "test") {
-      setTimeout(() => get().loadWidget(), 50);
+      reInjectAll(get, set);
     }
   },
 
@@ -522,7 +548,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
   setStrictMode: (on) => {
     set({ strictMode: on, cspViolations: [] });
     if (useTestStore.getState().studioMode !== "test") {
-      setTimeout(() => get().loadWidget(), 50);
+      reInjectAll(get, set);
     }
   },
 
@@ -554,6 +580,8 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
       };
     }),
 
+  setAutoHeight: (h) => set({ autoHeight: h }),
+
   insertWidget: (id, entry) => {
     const prior = _pendingSnapshots.get(id);
     if (prior) {
@@ -565,9 +593,42 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
       _pendingSnapshots.set(id, resolve);
     });
 
+    const { platform, strictMode, addCspViolation } = get();
+    const { html: injectedHtml, cspDomains } = renderHtml({
+      html: entry.originalHtml,
+      mock: entry.mock,
+      platform,
+      strict: strictMode,
+    });
+
+    const { findings } = analyze(
+      stripTunnelUrls(entry.originalHtml),
+      cspDomains,
+    );
+    for (const finding of findings) {
+      addCspViolation({
+        id: `static_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        time: new Date().toTimeString().split(" ")[0],
+        directive: finding.directive,
+        blockedUri: finding.blocked,
+        sourceFile: id,
+        lineNumber: finding.line || 0,
+        columnNumber: 0,
+        source: "static" as const,
+        fix: finding.fix,
+        severity: finding.severity,
+        platforms: finding.platforms,
+        snippet: finding.snippet,
+      });
+    }
+
     set((s) => ({
-      widgets: { ...s.widgets, [id]: { ...entry, snapshot: null } },
+      widgets: {
+        ...s.widgets,
+        [id]: { ...entry, id, injectedHtml, snapshot: null },
+      },
       activeWidgetId: id,
+      autoHeight: null,
     }));
 
     return ready;
@@ -637,7 +698,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
         locale,
         displayMode,
       };
-      get().insertWidget(widgetUri, { html, mock, waitMs: 150 });
+      get().insertWidget(widgetUri, { originalHtml: html, mock, waitMs: 150 });
     } catch (e) {
       logAction("error", `Invalid JSON: ${(e as Error).message}`);
     }
@@ -787,7 +848,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
         displayMode,
       };
       get().insertWidget(activeWidgetId, {
-        html,
+        originalHtml: html,
         mock: currentMock,
         waitMs: 0,
       });
