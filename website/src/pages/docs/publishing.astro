@@ -4,7 +4,7 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
 
 <DocsLayout title="Publishing — MCP Studio" current="publishing">
   <p
-    class="text-[10px] font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-4"
+    class="text-xs font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-4"
   >
     [ Testing with real AI ]
   </p>
@@ -12,15 +12,15 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
     Testing with ChatGPT, Claude, and Copilot
   </h1>
   <p
-    class="text-sm text-[var(--muted-foreground)] max-w-lg leading-relaxed mb-12"
+    class="text-base text-[var(--muted-foreground)] max-w-lg leading-relaxed mb-12"
   >
-    [Intro: expose your local MCP server to a public HTTPS URL so you can
+    [Intro: expose your local MCP application to a public HTTPS URL so you can
     connect it to real ChatGPT or Claude.]
   </p>
 
   <!-- How it works -->
   <section class="mb-12">
-    <h2 class="text-sm font-semibold text-[var(--foreground)] mb-3">
+    <h2 class="text-base font-semibold text-[var(--foreground)] mb-3">
       How it works
     </h2>
     <ol class="flex flex-col gap-3">
@@ -30,10 +30,10 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
           "Click Publish in the top bar.",
           "Enter a subdomain or leave blank for a random one.",
           "Your server is now live at https://[subdomain].tunnel.mcpr.app.",
-          "Paste that URL into ChatGPT or Claude as a custom MCP server.",
+          "Paste that URL into ChatGPT or Claude as a custom MCP application.",
         ].map((step, i) => (
-          <li class="flex gap-3 text-xs text-[var(--muted-foreground)]">
-            <span class="shrink-0 w-5 h-5 border border-[var(--border)] flex items-center justify-center text-[10px] text-[var(--foreground)]">
+          <li class="flex gap-3 text-sm text-[var(--muted-foreground)]">
+            <span class="shrink-0 w-5 h-5 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]">
               {i + 1}
             </span>
             {step}
@@ -45,7 +45,7 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
 
   <!-- Tunnel URL format -->
   <section class="mb-12">
-    <h2 class="text-sm font-semibold text-[var(--foreground)] mb-3">
+    <h2 class="text-base font-semibold text-[var(--foreground)] mb-3">
       Tunnel URL
     </h2>
     <div class="border border-[var(--border)] bg-[var(--card)] px-4 py-3">
@@ -54,7 +54,7 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
       >
     </div>
     <p
-      class="text-xs text-[var(--muted-foreground)] mt-3 leading-relaxed max-w-lg"
+      class="text-sm text-[var(--muted-foreground)] mt-3 leading-relaxed max-w-lg"
     >
       [Any note about tunnel lifetime, auth, or subdomain reuse.]
     </p>
@@ -62,7 +62,7 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
 
   <!-- Connecting to ChatGPT / Claude -->
   <section class="mb-12">
-    <h2 class="text-sm font-semibold text-[var(--foreground)] mb-3">
+    <h2 class="text-base font-semibold text-[var(--foreground)] mb-3">
       Connecting to ChatGPT, Claude, and Copilot
     </h2>
     <div
@@ -84,10 +84,10 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
           },
         ].map((item) => (
           <div class="bg-[var(--card)] p-4">
-            <p class="text-xs font-semibold text-[var(--foreground)] mb-1">
+            <p class="text-sm font-semibold text-[var(--foreground)] mb-1">
               {item.platform}
             </p>
-            <p class="text-xs text-[var(--muted-foreground)]">{item.desc}</p>
+            <p class="text-sm text-[var(--muted-foreground)]">{item.desc}</p>
           </div>
         ))
       }
@@ -95,7 +95,7 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
   </section>
 
   <div
-    class="border border-dashed border-[var(--border)] h-40 flex items-center justify-center text-xs text-[var(--muted-foreground)]"
+    class="border border-dashed border-[var(--border)] h-40 flex items-center justify-center text-sm text-[var(--muted-foreground)]"
   >
     screenshot: publish dialog
   </div>

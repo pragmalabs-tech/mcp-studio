@@ -38,10 +38,10 @@ import Footer from "../components/Footer.astro";
           What MCP Studio is
         </h2>
         <p>
-          MCP Studio is a local development tool for testing MCP servers. It
-          runs entirely on your machine. Pragma Labs does not have access to
-          your MCP servers, credentials, test data, or any other information
-          processed by the application.
+          MCP Studio is a local development tool for testing MCP applications.
+          It runs entirely on your machine. Pragma Labs does not have access to
+          your MCP applications, credentials, test data, or any other
+          information processed by the application.
         </p>
       </section>
 
@@ -53,9 +53,9 @@ import Footer from "../components/Footer.astro";
         <ul class="flex flex-col gap-2 mb-3">
           {
             [
-              "Test and debug MCP servers you own or have permission to test",
+              "Test and debug MCP applications you own or have permission to test",
               "Record and replay test sessions for your own development workflows",
-              "Publish your local MCP server to a tunnel URL for testing purposes",
+              "Publish your local MCP application to a tunnel URL for testing purposes",
             ].map((item) => (
               <li class="flex gap-2">
                 <span class="mt-1.5 shrink-0 w-1 h-1 bg-[var(--muted-foreground)]" />
