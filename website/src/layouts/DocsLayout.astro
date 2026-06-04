@@ -40,6 +40,19 @@ const nav = [
 ];
 
 const pathname = Astro.url.pathname;
+
+// Flat ordered list of unique pages for prev/next
+const pages = [
+  { label: "Overview", href: "/docs" },
+  { label: "Your first test", href: "/docs/first-test" },
+  { label: "Manual testing", href: "/docs/manual-testing" },
+  { label: "Automation E2E Testing", href: "/docs/automation" },
+  { label: "Testing with real AI", href: "/docs/publishing" },
+];
+
+const currentIndex = pages.findIndex((p) => p.href === pathname);
+const prev = currentIndex > 0 ? pages[currentIndex - 1] : null;
+const next = currentIndex < pages.length - 1 ? pages[currentIndex + 1] : null;
 ---
 
 <Base title={title}>
@@ -62,16 +75,19 @@ const pathname = Astro.url.pathname;
                   {section.group}
                 </p>
                 <ul class="flex flex-col gap-0.5">
-                  {section.items.map((item) => (
-                    <li>
-                      <a
-                        href={item.href}
-                        class="block text-xs py-0.5 text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
-                      >
-                        {item.label}
-                      </a>
-                    </li>
-                  ))}
+                  {section.items.map((item) => {
+                    const itemActive = pathname === item.href.split("#")[0];
+                    return (
+                      <li>
+                        <a
+                          href={item.href}
+                          class={`block text-xs py-0.5 transition-colors ${itemActive ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+                        >
+                          {item.label}
+                        </a>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             );
@@ -83,6 +99,37 @@ const pathname = Astro.url.pathname;
     <!-- Content -->
     <main class="flex-1 pt-12 pb-24 min-w-0">
       <slot />
+
+      {
+        (prev || next) && (
+          <div class="mt-16 pt-6 border-t border-[var(--border)] flex items-center justify-between gap-4">
+            {prev ? (
+              <a href={prev.href} class="flex flex-col gap-1 group">
+                <span class="text-[10px] uppercase tracking-widest text-[var(--muted-foreground)]">
+                  Previous
+                </span>
+                <span class="text-xs text-[var(--muted-foreground)] group-hover:text-[var(--foreground)] transition-colors">
+                  &larr; {prev.label}
+                </span>
+              </a>
+            ) : (
+              <span />
+            )}
+            {next ? (
+              <a href={next.href} class="flex flex-col gap-1 items-end group">
+                <span class="text-[10px] uppercase tracking-widest text-[var(--muted-foreground)]">
+                  Next
+                </span>
+                <span class="text-xs text-[var(--muted-foreground)] group-hover:text-[var(--foreground)] transition-colors">
+                  {next.label} &rarr;
+                </span>
+              </a>
+            ) : (
+              <span />
+            )}
+          </div>
+        )
+      }
     </main>
   </div>
 
