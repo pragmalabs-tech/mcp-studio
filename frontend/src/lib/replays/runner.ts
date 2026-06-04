@@ -45,6 +45,13 @@ export interface ReplayOptions {
   onProgress?: (info: ReplayProgress) => void;
   runGroupId?: string;
   profileName?: string;
+  /**
+   * Awaited before each step executes, after the "before" progress tick has
+   * announced the upcoming action. In step mode the caller blocks here until
+   * the user advances; in auto mode it resolves immediately. Stop also
+   * resolves it (the runner re-checks `signal.aborted` right after).
+   */
+  gate?: (step: number) => void | Promise<void>;
 }
 
 /**
@@ -73,7 +80,7 @@ export async function runReplay(
   test: SavedTest,
   options: ReplayOptions = {},
 ): Promise<SavedReplay> {
-  const { signal, onProgress, runGroupId, profileName } = options;
+  const { signal, onProgress, runGroupId, profileName, gate } = options;
 
   const steps = test.session.actions
     .map((source) => ({ source, action: reconstructAction(source.action) }))
@@ -95,9 +102,17 @@ export async function runReplay(
         break;
       }
       const { source, action } = steps[i];
-      const stepStart = nowMs();
       onProgress?.({ step: i, total, action, phase: "before" });
 
+      // Step-mode gate: blocks until the user advances; resolves immediately
+      // in auto mode. Stop resolves it too, so re-check abort right after.
+      await gate?.(i);
+      if (signal?.aborted) {
+        aborted = true;
+        break;
+      }
+
+      const stepStart = nowMs();
       eventBus.setActive(action);
       try {
         if (
@@ -118,6 +133,16 @@ export async function runReplay(
           // Direct action: execute resolves when its own I/O is done; events
           // accumulate synchronously via the bus during that window.
           await action.execute();
+        }
+      } catch (err) {
+        // A thrown step (e.g. a widget click that can't be dispatched against
+        // a canvas element) must not sink the whole replay. Capture it as a
+        // failed result so the run still saves and the offending step shows
+        // up in the report instead of vanishing.
+        if (!action.result) {
+          action.setResult(false, undefined, {
+            message: err instanceof Error ? err.message : String(err),
+          });
         }
       } finally {
         eventBus.setActive(null);

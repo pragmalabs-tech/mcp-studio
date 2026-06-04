@@ -3,6 +3,7 @@ import {
   FlaskConical,
   Play,
   PlaySquare,
+  Footprints,
   Trash2,
   ChevronDown,
   ChevronRight,
@@ -108,14 +109,22 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
     };
   }, [open]);
 
-  const handleReplay = async (test: SavedTest) => {
+  const handleReplay = async (
+    test: SavedTest,
+    mode: "auto" | "step" = "auto",
+  ) => {
     if (runState) return;
 
     const ok = await confirm({
-      title: `Replay "${test.name}"?`,
+      title:
+        mode === "step"
+          ? `Step through "${test.name}"?`
+          : `Replay "${test.name}"?`,
       description:
-        "Replay re-runs every recorded action against the live MCP server. Tool calls with side effects (writes, sends, deletes) will fire again.",
-      confirmLabel: "Replay",
+        mode === "step"
+          ? "Step mode pauses before each recorded action so you can advance one at a time and watch the studio react. Tool calls with side effects (writes, sends, deletes) still fire when you advance past them."
+          : "Replay re-runs every recorded action against the live MCP server. Tool calls with side effects (writes, sends, deletes) will fire again.",
+      confirmLabel: mode === "step" ? "Step" : "Replay",
     });
     if (!ok) return;
 
@@ -129,13 +138,25 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
     setStudioMode("test");
     setRunState({
       testName: test.name,
-      mode: "auto",
+      mode,
       currentStep: -1,
       totalSteps,
       currentAction: null,
       ctrl,
       nextResolver: null,
     });
+
+    // Step gate: in step mode, park a resolver on the run state that the
+    // RunBar's Next button calls; in auto mode (or after "Auto" is pressed
+    // mid-run) it resolves immediately. Reads the *current* mode each step
+    // so switching to Auto takes effect from the next step on.
+    const gate = () => {
+      const rs = useTestStore.getState().runState;
+      if (!rs || rs.mode !== "step") return;
+      return new Promise<void>((resolve) => {
+        patchRunState({ nextResolver: resolve });
+      });
+    };
 
     try {
       const result = await runReplay(test, {
@@ -145,6 +166,7 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
             patchRunState({ currentStep: step, currentAction: action });
           }
         },
+        gate,
         runGroupId: crypto.randomUUID(),
         profileName: activeProfileName,
       });
@@ -296,6 +318,7 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
                     allTags={allTags}
                     disableReplay={runState !== null}
                     onRun={() => handleReplay(test)}
+                    onStep={() => handleReplay(test, "step")}
                     onDelete={async () => {
                       const ok = await confirm({
                         title: `Delete "${test.name}"?`,
@@ -349,6 +372,7 @@ interface TestCardProps {
   allTags: readonly string[];
   disableReplay: boolean;
   onRun: () => void;
+  onStep: () => void;
   onDelete: () => void;
   onExport: () => void;
   onTagsChange: (tags: string[]) => void;
@@ -359,6 +383,7 @@ function TestCard({
   allTags,
   disableReplay,
   onRun,
+  onStep,
   onDelete,
   onExport,
   onTagsChange,
@@ -418,6 +443,20 @@ function TestCard({
               ) : (
                 <Play className="h-3.5 w-3.5" />
               )}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0"
+              onClick={onStep}
+              disabled={disableReplay}
+              title={
+                disableReplay
+                  ? "Replay in progress…"
+                  : "Step through test (pause before each action)"
+              }
+            >
+              <Footprints className="h-3.5 w-3.5" />
             </Button>
             <Button
               size="sm"
