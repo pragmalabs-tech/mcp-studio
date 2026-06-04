@@ -1,5 +1,6 @@
 ---
 import DocsLayout from "../../layouts/DocsLayout.astro";
+import AppWindow from "../../components/AppWindow.astro";
 ---
 
 <DocsLayout title="Your first test — MCP Studio" current="first-test">
@@ -55,16 +56,26 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
           Connect your MCP application
         </h2>
         <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
-          MCP Studio manages MCP applications via profiles — one profile per
-          application. Just enter the MCP application URL and a profile name to
-          save it.
+          You need to prepare your mcp server url to connect your MCP
+          application. For authentication, MCP Studio supports OAuth2.1,
+          header-based authentication.
         </p>
         <br />
         <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
           By default, MCP Studio includes an Excalidraw profile at
-          https://mcp.excalidraw.com
+          https://mcp.excalidraw.com/mcp
         </p>
-        [[ PLACEHOLDER: Add Screenshot for Profile Edit]]
+        <AppWindow
+          caption="Profile editor: enter your MCP application URL and a name to save it."
+          class="mt-4"
+        >
+          <img
+            src="/screenshots/edit-profile.png"
+            alt="Profile editor in MCP Studio"
+            class="w-full block"
+            data-lightbox
+          />
+        </AppWindow>
       </div>
     </li>
 
