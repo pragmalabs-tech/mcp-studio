@@ -9,13 +9,7 @@
     "format": "prettier --write \"src/**/*.{astro,ts,js,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{astro,ts,js,css,json}\""
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "sharp"
-    ]
-  },
-  "dependencies": {
+"dependencies": {
     "@tailwindcss/vite": "^4.1.8",
     "astro": "^4.16.18",
     "tailwindcss": "^4.1.8"
