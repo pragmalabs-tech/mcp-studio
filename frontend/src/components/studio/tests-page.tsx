@@ -46,6 +46,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { confirm } from "@/components/ui/confirm-dialog";
 import { useTestStore } from "@/lib/studio/stores/test-store";
 import { useProfileStore } from "@/lib/studio/stores";
+import { actionLabel } from "@/lib/core/action-format";
 
 interface TestsPageProps {
   open: boolean;
@@ -625,14 +626,7 @@ function ActionDetail({ recordedAction, index }: ActionDetailProps) {
   const { action, relMs } = recordedAction;
   const [detailsExpanded, setDetailsExpanded] = useState(false);
 
-  const name =
-    action.type === "TOOL_CALL"
-      ? `Tool · ${(action.data as any).tool}`
-      : action.type === "RESOURCE_READ"
-        ? `Resource · ${(action.data as any).uri}`
-        : action.type === "WIDGET_CLICK"
-          ? `Click · ${(action.data as any).fallbackText ?? (action.data as any).candidates?.[0] ?? "?"}`
-          : action.type;
+  const name = actionLabel(action);
 
   const time = `+${(relMs / 1000).toFixed(2)}s`;
 

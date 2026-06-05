@@ -23,6 +23,7 @@ import {
   type TestAssertionConfig,
 } from "@/lib/assertion";
 import { assertablePointsForType } from "@/lib/action";
+import { actionLabel } from "@/lib/core/action-format";
 import {
   getTest,
   updateTestAssertions,
@@ -50,12 +51,7 @@ function statusOf(assert: AssertResult): Status {
 }
 
 function formatActionName(action: { type: string; data: any }): string {
-  if (action.type === "TOOL_CALL") return `Tool · ${action.data?.tool ?? "?"}`;
-  if (action.type === "RESOURCE_READ")
-    return `Resource · ${action.data?.uri ?? "?"}`;
-  if (action.type === "WIDGET_CLICK")
-    return `Click · ${action.data?.fallbackText ?? action.data?.candidates?.[0] ?? "?"}`;
-  return action.type;
+  return actionLabel(action);
 }
 
 export function ReplayResultDialog({

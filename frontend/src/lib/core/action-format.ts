@@ -13,6 +13,20 @@ function asJson(a: AnyAction): { type: string; data: any } | null {
   return null;
 }
 
+/** "Click" / "Double-click" / "Triple-click" / "Click ×N" from `e.detail`. */
+export function clickVerb(detail: unknown): string {
+  const n = typeof detail === "number" && detail > 0 ? detail : 1;
+  if (n <= 1) return "Click";
+  if (n === 2) return "Double-click";
+  if (n === 3) return "Triple-click";
+  return `Click ×${n}`;
+}
+
+/** Percent position of a normalized 0..1 coord, e.g. 0.674 → "67%". */
+function pct(v: unknown): string {
+  return typeof v === "number" ? `${Math.round(v * 100)}%` : "?";
+}
+
 /** Short, human-readable label for an action (used by the run header). */
 export function actionLabel(a: AnyAction): string {
   const j = asJson(a);
@@ -22,8 +36,12 @@ export function actionLabel(a: AnyAction): string {
       return `Tool · ${j.data?.tool ?? "?"}`;
     case "RESOURCE_READ":
       return `Resource · ${j.data?.uri ?? "?"}`;
+    case "WIDGET_TEXT_INPUT":
+      return `Type · ${j.data?.value ?? ""}`;
     case "WIDGET_CLICK":
-      return `Click · ${j.data?.fallbackText ?? j.data?.candidates?.[0] ?? "?"}`;
+      return `${clickVerb(j.data?.detail)} · ${j.data?.fallbackText ?? j.data?.candidates?.[0] ?? "?"}`;
+    case "WIDGET_CANVAS_CLICK":
+      return `Canvas ${clickVerb(j.data?.detail).toLowerCase()} · ${pct(j.data?.nx)}×${pct(j.data?.ny)}`;
     default:
       return j.type;
   }
