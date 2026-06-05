@@ -17,6 +17,7 @@ import { createClaudeMock } from "../mock-claude";
 import { recorder } from "../../recorder/recorder";
 import { eventBus } from "@/lib/event";
 import type { WidgetClickAction } from "@/lib/action/widget_click";
+import type { WidgetCanvasClickAction } from "@/lib/action/widget_canvas_click";
 import type { WidgetTextInputAction } from "@/lib/action/widget_text_input";
 import { renderHtml } from "@/lib/core/widget/render-html";
 import { analyze } from "@/lib/core/csp/analyze";
@@ -243,7 +244,7 @@ interface WidgetState {
   // Refs (transient, never persisted)
   _iframeRef: HTMLIFrameElement | null;
   _extAppsMock: ReturnType<typeof createClaudeMock> | null;
-  openClick: WidgetClickAction | null;
+  openClick: WidgetClickAction | WidgetCanvasClickAction | null;
   openTextInput: WidgetTextInputAction | null;
 
   // Actions
@@ -327,7 +328,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
 
   _iframeRef: null as HTMLIFrameElement | null,
   _extAppsMock: null,
-  openClick: null as WidgetClickAction | null,
+  openClick: null as WidgetClickAction | WidgetCanvasClickAction | null,
   openTextInput: null as WidgetTextInputAction | null,
 
   // ── Actions ──

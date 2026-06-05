@@ -11,7 +11,7 @@
  * fact about the target and the event.
  */
 
-export type WidgetInputKind = "click" | "keyup";
+export type WidgetInputKind = "click" | "keyup" | "canvas_click";
 
 export interface WidgetInputTarget {
   /** Ranked, uniqueness-filtered CSS selectors for the event target. */
@@ -28,9 +28,29 @@ export interface WidgetInputTarget {
   value?: string;
 }
 
+/**
+ * Locator for a `<canvas>` element. A canvas has no meaningful inner elements,
+ * so we identify it by its (combined-class) selector with an index fallback —
+ * the count and order of canvases in a widget is stable across runs.
+ */
+export interface CanvasLocator {
+  /** All-stable-class selector, or just "canvas". */
+  selector: string;
+  /** Nth `<canvas>` in document order. */
+  index: number;
+  /** Total canvas count — sanity check on replay before trusting `index`. */
+  total: number;
+}
+
 export interface WidgetInputEvent {
   kind: WidgetInputKind;
-  target: WidgetInputTarget;
+  /** Present for "click" / "keyup". */
+  target?: WidgetInputTarget;
+  /** Present for "canvas_click". */
+  canvas?: CanvasLocator;
+  /** Canvas tap position, normalized 0..1 against the canvas bounding rect. */
+  nx?: number;
+  ny?: number;
   /** Pressed key for keyup events. */
   key?: string;
   /** Iframe `event.timeStamp` — kept for future gap-based segmentation. */

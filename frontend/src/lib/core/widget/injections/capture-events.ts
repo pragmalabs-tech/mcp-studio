@@ -25,12 +25,8 @@ export const captureEventsInjection: Injection = {
     } catch (_) { return false; }
   }
 
-  function stableClass(el) {
-    var list = Array.from(el.classList);
-    for (var i = 0; i < list.length; i++) {
-      if (!LOOKS_AUTOGEN.test(list[i])) return list[i];
-    }
-    return null;
+  function stableClasses(el) {
+    return Array.from(el.classList).filter(function (c) { return !LOOKS_AUTOGEN.test(c); });
   }
 
   function structuralPath(el, root) {
@@ -73,8 +69,12 @@ export const captureEventsInjection: Injection = {
     if (ariaLabel) candidates.push('[aria-label="' + cssEscape(ariaLabel) + '"]');
     var sem = formSemantics(el);
     for (var j = 0; j < sem.length; j++) candidates.push(sem[j]);
-    var cls = stableClass(el);
-    if (cls) candidates.push(el.tagName.toLowerCase() + '.' + cssEscape(cls));
+    var stable = stableClasses(el);
+    if (stable.length) {
+      var tagName = el.tagName.toLowerCase();
+      candidates.push(tagName + '.' + stable.map(cssEscape).join('.')); // all classes — more likely unique
+      candidates.push(tagName + '.' + cssEscape(stable[0]));            // first class — prior behavior
+    }
     candidates.push(structuralPath(el, root));
     var unique = candidates.filter(function (sel) { return isUnique(sel, el, root); });
     return unique.slice(0, MAX_CANDIDATES);
@@ -105,26 +105,87 @@ export const captureEventsInjection: Injection = {
     return target;
   }
 
-  // Dumb forwarder: emit every interaction; the host decides what to do with
-  // it. No meaning is assigned here.
-  function emit(kind, e, extra) {
-    var target = e.target;
-    if (!target) return;
-    var desc = describeTarget(target);
+  // Locator for a <canvas>: combined-class selector + index among all canvases.
+  function describeCanvas(canvas) {
+    var stable = stableClasses(canvas);
+    var selector = stable.length ? 'canvas.' + stable.map(cssEscape).join('.') : 'canvas';
+    var all = Array.prototype.slice.call(document.querySelectorAll('canvas'));
+    return { selector: selector, index: all.indexOf(canvas), total: all.length };
+  }
+
+  // Dumb forwarder: serialize an element interaction and post it. The host
+  // decides what it means.
+  function sendTarget(kind, el, ts, extra) {
+    var desc = describeTarget(el);
     if (!desc.candidates.length) return;
-    var msg = { type: 'studio_input', kind: kind, target: desc, ts: e.timeStamp };
+    var msg = { type: 'studio_input', kind: kind, target: desc, ts: ts };
     if (extra) for (var k in extra) msg[k] = extra[k];
     window.parent.postMessage(msg, '*');
   }
 
+  // Canvas interactions carry a coordinate, not a selectable child element.
+  function emitCanvas(e, canvas) {
+    var rect = canvas.getBoundingClientRect();
+    console.log('[studio:capture] canvas click', { w: rect.width, h: rect.height, clientX: e.clientX, clientY: e.clientY });
+    if (!rect.width || !rect.height) {
+      console.warn('[studio:capture] canvas has zero-size rect — dropping canvas_click');
+      return;
+    }
+    var loc = describeCanvas(canvas);
+    var nx = (e.clientX - rect.left) / rect.width;
+    var ny = (e.clientY - rect.top) / rect.height;
+    console.log('[studio:capture] emit canvas_click', { selector: loc.selector, index: loc.index, total: loc.total, nx: nx, ny: ny });
+    window.parent.postMessage({
+      type: 'studio_input',
+      kind: 'canvas_click',
+      canvas: loc,
+      nx: nx,
+      ny: ny,
+      ts: e.timeStamp,
+    }, '*');
+  }
+
+  var INTERACTIVE = 'button, a, [role="button"], input, select, textarea, label, [onclick], [tabindex]';
+
   document.addEventListener('click', function (e) {
     if (!e.isTrusted) return;
-    emit('click', e);
+    var raw = e.target;
+    if (!raw || !raw.tagName) return;
+    var tag = raw.tagName.toLowerCase();
+    console.log('[studio:capture] click event', { tag: tag, isCanvas: tag === 'canvas' });
+    if (tag === 'canvas') {
+      emitCanvas(e, raw);
+      return;
+    }
+    // Anchor to the nearest interactive ancestor so we capture the control,
+    // not an inner <span>/<svg> that happened to be under the cursor.
+    var el = (raw.closest && raw.closest(INTERACTIVE)) || raw;
+    sendTarget('click', el, e.timeStamp);
+  }, true);
+
+  // DEBUG probes: a canvas often suppresses the synthesized click event
+  // (pointer capture / treated as a drag). These log whether pointer events
+  // fire on a canvas even when click does not -- telling us we must capture
+  // pointer events instead. Remove once canvas capture is settled.
+  document.addEventListener('pointerdown', function (e) {
+    if (!e.isTrusted) return;
+    var t = e.target;
+    if (t && t.tagName && t.tagName.toLowerCase() === 'canvas') {
+      console.log('[studio:capture] pointerdown on canvas', { clientX: e.clientX, clientY: e.clientY });
+    }
+  }, true);
+  document.addEventListener('pointerup', function (e) {
+    if (!e.isTrusted) return;
+    var t = e.target;
+    if (t && t.tagName && t.tagName.toLowerCase() === 'canvas') {
+      console.log('[studio:capture] pointerup on canvas', { clientX: e.clientX, clientY: e.clientY });
+    }
   }, true);
 
   document.addEventListener('keyup', function (e) {
     if (!e.isTrusted) return;
-    emit('keyup', e, { key: e.key });
+    if (!e.target) return;
+    sendTarget('keyup', e.target, e.timeStamp, { key: e.key });
   }, true);
 })();
 </script>`,

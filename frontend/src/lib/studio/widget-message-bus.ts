@@ -90,6 +90,9 @@ async function handleMessage(e: MessageEvent): Promise<void> {
     handleWidgetInput({
       kind: data.kind,
       target: data.target,
+      canvas: data.canvas,
+      nx: typeof data.nx === "number" ? data.nx : undefined,
+      ny: typeof data.ny === "number" ? data.ny : undefined,
       key: data.key,
       ts: typeof data.ts === "number" ? data.ts : undefined,
     } as WidgetInputEvent);

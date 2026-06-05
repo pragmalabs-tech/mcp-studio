@@ -12,6 +12,7 @@ import { recorder } from "@/lib/recorder/recorder";
 import { eventBus } from "@/lib/event";
 import { WidgetClickAction } from "@/lib/action/widget_click";
 import { WidgetTextInputAction } from "@/lib/action/widget_text_input";
+import { WidgetCanvasClickAction } from "@/lib/action/widget_canvas_click";
 import type { WidgetInputEvent } from "./types";
 
 /** Keys that mutate a text field's value — the only keyups worth recording. */
@@ -28,13 +29,40 @@ function isEditingKey(key: string | undefined): boolean {
 export function handleWidgetInput(evt: WidgetInputEvent): void {
   const store = useWidgetStore.getState();
   const targetId = store.activeWidgetId;
+  if (evt.kind === "canvas_click") {
+    // DEBUG: trace canvas_click through the host gate.
+    console.log("[studio:segmenter] canvas_click received", {
+      capturing: recorder.isCapturing(),
+      activeWidgetId: targetId,
+      hasDoc: !!store._iframeRef?.contentDocument,
+      canvas: evt.canvas,
+    });
+  }
   if (!recorder.isCapturing() || !targetId) return;
-
-  const candidates = evt.target.candidates;
-  if (!candidates?.length) return;
 
   const doc = store._iframeRef?.contentDocument ?? null;
   if (!doc) return;
+
+  if (evt.kind === "canvas_click" && evt.canvas) {
+    store.openClick?.close();
+    store.openTextInput?.close();
+    const action = new WidgetCanvasClickAction(
+      targetId,
+      evt.canvas,
+      evt.nx ?? 0,
+      evt.ny ?? 0,
+    );
+    eventBus.setActive(action);
+    void action.recordFromUserClick(doc).then(() => {
+      if (eventBus.current() === action) eventBus.setActive(null);
+      recorder.record(action, { stateChange: action.change() });
+      action.markRecorded();
+    });
+    return;
+  }
+
+  const candidates = evt.target?.candidates;
+  if (!candidates?.length || !evt.target) return;
 
   if (evt.kind === "click" && !evt.target.isTextLike) {
     store.openClick?.close();
@@ -56,6 +84,9 @@ export function handleWidgetInput(evt: WidgetInputEvent): void {
 
   if (evt.kind === "keyup" && evt.target.isTextLike) {
     if (!isEditingKey(evt.key)) return;
+    // A keystroke means any pending click is finished — finalize it now so
+    // actions record in interaction order, not in settle-close order.
+    store.openClick?.close();
     const value = evt.target.value ?? "";
     const openTextInput = store.openTextInput;
     if (openTextInput && openTextInput.data.candidates[0] === candidates[0]) {

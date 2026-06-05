@@ -58,6 +58,21 @@ vi.mock("@/lib/action/widget_text_input", () => ({
   }),
 }));
 
+vi.mock("@/lib/action/widget_canvas_click", () => ({
+  WidgetCanvasClickAction: vi.fn(function (
+    this: Record<string, unknown>,
+    widgetId: string,
+    canvas: unknown,
+    nx: number,
+    ny: number,
+  ) {
+    this.data = { widgetId, canvas, nx, ny };
+    this.recordFromUserClick = vi.fn().mockResolvedValue(undefined);
+    this.change = vi.fn(() => ({ widgets: {} }));
+    this.markRecorded = vi.fn();
+  }),
+}));
+
 const storeState: Record<string, unknown> = {};
 vi.mock("@/lib/studio/stores/widget-store", () => ({
   useWidgetStore: { getState: () => storeState },
@@ -66,9 +81,13 @@ vi.mock("@/lib/studio/stores/widget-store", () => ({
 import { handleWidgetInput } from "./segmenter";
 import { WidgetClickAction } from "@/lib/action/widget_click";
 import { WidgetTextInputAction } from "@/lib/action/widget_text_input";
+import { WidgetCanvasClickAction } from "@/lib/action/widget_canvas_click";
 
 const ClickMock = WidgetClickAction as unknown as ReturnType<typeof vi.fn>;
 const TextMock = WidgetTextInputAction as unknown as ReturnType<typeof vi.fn>;
+const CanvasMock = WidgetCanvasClickAction as unknown as ReturnType<
+  typeof vi.fn
+>;
 
 function fakeDoc(): Document {
   return new DOMParser().parseFromString(
@@ -106,6 +125,16 @@ function keyEvt(
       value: "hi",
       ...over,
     },
+  };
+}
+
+function canvasEvt(over: Partial<WidgetInputEvent> = {}): WidgetInputEvent {
+  return {
+    kind: "canvas_click",
+    canvas: { selector: "canvas.board", index: 0, total: 1 },
+    nx: 0.5,
+    ny: 0.25,
+    ...over,
   };
 }
 
@@ -180,6 +209,16 @@ describe("handleWidgetInput", () => {
     expect(openText.close).toHaveBeenCalled();
   });
 
+  it("finalizes a pending click before starting a text input (interaction order)", () => {
+    // Repro of the Excalidraw click-"Edit"-then-type bug: typing must close
+    // the open click so it records first, not last.
+    const openClick = { close: vi.fn() };
+    storeState.openClick = openClick;
+    handleWidgetInput(keyEvt("H", { value: "H" }));
+    expect(openClick.close).toHaveBeenCalled();
+    expect(TextMock).toHaveBeenCalledTimes(1);
+  });
+
   // ── text input ─────────────────────────────────────────────────────────
   it("builds a WidgetTextInputAction for an editing keyup on a text field", () => {
     handleWidgetInput(keyEvt("a", { value: "a" }));
@@ -227,5 +266,49 @@ describe("handleWidgetInput", () => {
   it("ignores keyup on a non-text element", () => {
     handleWidgetInput(keyEvt("a", { isTextLike: false }));
     expect(TextMock).not.toHaveBeenCalled();
+  });
+
+  // ── canvas click ─────────────────────────────────────────────────────────
+  it("builds a WidgetCanvasClickAction for a canvas_click", async () => {
+    handleWidgetInput(canvasEvt());
+
+    expect(CanvasMock).toHaveBeenCalledTimes(1);
+    expect(CanvasMock).toHaveBeenCalledWith(
+      "w1",
+      { selector: "canvas.board", index: 0, total: 1 },
+      0.5,
+      0.25,
+    );
+    const action = CanvasMock.mock.instances[0] as Record<string, any>;
+    expect(action.recordFromUserClick).toHaveBeenCalled();
+    expect(eventBus.setActive).toHaveBeenCalledWith(action);
+
+    await flush();
+    expect(recorder.record).toHaveBeenCalledWith(action, {
+      stateChange: { widgets: {} },
+    });
+    expect(action.markRecorded).toHaveBeenCalled();
+    expect(ClickMock).not.toHaveBeenCalled();
+  });
+
+  it("closes open windows before starting a canvas click", () => {
+    const openClick = { close: vi.fn() };
+    const openText = { close: vi.fn(), data: { candidates: ["x"] } };
+    storeState.openClick = openClick;
+    storeState.openTextInput = openText;
+    handleWidgetInput(canvasEvt());
+    expect(openClick.close).toHaveBeenCalled();
+    expect(openText.close).toHaveBeenCalled();
+  });
+
+  it("ignores a canvas_click with no canvas locator", () => {
+    handleWidgetInput(canvasEvt({ canvas: undefined }));
+    expect(CanvasMock).not.toHaveBeenCalled();
+  });
+
+  it("gates canvas_click on capturing + active widget", () => {
+    recorderState.capturing = false;
+    handleWidgetInput(canvasEvt());
+    expect(CanvasMock).not.toHaveBeenCalled();
   });
 });
