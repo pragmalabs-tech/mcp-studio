@@ -19,10 +19,33 @@ export interface WidgetClickResult {
   snapshot: string | null;
 }
 
+/** Dispatch `count` clicks (with increasing `detail`) plus a trailing
+ *  `dblclick` for count>=2, in the element's own realm. A single click keeps
+ *  the native `el.click()` path. */
+function dispatchClicks(doc: Document, el: HTMLElement, count: number): void {
+  if (count <= 1) {
+    el.click();
+    return;
+  }
+  const win = doc.defaultView as (Window & typeof globalThis) | null;
+  const M = win?.MouseEvent;
+  if (!M) {
+    el.click();
+    return;
+  }
+  const base = { bubbles: true, cancelable: true, composed: true };
+  for (let i = 1; i <= count; i++) {
+    el.dispatchEvent(new M("click", { ...base, detail: i }));
+  }
+  el.dispatchEvent(new M("dblclick", { ...base, detail: 2 }));
+}
+
 export class WidgetClickAction extends Action<{
   widgetId: string;
   candidates: string[];
   fallbackText?: string;
+  /** Click count: 1 = single, 2 = double, 3 = triple (browser `e.detail`). */
+  detail: number;
 }> {
   static assertablePoints: AssertablePoint[] = [
     {
@@ -56,16 +79,28 @@ export class WidgetClickAction extends Action<{
    *  though `recorder.record(...)` runs in a microtask after close(). */
   readonly recorded: Promise<void>;
 
-  constructor(widgetId: string, candidates: string[], fallbackText?: string) {
+  constructor(
+    widgetId: string,
+    candidates: string[],
+    fallbackText?: string,
+    detail: number = 1,
+  ) {
     super(
       "WIDGET_CLICK",
       fallbackText
-        ? { widgetId, candidates, fallbackText }
-        : { widgetId, candidates },
+        ? { widgetId, candidates, fallbackText, detail }
+        : { widgetId, candidates, detail },
     );
     this.recorded = new Promise<void>((resolve) => {
       this._markRecorded = resolve;
     });
+  }
+
+  /** Raise the recorded click count (double/triple). Called by the segmenter
+   *  when the browser reports a higher `e.detail` on the same target while
+   *  this action's window is still open. */
+  setDetail(detail: number): void {
+    if (detail > this.data.detail) this.data.detail = detail;
   }
 
   /** Resolves the open settle window. Idempotent. Called by store.execute()
@@ -138,7 +173,7 @@ export class WidgetClickAction extends Action<{
     }
 
     useWidgetStore.setState({ openClick: this });
-    (el as HTMLElement).click();
+    dispatchClicks(doc, el as HTMLElement, this.data.detail);
 
     // Wait for external close. The 30s cap is a dev-safety net — orchestrators
     // (store.execute, runner) should close us well before that.

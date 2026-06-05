@@ -49,16 +49,18 @@ function resolveCanvas(
 }
 
 /**
- * Dispatch a tap (pointer + mirrored mouse) at normalized coords. Events are
- * constructed in the iframe's own realm (`doc.defaultView`) so `instanceof`
+ * Dispatch `count` taps (pointer + mirrored mouse) at normalized coords, with
+ * increasing click `detail`, plus a trailing `dblclick` for count>=2. Events
+ * are constructed in the iframe's own realm (`doc.defaultView`) so `instanceof`
  * checks inside the widget pass; `clientX/Y` are recomputed from the live rect
  * so position is independent of where/how big the canvas is now.
  */
-function dispatchTap(
+function dispatchTaps(
   doc: Document,
   canvas: HTMLCanvasElement,
   nx: number,
   ny: number,
+  count: number,
 ): void {
   const rect = canvas.getBoundingClientRect();
   const clientX = rect.left + nx * rect.width;
@@ -75,25 +77,40 @@ function dispatchTap(
     clientY,
     button: 0,
   };
-  const fire = (ptType: string, msType: string, buttons: number) => {
+  const taps = Math.max(1, count);
+  for (let i = 1; i <= taps; i++) {
     if (P) {
       canvas.dispatchEvent(
-        new P(ptType, {
+        new P("pointerdown", {
           ...base,
-          buttons,
+          buttons: 1,
           pointerId: 1,
           pointerType: "mouse",
           isPrimary: true,
         }),
       );
     }
-    if (M) canvas.dispatchEvent(new M(msType, { ...base, buttons }));
-  };
-  fire("pointerdown", "mousedown", 1);
-  fire("pointerup", "mouseup", 0);
-  // A synthetic pointerup does NOT auto-generate a click — emit one for
-  // canvas widgets that only listen to `click`.
-  if (M) canvas.dispatchEvent(new M("click", { ...base, buttons: 0 }));
+    if (M) canvas.dispatchEvent(new M("mousedown", { ...base, buttons: 1 }));
+    if (P) {
+      canvas.dispatchEvent(
+        new P("pointerup", {
+          ...base,
+          buttons: 0,
+          pointerId: 1,
+          pointerType: "mouse",
+          isPrimary: true,
+        }),
+      );
+    }
+    if (M) canvas.dispatchEvent(new M("mouseup", { ...base, buttons: 0 }));
+    // A synthetic pointerup does NOT auto-generate a click — emit one with the
+    // running click count for canvases that listen to `click` / read detail.
+    if (M)
+      canvas.dispatchEvent(new M("click", { ...base, buttons: 0, detail: i }));
+  }
+  if (taps >= 2 && M) {
+    canvas.dispatchEvent(new M("dblclick", { ...base, buttons: 0, detail: 2 }));
+  }
 }
 
 export class WidgetCanvasClickAction extends Action<{
@@ -101,6 +118,8 @@ export class WidgetCanvasClickAction extends Action<{
   canvas: CanvasLocator;
   nx: number;
   ny: number;
+  /** Click count: 1 = single, 2 = double, 3 = triple (browser `e.detail`). */
+  detail: number;
 }> {
   static assertablePoints: AssertablePoint[] = [
     {
@@ -132,11 +151,24 @@ export class WidgetCanvasClickAction extends Action<{
   /** Resolves AFTER the orchestrator has handed this action to the recorder. */
   readonly recorded: Promise<void>;
 
-  constructor(widgetId: string, canvas: CanvasLocator, nx: number, ny: number) {
-    super("WIDGET_CANVAS_CLICK", { widgetId, canvas, nx, ny });
+  constructor(
+    widgetId: string,
+    canvas: CanvasLocator,
+    nx: number,
+    ny: number,
+    detail: number = 1,
+  ) {
+    super("WIDGET_CANVAS_CLICK", { widgetId, canvas, nx, ny, detail });
     this.recorded = new Promise<void>((resolve) => {
       this._markRecorded = resolve;
     });
+  }
+
+  /** Raise the recorded click count (double/triple). Called by the segmenter
+   *  when the browser reports a higher `e.detail` on the same canvas while
+   *  this action's window is still open. */
+  setDetail(detail: number): void {
+    if (detail > this.data.detail) this.data.detail = detail;
   }
 
   /** Resolves the open settle window. Idempotent. */
@@ -187,7 +219,13 @@ export class WidgetCanvasClickAction extends Action<{
     }
 
     useWidgetStore.setState({ openClick: this });
-    dispatchTap(doc, resolved.el, this.data.nx, this.data.ny);
+    dispatchTaps(
+      doc,
+      resolved.el,
+      this.data.nx,
+      this.data.ny,
+      this.data.detail,
+    );
 
     await new Promise<void>((resolve) => {
       this._closeResolve = resolve;

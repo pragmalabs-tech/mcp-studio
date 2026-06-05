@@ -130,6 +130,29 @@ describe("WidgetCanvasClickAction", () => {
     expect(data.matchedSelector).toBe("canvas");
   });
 
+  it("dispatches two taps + a dblclick for a detail:2 action", async () => {
+    mountDoc(docWith(`<canvas class="board"></canvas>`));
+    const doc = (
+      useWidgetStore.getState() as unknown as {
+        _iframeRef: { contentDocument: Document };
+      }
+    )._iframeRef.contentDocument;
+    const canvas = doc.querySelector("canvas")!;
+    const click = vi.fn();
+    const dbl = vi.fn();
+    canvas.addEventListener("click", click);
+    canvas.addEventListener("dblclick", dbl);
+
+    const action = new WidgetCanvasClickAction("w1", loc(), 0.5, 0.5, 2);
+    const settled = action.execute();
+    action.close();
+    await settled;
+
+    expect(action.result?.success).toBe(true);
+    expect(click).toHaveBeenCalledTimes(2);
+    expect(dbl).toHaveBeenCalledTimes(1);
+  });
+
   it("change() counts a click on the widget", async () => {
     mountDoc(docWith(`<canvas class="board"></canvas>`));
     const action = new WidgetCanvasClickAction("w1", loc(), 0.5, 0.5);

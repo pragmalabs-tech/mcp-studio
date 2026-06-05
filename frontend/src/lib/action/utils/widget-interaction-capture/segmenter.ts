@@ -29,21 +29,25 @@ function isEditingKey(key: string | undefined): boolean {
 export function handleWidgetInput(evt: WidgetInputEvent): void {
   const store = useWidgetStore.getState();
   const targetId = store.activeWidgetId;
-  if (evt.kind === "canvas_click") {
-    // DEBUG: trace canvas_click through the host gate.
-    console.log("[studio:segmenter] canvas_click received", {
-      capturing: recorder.isCapturing(),
-      activeWidgetId: targetId,
-      hasDoc: !!store._iframeRef?.contentDocument,
-      canvas: evt.canvas,
-    });
-  }
   if (!recorder.isCapturing() || !targetId) return;
 
   const doc = store._iframeRef?.contentDocument ?? null;
   if (!doc) return;
 
   if (evt.kind === "canvas_click" && evt.canvas) {
+    const detail = evt.detail ?? 1;
+    // Double/triple-click: the browser increments `detail` on successive clicks
+    // of the same target. Fold the higher-detail click into the still-open
+    // action instead of recording a second one.
+    const open = store.openClick;
+    if (
+      detail > 1 &&
+      open instanceof WidgetCanvasClickAction &&
+      open.data.canvas.selector === evt.canvas.selector
+    ) {
+      open.setDetail(detail);
+      return;
+    }
     store.openClick?.close();
     store.openTextInput?.close();
     const action = new WidgetCanvasClickAction(
@@ -51,6 +55,7 @@ export function handleWidgetInput(evt: WidgetInputEvent): void {
       evt.canvas,
       evt.nx ?? 0,
       evt.ny ?? 0,
+      detail,
     );
     eventBus.setActive(action);
     void action.recordFromUserClick(doc).then(() => {
@@ -65,9 +70,26 @@ export function handleWidgetInput(evt: WidgetInputEvent): void {
   if (!candidates?.length || !evt.target) return;
 
   if (evt.kind === "click" && !evt.target.isTextLike) {
+    const detail = evt.detail ?? 1;
+    // Same fold for DOM clicks: a higher-detail click on the same element
+    // upgrades the open action to a double/triple-click.
+    const open = store.openClick;
+    if (
+      detail > 1 &&
+      open instanceof WidgetClickAction &&
+      open.data.candidates[0] === candidates[0]
+    ) {
+      open.setDetail(detail);
+      return;
+    }
     store.openClick?.close();
     store.openTextInput?.close();
-    const action = new WidgetClickAction(targetId, candidates, evt.target.text);
+    const action = new WidgetClickAction(
+      targetId,
+      candidates,
+      evt.target.text,
+      detail,
+    );
     eventBus.setActive(action);
     void action
       .recordFromUserClick(doc, {

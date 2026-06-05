@@ -40,6 +40,7 @@ export function reconstructAction(json: {
         json.data.widgetId,
         json.data.candidates,
         json.data.fallbackText,
+        json.data.detail ?? 1,
       );
     case "WIDGET_TEXT_INPUT":
       return new WidgetTextInputAction(
@@ -54,6 +55,7 @@ export function reconstructAction(json: {
         json.data.canvas,
         json.data.nx,
         json.data.ny,
+        json.data.detail ?? 1,
       );
     default:
       return null;

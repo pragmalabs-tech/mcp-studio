@@ -51,6 +51,8 @@ export interface WidgetInputEvent {
   /** Canvas tap position, normalized 0..1 against the canvas bounding rect. */
   nx?: number;
   ny?: number;
+  /** Browser click count for click / canvas_click: 1 single, 2 double, 3 triple. */
+  detail?: number;
   /** Pressed key for keyup events. */
   key?: string;
   /** Iframe `event.timeStamp` — kept for future gap-based segmentation. */

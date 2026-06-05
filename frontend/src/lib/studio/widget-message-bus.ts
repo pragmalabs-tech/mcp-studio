@@ -93,6 +93,7 @@ async function handleMessage(e: MessageEvent): Promise<void> {
       canvas: data.canvas,
       nx: typeof data.nx === "number" ? data.nx : undefined,
       ny: typeof data.ny === "number" ? data.ny : undefined,
+      detail: typeof data.detail === "number" ? data.detail : undefined,
       key: data.key,
       ts: typeof data.ts === "number" ? data.ts : undefined,
     } as WidgetInputEvent);

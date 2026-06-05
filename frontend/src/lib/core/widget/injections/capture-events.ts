@@ -126,21 +126,14 @@ export const captureEventsInjection: Injection = {
   // Canvas interactions carry a coordinate, not a selectable child element.
   function emitCanvas(e, canvas) {
     var rect = canvas.getBoundingClientRect();
-    console.log('[studio:capture] canvas click', { w: rect.width, h: rect.height, clientX: e.clientX, clientY: e.clientY });
-    if (!rect.width || !rect.height) {
-      console.warn('[studio:capture] canvas has zero-size rect — dropping canvas_click');
-      return;
-    }
-    var loc = describeCanvas(canvas);
-    var nx = (e.clientX - rect.left) / rect.width;
-    var ny = (e.clientY - rect.top) / rect.height;
-    console.log('[studio:capture] emit canvas_click', { selector: loc.selector, index: loc.index, total: loc.total, nx: nx, ny: ny });
+    if (!rect.width || !rect.height) return;
     window.parent.postMessage({
       type: 'studio_input',
       kind: 'canvas_click',
-      canvas: loc,
-      nx: nx,
-      ny: ny,
+      canvas: describeCanvas(canvas),
+      nx: (e.clientX - rect.left) / rect.width,
+      ny: (e.clientY - rect.top) / rect.height,
+      detail: e.detail,
       ts: e.timeStamp,
     }, '*');
   }
@@ -151,35 +144,14 @@ export const captureEventsInjection: Injection = {
     if (!e.isTrusted) return;
     var raw = e.target;
     if (!raw || !raw.tagName) return;
-    var tag = raw.tagName.toLowerCase();
-    console.log('[studio:capture] click event', { tag: tag, isCanvas: tag === 'canvas' });
-    if (tag === 'canvas') {
+    if (raw.tagName.toLowerCase() === 'canvas') {
       emitCanvas(e, raw);
       return;
     }
     // Anchor to the nearest interactive ancestor so we capture the control,
     // not an inner <span>/<svg> that happened to be under the cursor.
     var el = (raw.closest && raw.closest(INTERACTIVE)) || raw;
-    sendTarget('click', el, e.timeStamp);
-  }, true);
-
-  // DEBUG probes: a canvas often suppresses the synthesized click event
-  // (pointer capture / treated as a drag). These log whether pointer events
-  // fire on a canvas even when click does not -- telling us we must capture
-  // pointer events instead. Remove once canvas capture is settled.
-  document.addEventListener('pointerdown', function (e) {
-    if (!e.isTrusted) return;
-    var t = e.target;
-    if (t && t.tagName && t.tagName.toLowerCase() === 'canvas') {
-      console.log('[studio:capture] pointerdown on canvas', { clientX: e.clientX, clientY: e.clientY });
-    }
-  }, true);
-  document.addEventListener('pointerup', function (e) {
-    if (!e.isTrusted) return;
-    var t = e.target;
-    if (t && t.tagName && t.tagName.toLowerCase() === 'canvas') {
-      console.log('[studio:capture] pointerup on canvas', { clientX: e.clientX, clientY: e.clientY });
-    }
+    sendTarget('click', el, e.timeStamp, { detail: e.detail });
   }, true);
 
   document.addEventListener('keyup', function (e) {

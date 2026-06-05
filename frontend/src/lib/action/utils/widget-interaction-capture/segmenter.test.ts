@@ -36,11 +36,14 @@ vi.mock("@/lib/action/widget_click", () => ({
     widgetId: string,
     candidates: string[],
     fallback?: string,
+    detail = 1,
   ) {
-    this.data = { widgetId, candidates, fallback };
+    this.data = { widgetId, candidates, fallback, detail };
     this.recordFromUserClick = vi.fn().mockResolvedValue(undefined);
     this.change = vi.fn(() => ({ widgets: {} }));
     this.markRecorded = vi.fn();
+    this.setDetail = vi.fn();
+    this.close = vi.fn();
   }),
 }));
 
@@ -65,11 +68,14 @@ vi.mock("@/lib/action/widget_canvas_click", () => ({
     canvas: unknown,
     nx: number,
     ny: number,
+    detail = 1,
   ) {
-    this.data = { widgetId, canvas, nx, ny };
+    this.data = { widgetId, canvas, nx, ny, detail };
     this.recordFromUserClick = vi.fn().mockResolvedValue(undefined);
     this.change = vi.fn(() => ({ widgets: {} }));
     this.markRecorded = vi.fn();
+    this.setDetail = vi.fn();
+    this.close = vi.fn();
   }),
 }));
 
@@ -178,7 +184,7 @@ describe("handleWidgetInput", () => {
     handleWidgetInput(clickEvt());
 
     expect(ClickMock).toHaveBeenCalledTimes(1);
-    expect(ClickMock).toHaveBeenCalledWith("w1", ["#btn"], "Save");
+    expect(ClickMock).toHaveBeenCalledWith("w1", ["#btn"], "Save", 1);
     const action = ClickMock.mock.instances[0] as Record<string, any>;
     expect(action.recordFromUserClick).toHaveBeenCalledWith(expect.anything(), {
       matchedSelector: "#btn",
@@ -278,6 +284,7 @@ describe("handleWidgetInput", () => {
       { selector: "canvas.board", index: 0, total: 1 },
       0.5,
       0.25,
+      1,
     );
     const action = CanvasMock.mock.instances[0] as Record<string, any>;
     expect(action.recordFromUserClick).toHaveBeenCalled();
@@ -310,5 +317,56 @@ describe("handleWidgetInput", () => {
     recorderState.capturing = false;
     handleWidgetInput(canvasEvt());
     expect(CanvasMock).not.toHaveBeenCalled();
+  });
+
+  // ── multi-click folding (detail) ─────────────────────────────────────────
+  it("folds a detail:2 canvas_click into the open canvas action", () => {
+    const open = new (CanvasMock as unknown as new (...a: unknown[]) => any)(
+      "w1",
+      { selector: "canvas.board", index: 0, total: 1 },
+      0.5,
+      0.25,
+      1,
+    );
+    storeState.openClick = open;
+    CanvasMock.mockClear();
+
+    handleWidgetInput(canvasEvt({ detail: 2 }));
+
+    expect(open.setDetail).toHaveBeenCalledWith(2);
+    expect(CanvasMock).not.toHaveBeenCalled(); // no second action created
+  });
+
+  it("does NOT fold a detail:2 click onto a different canvas", () => {
+    const open = new (CanvasMock as unknown as new (...a: unknown[]) => any)(
+      "w1",
+      { selector: "canvas.other", index: 1, total: 2 },
+      0.5,
+      0.25,
+      1,
+    );
+    storeState.openClick = open;
+    CanvasMock.mockClear();
+
+    handleWidgetInput(canvasEvt({ detail: 2 })); // selector "canvas.board"
+
+    expect(open.setDetail).not.toHaveBeenCalled();
+    expect(CanvasMock).toHaveBeenCalledTimes(1); // new action instead
+  });
+
+  it("folds a detail:2 click into the open DOM click action", () => {
+    const open = new (ClickMock as unknown as new (...a: unknown[]) => any)(
+      "w1",
+      ["#btn"],
+      "Save",
+      1,
+    );
+    storeState.openClick = open;
+    ClickMock.mockClear();
+
+    handleWidgetInput({ ...clickEvt({ candidates: ["#btn"] }), detail: 2 });
+
+    expect(open.setDetail).toHaveBeenCalledWith(2);
+    expect(ClickMock).not.toHaveBeenCalled();
   });
 });
