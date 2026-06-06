@@ -213,6 +213,10 @@ interface WidgetState {
   displayMode: string;
   viewportPreset: ViewportPreset;
   viewportCustom: ViewportSize;
+  /** When set (during replay), the preview is forced to this exact pixel size so
+   *  recorded canvas taps reproduce. Overrides preset/custom and the responsive
+   *  pane-shrink. Null in normal use. */
+  replaySizeLock: ViewportSize | null;
 
   // Selection & editor
   selected: SelectedItem | null;
@@ -300,6 +304,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
   displayMode: "inline",
   viewportPreset: "desktop" as ViewportPreset,
   viewportCustom: { width: 430, height: 932 },
+  replaySizeLock: null,
 
   selected: null,
   editorValue: defaultEditorValue(),
@@ -491,7 +496,8 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
   },
 
   getViewportSize: () => {
-    const { viewportPreset, viewportCustom } = get();
+    const { replaySizeLock, viewportPreset, viewportCustom } = get();
+    if (replaySizeLock) return replaySizeLock;
     if (viewportPreset === "custom") return viewportCustom;
     return (
       (

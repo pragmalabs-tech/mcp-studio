@@ -110,7 +110,13 @@ export const captureEventsInjection: Injection = {
     var stable = stableClasses(canvas);
     var selector = stable.length ? 'canvas.' + stable.map(cssEscape).join('.') : 'canvas';
     var all = Array.prototype.slice.call(document.querySelectorAll('canvas'));
-    return { selector: selector, index: all.indexOf(canvas), total: all.length };
+    return {
+      selector: selector,
+      index: all.indexOf(canvas),
+      total: all.length,
+      vw: window.innerWidth,
+      vh: window.innerHeight,
+    };
   }
 
   // Dumb forwarder: serialize an element interaction and post it. The host

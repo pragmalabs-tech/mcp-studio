@@ -10,6 +10,7 @@ import {
   type AssertReport,
 } from "@/lib/assertion";
 import { eventBus } from "@/lib/event";
+import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import type { SavedTest } from "@/lib/tests/storage";
 import { saveReplay, type ReplayedAction, type SavedReplay } from "./storage";
 
@@ -91,6 +92,27 @@ export async function runReplay(
   const total = steps.length;
 
   recorder.suspend();
+
+  // Lock the preview to the size the canvas was recorded at. Canvas widgets map
+  // screen pixels to scene coordinates at a fixed zoom, so replaying at a
+  // different size lands taps in the wrong place. Use the first canvas action's
+  // recorded iframe size; wait for the preview to actually reach it before steps.
+  const recordedCanvas = steps.find(
+    (s) =>
+      s.action instanceof WidgetCanvasClickAction &&
+      typeof s.action.data.canvas.vw === "number" &&
+      typeof s.action.data.canvas.vh === "number",
+  )?.action as WidgetCanvasClickAction | undefined;
+  if (recordedCanvas) {
+    const { vw, vh } = recordedCanvas.data.canvas;
+    useWidgetStore.setState({ replaySizeLock: { width: vw!, height: vh! } });
+    // Give React + the iframe a moment to resize (Excalidraw observes it).
+    await waitUntil(() => {
+      const w = useWidgetStore.getState()._iframeRef?.contentWindow?.innerWidth;
+      return typeof w === "number" && Math.abs(w - vw!) <= 2;
+    }, 1000);
+  }
+
   const runStart = nowMs();
   const out: ReplayedAction[] = [];
   let anyFailed = false;
@@ -190,6 +212,7 @@ export async function runReplay(
     }
   } finally {
     recorder.resume();
+    if (recordedCanvas) useWidgetStore.setState({ replaySizeLock: null });
   }
 
   const replay: SavedReplay = {

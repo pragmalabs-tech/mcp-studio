@@ -8,6 +8,7 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
   const displayMode = useWidgetStore((s) => s.displayMode);
   const viewportPreset = useWidgetStore((s) => s.viewportPreset);
   const getViewportSize = useWidgetStore((s) => s.getViewportSize);
+  const replaySizeLock = useWidgetStore((s) => s.replaySizeLock);
   const viewportSize = getViewportSize();
 
   const isFullscreen = displayMode === "fullscreen";
@@ -21,10 +22,18 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
   };
 
   return (
-    <div className="flex-1 flex flex-col items-center min-h-0 p-3 bg-muted/20">
+    <div className="flex-1 flex flex-col items-center min-h-0 p-3 bg-muted/20 overflow-auto">
       <div
-        className="flex-1 flex flex-col min-h-0 w-full"
-        style={{ maxWidth: viewportSize.width }}
+        className={
+          replaySizeLock
+            ? "flex flex-col min-h-0 shrink-0"
+            : "flex-1 flex flex-col min-h-0 w-full"
+        }
+        style={
+          replaySizeLock
+            ? { width: viewportSize.width }
+            : { maxWidth: viewportSize.width }
+        }
       >
         <ChatShell {...shellProps}>
           <WidgetRenderer

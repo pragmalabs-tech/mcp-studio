@@ -40,6 +40,12 @@ export interface CanvasLocator {
   index: number;
   /** Total canvas count — sanity check on replay before trusting `index`. */
   total: number;
+  /** Iframe viewport size at record time (`window.innerWidth/Height` inside the
+   *  iframe). Replay locks the preview to this so normalized taps reproduce — a
+   *  canvas maps screen pixels to scene coords at a fixed zoom, so a different
+   *  size lands the tap on the wrong place. Optional for older recordings. */
+  vw?: number;
+  vh?: number;
 }
 
 export interface WidgetInputEvent {

@@ -32,6 +32,7 @@ export function WidgetRenderer({
   const addPendingMessage = useWidgetStore((s) => s.addPendingMessage);
   const getViewportSize = useWidgetStore((s) => s.getViewportSize);
   const autoHeight = useWidgetStore((s) => s.autoHeight);
+  const replaySizeLock = useWidgetStore((s) => s.replaySizeLock);
   const profileName = useProfileStore((s) => {
     const profile = s.profiles.find((p) => p.id === s.activeProfileId);
     return profile?.name ?? null;
@@ -95,9 +96,13 @@ export function WidgetRenderer({
 
   const viewportSize = getViewportSize();
   const widgetColors = getWidgetColors(platform);
-  const displayHeight = autoHeight
-    ? Math.min(autoHeight, viewportSize.height)
-    : viewportSize.height;
+  // While locked for replay, force the exact recorded height (ignore autoHeight)
+  // so the canvas size — and thus tap mapping — matches the recording.
+  const displayHeight = replaySizeLock
+    ? viewportSize.height
+    : autoHeight
+      ? Math.min(autoHeight, viewportSize.height)
+      : viewportSize.height;
 
   const isDark = theme === "dark";
   const headerBg = isDark ? "#1a1a1a" : "#f5f5f5";
