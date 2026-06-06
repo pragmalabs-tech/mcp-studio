@@ -33,9 +33,10 @@ Clicks an element inside a rendered widget iframe. Uses a CSS selector candidate
 
 **WidgetTextInputAction**
 Types a value into an input inside a widget iframe.
-- Same result shape as WidgetClickAction
+- Result fields: WidgetClickAction's shape plus `applied` (`boolean | null`) — whether the widget actually took the input (see §5)
 - StateChange: increments `widgets[widgetId].inputCount`; same event aggregation as WidgetClickAction
 - Open-window: auto-closes after 800ms of input silence; snapshot is captured before `close()` to freeze pre-reaction DOM
+- On replay, accepts an optional `ExecuteContext` (`{ previous }`) so it can recover an ephemeral editor (see §5)
 
 ### Events
 
@@ -152,7 +153,7 @@ Per-type assertable points:
 | ToolCallAction | `success`, `isError`, `content`, `structuredContent`, `errorMessage`, `widget` |
 | ResourceReadAction | `success`, `contents`, `errorMessage` |
 | WidgetClickAction | `success`, `matched`, `errorMessage` |
-| WidgetTextInputAction | `success`, `matched`, `errorMessage` |
+| WidgetTextInputAction | `success`, `matched`, `applied`, `errorMessage` |
 
 Widget actions do not verify `snapshot` or `matchedSelector` — those are informational. The primary signal is whether the click/input matched at all (`matched`) and whether events fired (via state delta counters).
 
@@ -162,3 +163,53 @@ Widget actions do not verify `snapshot` or `matchedSelector` — those are infor
 - Any point failure → step status `"failed"`
 - Any state mismatch → step status `"failed"`
 - Any failed step → replay status `"failed"`
+
+---
+
+## 5. Widget Text Input — How Text Is Entered
+
+Replay runs inside the user's own browser (the app is an Axum server serving the
+frontend), so it can only produce **synthetic** events. The browser treats those
+as `isTrusted: false` and **skips the default text-insertion action** — a fake
+`keydown` fires listeners but never changes a field's value. So
+`WidgetTextInputAction` enters text by two paths, not by replaying keystrokes:
+
+**1. Matched field (real `<input>`/`<textarea>`/contenteditable)**
+Set the value, then dispatch `input`/`change` so the widget's framework reacts:
+- The native value setter and the events are taken from the **iframe's own realm**
+  (`doc.defaultView.HTMLTextAreaElement.prototype`, `doc.defaultView.InputEvent`),
+  **not** the host page's. A host-realm setter writes the raw DOM value but leaves
+  the iframe framework's value-tracker stale, so a controlled editor (e.g. React)
+  reads the old value on commit and nothing renders.
+- `applied` = the value read back equal to what we set (real proof it stuck).
+
+**2. Fallback (no field matched)**
+Dispatch realm-correct `keydown`/`keypress`/`keyup` at the document root. This only
+works for apps that **read `e.key` themselves** (canvas games, custom editors).
+- `applied = true` if the app produced `input`/`beforeinput` events from our keys;
+  `null` if a handler only called `preventDefault()` (consumed, unverifiable —
+  could be a shortcut); `false` if nothing reacted.
+
+### Ephemeral editors (e.g. Excalidraw)
+
+Some canvas apps mount a transient editor (`textarea.excalidraw-wysiwyg`) on a
+click and **destroy it on blur** — including the blur caused by the gap between
+the open-click step and the type step. The text field is simply gone by the time
+the type step runs.
+
+Recovery, all within the one type step (no gap for the editor to die in):
+- The runner threads the **previous** action into `execute({ previous })`.
+- Click/canvas actions report `endFocus` (what held focus at step end) and expose
+  `reopen(doc)` (replay their click without touching their result/window).
+- If no candidate matches **and** `previous.endFocus.editable` is true, the type
+  step calls `previous.reopen(doc)` to recreate the editor, re-finds the field,
+  types via path 1, and commits (Escape / Cmd+Enter).
+
+### Limitation
+
+Anything that requires a **genuinely trusted** event cannot be reproduced from
+page JS: IME composition, native file pickers, real drag-drop, or canvas apps that
+ignore untrusted `keydown`. Producing trusted input needs an external driver
+(Playwright / CDP `chromiumoxide` / WebDriver `thirtyfour`) running a real
+Chromium below the page — a future automated-runner concern, not the in-browser
+replay. (Tauri is not a shortcut: its macOS WKWebView has no CDP.)
