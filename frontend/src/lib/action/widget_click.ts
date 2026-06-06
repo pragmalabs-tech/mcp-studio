@@ -2,6 +2,7 @@ import { Action } from "./types";
 import type { StateChange, ToolState, WidgetState } from "@/lib/state/types";
 import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
+import { describeFocus } from "./utils/describe-focus";
 
 /**
  * Outcome data carried on `action.result.data`.
@@ -17,6 +18,10 @@ export interface WidgetClickResult {
   matchedSelector: string | null;
   matchedIndex: number;
   snapshot: string | null;
+  /** What held focus at the end of this step. A following text step reads this
+   *  (via the forward `previous` context) to decide whether this click opened an
+   *  editable editor worth re-opening. */
+  endFocus?: { selector: string; editable: boolean };
 }
 
 /** Dispatch `count` clicks (with increasing `detail`) plus a trailing
@@ -103,6 +108,21 @@ export class WidgetClickAction extends Action<{
     if (detail > this.data.detail) this.data.detail = detail;
   }
 
+  /** Re-run this click against the live element, without touching the settle
+   *  window or result. Used by a following text step to re-open an ephemeral
+   *  editor that was destroyed between steps. Returns true if an element
+   *  resolved and was clicked. */
+  reopen(doc: Document): boolean {
+    for (const sel of this.data.candidates) {
+      const found = doc.querySelector(sel);
+      if (found) {
+        dispatchClicks(doc, found as HTMLElement, this.data.detail);
+        return true;
+      }
+    }
+    return false;
+  }
+
   /** Resolves the open settle window. Idempotent. Called by store.execute()
    *  (next user action), recorder.stop() (end of slice), or the runner
    *  after expected events have arrived. */
@@ -186,11 +206,15 @@ export class WidgetClickAction extends Action<{
       useWidgetStore.setState({ openClick: null });
     }
 
+    // Report what holds focus at step end so a following text step can tell
+    // whether this click opened an editable editor worth re-opening.
+    const endFocus = describeFocus(doc);
     const snapshot = doc.documentElement.outerHTML;
     this.setResult(true, {
       matchedSelector,
       matchedIndex,
       snapshot,
+      endFocus,
     } satisfies WidgetClickResult);
   }
 

@@ -17,6 +17,13 @@ export interface ActionResult {
   error?: { message: string };
 }
 
+/** Forward-state passed into `execute()` so a step can react to what the
+ *  previous step left behind — e.g. a text step re-opening an ephemeral editor
+ *  by replaying the previous click. Optional; most actions ignore it. */
+export interface ExecuteContext {
+  previous?: Action;
+}
+
 /**
  * An Action is the studio's unit of recordable work. Each subclass owns
  * one MCP operation and exposes:
@@ -63,7 +70,7 @@ export abstract class Action<T = any> {
     this.timestamp = Date.now();
   }
 
-  abstract execute(): Promise<void>;
+  abstract execute(ctx?: ExecuteContext): Promise<void>;
 
   /** State delta this action contributes given its current `result`. */
   abstract change(): StateChange;

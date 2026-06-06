@@ -3,6 +3,7 @@ import type { StateChange, ToolState, WidgetState } from "@/lib/state/types";
 import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import type { CanvasLocator } from "./utils/widget-interaction-capture/types";
+import { describeFocus } from "./utils/describe-focus";
 
 /**
  * Outcome data on `action.result.data`.
@@ -15,6 +16,10 @@ export interface WidgetCanvasClickResult {
   nx: number;
   ny: number;
   snapshot: string | null;
+  /** What held focus at the end of this step. A following text step reads this
+   *  (via the forward `previous` context) to decide whether this click opened an
+   *  editable editor worth re-opening. */
+  endFocus?: { selector: string; editable: boolean };
 }
 
 /**
@@ -171,6 +176,24 @@ export class WidgetCanvasClickAction extends Action<{
     if (detail > this.data.detail) this.data.detail = detail;
   }
 
+  /** Re-run this click's taps against the live canvas, without touching the
+   *  settle window or result. Used by a following text step to re-open an
+   *  ephemeral editor (e.g. Excalidraw's wysiwyg textarea) that was destroyed
+   *  in the gap between steps, so the typing can happen while it's open.
+   *  Returns true if the canvas resolved and taps were dispatched. */
+  reopen(doc: Document): boolean {
+    const resolved = resolveCanvas(doc, this.data.canvas);
+    if (!resolved) return false;
+    dispatchTaps(
+      doc,
+      resolved.el,
+      this.data.nx,
+      this.data.ny,
+      this.data.detail,
+    );
+    return true;
+  }
+
   /** Resolves the open settle window. Idempotent. */
   close(): void {
     const r = this._closeResolve;
@@ -235,11 +258,16 @@ export class WidgetCanvasClickAction extends Action<{
       useWidgetStore.setState({ openClick: null });
     }
 
+    // Report what holds focus at step end so a following text step can tell
+    // whether this click opened an editable editor worth re-opening.
+    const endFocus = describeFocus(doc);
+
     this.setResult(true, {
       matchedSelector: resolved.selector,
       nx: this.data.nx,
       ny: this.data.ny,
       snapshot: doc.documentElement.outerHTML,
+      endFocus,
     } satisfies WidgetCanvasClickResult);
   }
 

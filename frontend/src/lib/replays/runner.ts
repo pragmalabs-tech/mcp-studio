@@ -95,6 +95,10 @@ export async function runReplay(
   const out: ReplayedAction[] = [];
   let anyFailed = false;
   let aborted = false;
+  // The previously executed action, threaded into the next step's execute() so
+  // it can react to what was left behind (e.g. a text step re-opening an
+  // ephemeral editor by replaying the prior click).
+  let previous: Action | undefined;
 
   try {
     for (let i = 0; i < steps.length; i++) {
@@ -126,7 +130,7 @@ export async function runReplay(
           // settle window).
           const expectedEvents =
             (source.action as { events?: unknown[] }).events?.length ?? 0;
-          const settled = action.execute();
+          const settled = action.execute({ previous });
           await waitUntil(() => action.events.length >= expectedEvents, 5000);
           await new Promise((r) => setTimeout(r, 150)); // DOM rerender grace
           action.close();
@@ -134,7 +138,7 @@ export async function runReplay(
         } else {
           // Direct action: execute resolves when its own I/O is done; events
           // accumulate synchronously via the bus during that window.
-          await action.execute();
+          await action.execute({ previous });
         }
       } catch (err) {
         // A thrown step (e.g. a widget click that can't be dispatched against
@@ -182,6 +186,7 @@ export async function runReplay(
         recordedActionId: recordedId,
       });
       onProgress?.({ step: i, total, action, phase: "after" });
+      previous = action;
     }
   } finally {
     recorder.resume();

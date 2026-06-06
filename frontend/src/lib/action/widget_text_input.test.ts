@@ -20,6 +20,7 @@ vi.mock("@/lib/studio/stores/widget-store", () => {
 });
 
 import { WidgetTextInputAction } from "./widget_text_input";
+import { WidgetClickAction } from "./widget_click";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { ToolsCallEvent } from "@/lib/event/tools_call";
 import { WidgetRenderEvent } from "@/lib/event/widget_render";
@@ -76,16 +77,111 @@ describe("WidgetTextInputAction", () => {
     expect(action.result?.error?.message).toBe("iframe not mounted");
   });
 
-  it("sets result.success=false when no candidate matches", async () => {
-    setupStore(`<input name="other" />`);
-    const action = new WidgetTextInputAction(
-      "w1",
-      ['input[name="q"]'],
-      "hello",
+  it("falls back to keyboard events at the document root when no candidate matches", async () => {
+    const { doc } = setupStore(`<input name="other" />`);
+    const keydowns: string[] = [];
+    doc.addEventListener("keydown", (e) =>
+      keydowns.push((e as KeyboardEvent).key),
     );
-    await action.execute();
-    expect(action.result?.success).toBe(false);
-    expect(action.result?.error?.message).toBe("element not found");
+
+    const action = new WidgetTextInputAction("w1", ['input[name="q"]'], "hi");
+    const settled = action.execute();
+    action.close();
+    await settled;
+
+    // Succeeds via fallback, but matchedSelector stays null so the `matched`
+    // assertion reflects that no selector hit.
+    expect(action.result?.success).toBe(true);
+    const data = action.result?.data as {
+      matchedSelector: string | null;
+      applied: boolean | null;
+    };
+    expect(data.matchedSelector).toBeNull();
+    // One keydown per character, bubbling up to the document listener.
+    expect(keydowns).toEqual(["h", "i"]);
+    // No listener called preventDefault, so we report the iframe did NOT react.
+    expect(data.applied).toBe(false);
+  });
+
+  it("reports applied=null (unverified) on the fallback path when a handler calls preventDefault", async () => {
+    const { doc } = setupStore(`<div>app widget</div>`);
+    doc.addEventListener("keydown", (e) => e.preventDefault());
+
+    const action = new WidgetTextInputAction("w1", ["#missing"], "go");
+    const settled = action.execute();
+    action.close();
+    await settled;
+
+    // A handler consumed the keys, but synthetic keystrokes can't prove text was
+    // entered (could be a shortcut), so we report "unknown", not success.
+    const data = action.result?.data as { applied: boolean | null };
+    expect(data.applied).toBeNull();
+  });
+
+  it("self-heals: re-opens an ephemeral editor via the previous step, then types", async () => {
+    // No editor present initially — mimics Excalidraw's wysiwyg textarea that
+    // was destroyed in the gap between steps.
+    const { doc } = setupStore(`<button id="open">add text</button>`);
+    // The previous step's click re-creates the editor (as a real double-click
+    // would in Excalidraw).
+    doc.getElementById("open")!.addEventListener("click", () => {
+      if (!doc.getElementById("ed")) {
+        const ta = doc.createElement("textarea");
+        ta.id = "ed";
+        doc.body.appendChild(ta);
+      }
+    });
+    const previous = new WidgetClickAction("w1", ["#open"]);
+    // The previous step reports it left an editable editor focused — the gate
+    // the text step uses to decide a re-open is worthwhile.
+    previous.setResult(true, {
+      matchedSelector: "#open",
+      matchedIndex: 0,
+      snapshot: "",
+      endFocus: { selector: "textarea#ed", editable: true },
+    });
+
+    const action = new WidgetTextInputAction("w1", ["#ed"], "hello");
+    const settled = action.execute({ previous });
+    action.close();
+    await settled;
+
+    // Editor re-opened, candidate found, value typed and accepted.
+    const ed = doc.getElementById("ed") as HTMLTextAreaElement;
+    expect(ed.value).toBe("hello");
+    const data = action.result?.data as {
+      matchedSelector: string | null;
+      applied: boolean | null;
+    };
+    expect(data.matchedSelector).toBe("#ed");
+    expect(data.applied).toBe(true);
+  });
+
+  it("reports applied=true on fallback when the app turns keys into input events (canvas-style)", async () => {
+    const { doc } = setupStore(`<div id="canvas">app</div>`);
+    // A canvas-style app that reads keydown and produces real text input.
+    doc.addEventListener("keydown", () => {
+      doc.body.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    const action = new WidgetTextInputAction("w1", ["#missing"], "ab");
+    const settled = action.execute();
+    action.close();
+    await settled;
+
+    const data = action.result?.data as { applied: boolean | null };
+    expect(data.applied).toBe(true);
+  });
+
+  it("reports applied=true when the matched field accepts the value", async () => {
+    setupStore(`<input id="q" />`);
+    const action = new WidgetTextInputAction("w1", ["#q"], "accepted");
+    const settled = action.execute();
+    action.close();
+    await settled;
+
+    const data = action.result?.data as { applied: boolean | null };
+    expect(data.applied).toBe(true);
   });
 
   it("falls back through the candidate list and records which matched", async () => {
