@@ -13,23 +13,12 @@ import { eventBus } from "@/lib/event";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import type { SavedTest } from "@/lib/tests/storage";
 import { saveReplay, type ReplayedAction, type SavedReplay } from "./storage";
+import { waitUntil } from "@/lib/utils";
 
 function nowMs(): number {
   return typeof performance !== "undefined" && performance.now
     ? performance.now()
     : Date.now();
-}
-
-/** Poll `pred` until it returns true, or `capMs` elapses. Step every 25ms. */
-async function waitUntil(
-  pred: () => boolean,
-  capMs: number,
-  stepMs = 25,
-): Promise<void> {
-  const deadline = Date.now() + capMs;
-  while (!pred() && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, stepMs));
-  }
 }
 
 export interface ReplayProgress {

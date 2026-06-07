@@ -4,6 +4,7 @@ import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import type { CanvasLocator } from "./utils/widget-interaction-capture/types";
 import { describeFocus } from "./utils/describe-focus";
+import { waitUntil } from "@/lib/utils";
 
 /**
  * Outcome data on `action.result.data`.
@@ -235,6 +236,9 @@ export class WidgetCanvasClickAction extends Action<{
       this.setResult(false, undefined, { message: "iframe not mounted" });
       return;
     }
+    // Canvas may not be in the DOM yet if the widget is still rendering —
+    // poll for up to 3s before giving up (matches step-by-step human delay).
+    await waitUntil(() => resolveCanvas(doc, this.data.canvas) !== null, 3000);
     const resolved = resolveCanvas(doc, this.data.canvas);
     if (!resolved) {
       this.setResult(false, undefined, { message: "canvas not found" });
