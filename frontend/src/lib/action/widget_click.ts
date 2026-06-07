@@ -3,7 +3,7 @@ import type { StateChange, ToolState, WidgetState } from "@/lib/state/types";
 import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { describeFocus } from "./utils/describe-focus";
-import { serializeDoc } from "./utils/serialize-doc";
+import { serializeDoc } from "./utils/snapshot/serialize-doc";
 
 /**
  * Outcome data carried on `action.result.data`.

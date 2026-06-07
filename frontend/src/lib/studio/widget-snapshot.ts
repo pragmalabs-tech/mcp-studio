@@ -1,7 +1,7 @@
 import { useWidgetStore } from "./stores/widget-store";
 import { eventBus, WidgetRenderEvent } from "../event";
 import type { MockData } from "./mock-openai";
-import { serializeDoc } from "../action/utils/serialize-doc";
+import { serializeDoc } from "../action/utils/snapshot/serialize-doc";
 
 /**
  * Schedules a DOM snapshot after `waitMs`, then stores it and emits

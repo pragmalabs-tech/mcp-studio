@@ -4,7 +4,7 @@ import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import type { CanvasLocator } from "./utils/widget-interaction-capture/types";
 import { describeFocus } from "./utils/describe-focus";
-import { serializeDoc } from "./utils/serialize-doc";
+import { serializeDoc } from "./utils/snapshot/serialize-doc";
 import { waitUntil } from "@/lib/utils";
 
 /**

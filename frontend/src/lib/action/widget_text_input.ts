@@ -5,7 +5,7 @@ import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { WidgetCanvasClickAction } from "./widget_canvas_click";
 import { WidgetClickAction } from "./widget_click";
-import { serializeDoc } from "./utils/serialize-doc";
+import { serializeDoc } from "./utils/snapshot/serialize-doc";
 
 export interface WidgetTextInputResult {
   matchedSelector: string | null;
