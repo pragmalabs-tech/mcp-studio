@@ -154,7 +154,7 @@ export class WidgetClickAction extends Action<{
     useWidgetStore.setState({ openClick: this });
     await new Promise<void>((resolve) => {
       this._closeResolve = resolve;
-      setTimeout(resolve, 30_000);
+      setTimeout(resolve, 5_000);
     });
     if (useWidgetStore.getState().openClick === this) {
       useWidgetStore.setState({ openClick: null });
@@ -200,7 +200,7 @@ export class WidgetClickAction extends Action<{
     // (store.execute, runner) should close us well before that.
     await new Promise<void>((resolve) => {
       this._closeResolve = resolve;
-      setTimeout(resolve, 30_000);
+      setTimeout(resolve, 5_000);
     });
 
     if (useWidgetStore.getState().openClick === this) {

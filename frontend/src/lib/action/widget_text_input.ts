@@ -213,7 +213,7 @@ export class WidgetTextInputAction extends Action<{
 
     await new Promise<void>((resolve) => {
       this._closeResolve = resolve;
-      setTimeout(() => this.close(), 30_000); // absolute safety cap
+      setTimeout(() => this.close(), 5_000); // absolute safety cap
       this._resetDebounce();
     });
 
@@ -416,7 +416,7 @@ export class WidgetTextInputAction extends Action<{
 
     await new Promise<void>((resolve) => {
       this._closeResolve = resolve;
-      setTimeout(resolve, 30_000);
+      setTimeout(resolve, 5_000);
     });
 
     if (useWidgetStore.getState().openTextInput === this) {

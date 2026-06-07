@@ -153,6 +153,7 @@ export class WidgetCanvasClickAction extends Action<{
   ];
 
   private _closeResolve?: () => void;
+  private _closeCalled = false;
   private _markRecorded!: () => void;
 
   /** Resolves AFTER the orchestrator has handed this action to the recorder. */
@@ -196,8 +197,11 @@ export class WidgetCanvasClickAction extends Action<{
     return true;
   }
 
-  /** Resolves the open settle window. Idempotent. */
+  /** Resolves the open settle window. Idempotent.
+   *  Safe to call before execute() has reached the settle window — the flag
+   *  is checked when the window opens and resolves it immediately. */
   close(): void {
+    this._closeCalled = true;
     const r = this._closeResolve;
     this._closeResolve = undefined;
     r?.();
@@ -214,8 +218,12 @@ export class WidgetCanvasClickAction extends Action<{
   async recordFromUserClick(doc: Document): Promise<void> {
     useWidgetStore.setState({ openClick: this });
     await new Promise<void>((resolve) => {
+      if (this._closeCalled) {
+        resolve();
+        return;
+      }
       this._closeResolve = resolve;
-      setTimeout(resolve, 30_000);
+      setTimeout(resolve, 5_000);
     });
     if (useWidgetStore.getState().openClick === this) {
       useWidgetStore.setState({ openClick: null });
@@ -256,8 +264,12 @@ export class WidgetCanvasClickAction extends Action<{
     );
 
     await new Promise<void>((resolve) => {
+      if (this._closeCalled) {
+        resolve();
+        return;
+      }
       this._closeResolve = resolve;
-      setTimeout(resolve, 30_000);
+      setTimeout(resolve, 5_000);
     });
     if (useWidgetStore.getState().openClick === this) {
       useWidgetStore.setState({ openClick: null });
