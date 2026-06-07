@@ -3,6 +3,7 @@ import { callTool, readResource } from "@/lib/studio/api";
 import type { StateChange } from "@/lib/state/types";
 import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
+import type { WidgetSnapshot } from "@/components/studio/preview/snapshot/snapshot";
 import { validateToolResult } from "@/lib/studio/validate-tool-result";
 import { raceWithTimeout } from "@/lib/core/util/race-with-timeout";
 import {
@@ -38,7 +39,7 @@ export interface ToolCallResult {
    *  Review artifact only — never string-compared in assertions. Null
    *  when no widget rendered or when `<WidgetPreview>` didn't resolve
    *  (component unmounted, timeout). */
-  snapshot: string | null;
+  snapshot: WidgetSnapshot | null;
 }
 
 export class ToolCallAction extends Action<{
@@ -150,7 +151,7 @@ export class ToolCallAction extends Action<{
         liveStore.resources,
       );
 
-      let snapshot: string | null = null;
+      let snapshot: WidgetSnapshot | null = null;
 
       if (widgetUri) {
         // Prefer the prefetched cache (loadAll fills it); fall back to a
@@ -188,7 +189,11 @@ export class ToolCallAction extends Action<{
             mock,
             waitMs,
           });
-          snapshot = await raceWithTimeout(ready, waitMs * 2 + 500, null);
+          snapshot = await raceWithTimeout<WidgetSnapshot | null>(
+            ready,
+            waitMs * 2 + 500,
+            null,
+          );
           store.logAction("system", `Widget "${widgetUri}" rendered`);
         } else {
           store.logAction("warn", `Widget "${widgetUri}" HTML missing`);

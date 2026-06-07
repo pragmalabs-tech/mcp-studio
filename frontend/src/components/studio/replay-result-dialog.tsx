@@ -37,6 +37,7 @@ import {
 } from "@/lib/replays/live-status";
 import type { RecordedAction } from "@/lib/recorder/schema";
 import { AssertionPointRow } from "./assertion-point-row";
+import { SnapshotIframeViewer } from "./preview/snapshot/ReviewSnapshot";
 
 interface ReplayResultDialogProps {
   open: boolean;
@@ -617,11 +618,10 @@ function SnapshotPane({
         {label}
       </div>
       {hasSnapshot ? (
-        <iframe
+        <SnapshotIframeViewer
           srcDoc={srcDoc}
-          sandbox=""
-          title={`Widget snapshot — ${label}`}
-          className="w-full h-80 rounded border bg-background"
+          title={label}
+          className="w-full h-80"
         />
       ) : (
         <div className="w-full h-80 rounded border bg-background/40 flex items-center justify-center text-muted-foreground italic text-[11px]">

@@ -96,7 +96,7 @@ export function WidgetRenderer({
     doc.write(injectedHtml);
     doc.close();
 
-    return scheduleWidgetSnapshot(targetId, doc, entry.mock, entry.waitMs);
+    return scheduleWidgetSnapshot(targetId, iframe, entry.mock, entry.waitMs);
   }, [
     targetId,
     injectedHtml,

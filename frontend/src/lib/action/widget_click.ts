@@ -3,7 +3,7 @@ import type { StateChange, ToolState, WidgetState } from "@/lib/state/types";
 import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { describeFocus } from "./utils/describe-focus";
-import { serializeDoc } from "./utils/snapshot/serialize-doc";
+import { serializeIframeDocument } from "../../components/studio/preview/snapshot/snapshot";
 
 /**
  * Outcome data carried on `action.result.data`.
@@ -159,7 +159,11 @@ export class WidgetClickAction extends Action<{
     if (useWidgetStore.getState().openClick === this) {
       useWidgetStore.setState({ openClick: null });
     }
-    const snapshot = serializeDoc(doc);
+    const snapshot =
+      serializeIframeDocument(
+        this.data.widgetId,
+        useWidgetStore.getState()._iframeRef!,
+      )?.html ?? null;
     this.setResult(true, {
       matchedSelector: opts.matchedSelector,
       matchedIndex: opts.matchedIndex,
@@ -210,7 +214,9 @@ export class WidgetClickAction extends Action<{
     // Report what holds focus at step end so a following text step can tell
     // whether this click opened an editable editor worth re-opening.
     const endFocus = describeFocus(doc);
-    const snapshot = serializeDoc(doc);
+    const snapshot =
+      serializeIframeDocument(this.data.widgetId, store._iframeRef!)?.html ??
+      null;
     this.setResult(true, {
       matchedSelector,
       matchedIndex,

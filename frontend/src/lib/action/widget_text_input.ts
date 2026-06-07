@@ -5,7 +5,7 @@ import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { WidgetCanvasClickAction } from "./widget_canvas_click";
 import { WidgetClickAction } from "./widget_click";
-import { serializeDoc } from "./utils/snapshot/serialize-doc";
+import { serializeIframeDocument } from "../../components/studio/preview/snapshot/snapshot";
 
 export interface WidgetTextInputResult {
   matchedSelector: string | null;
@@ -152,8 +152,12 @@ export class WidgetTextInputAction extends Action<{
    *  First caller wins — subsequent calls are no-ops. */
   private _captureSnapshot(): void {
     if (this._frozenSnapshot !== undefined) return;
-    const doc = useWidgetStore.getState()._iframeRef?.contentDocument;
-    if (doc) this._frozenSnapshot = serializeDoc(doc);
+    const iframe = useWidgetStore.getState()._iframeRef;
+    if (iframe)
+      this._frozenSnapshot = serializeIframeDocument(
+        this.data.widgetId,
+        iframe,
+      )?.html;
   }
 
   private _resetDebounce(): void {
@@ -426,7 +430,10 @@ export class WidgetTextInputAction extends Action<{
     this.setResult(true, {
       matchedSelector,
       matchedIndex,
-      snapshot: this._frozenSnapshot ?? serializeDoc(doc),
+      snapshot:
+        this._frozenSnapshot ??
+        serializeIframeDocument(this.data.widgetId, store._iframeRef!)?.html ??
+        null,
       applied,
     } satisfies WidgetTextInputResult);
   }

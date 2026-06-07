@@ -257,6 +257,18 @@ export function HistoryDrawer({ open, onOpenChange }: HistoryDrawerProps) {
     setSummaries((prev) => prev.filter((s) => !removed.has(s.id)));
   };
 
+  const handleClearAll = async () => {
+    const ok = await confirm({
+      title: "Clear all history?",
+      description: `Permanently deletes all ${summaries.length} replay result${summaries.length === 1 ? "" : "s"}. This can't be undone.`,
+      confirmLabel: "Clear all",
+      tone: "destructive",
+    });
+    if (!ok) return;
+    await Promise.all(summaries.map((s) => deleteReplay(s.id)));
+    setSummaries([]);
+  };
+
   return (
     <>
       <Drawer open={open} onOpenChange={onOpenChange}>
@@ -265,6 +277,17 @@ export function HistoryDrawer({ open, onOpenChange }: HistoryDrawerProps) {
             <DrawerTitle className="flex items-center gap-2">
               <History className="h-5 w-5" />
               History
+              {summaries.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="ml-auto h-7 px-2 text-destructive hover:text-destructive text-xs"
+                  onClick={handleClearAll}
+                >
+                  <Trash2 className="h-3 w-3 mr-1" />
+                  Clear all
+                </Button>
+              )}
             </DrawerTitle>
             <DrawerDescription>
               All replay runs, grouped by date and batch.

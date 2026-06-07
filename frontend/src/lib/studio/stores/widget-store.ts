@@ -35,6 +35,7 @@ import type {
   Widget,
   CspViolation,
 } from "./types";
+import type { WidgetSnapshot } from "@/components/studio/preview/snapshot/snapshot";
 
 export { VIEWPORT_PRESETS } from "./types";
 export type {
@@ -51,7 +52,10 @@ export type {
 };
 
 /** Resolvers parked by `insertWidget` and fulfilled by `setSnapshot`. */
-const _pendingSnapshots = new Map<string, (snap: string | null) => void>();
+const _pendingSnapshots = new Map<
+  string,
+  (snap: WidgetSnapshot | null) => void
+>();
 
 function closeOpenClick(): void {
   const open = useWidgetStore.getState().openClick;
@@ -284,8 +288,8 @@ interface WidgetState {
   insertWidget: (
     id: string,
     entry: Omit<Widget, "id" | "snapshot" | "injectedHtml">,
-  ) => Promise<string | null>;
-  setSnapshot: (id: string, snapshot: string) => void;
+  ) => Promise<WidgetSnapshot | null>;
+  setSnapshot: (id: string, snapshot: WidgetSnapshot | null) => void;
   loadWidget: () => Promise<void>;
   applyMock: () => void;
   injectMockData: (mockJson: string) => void;
@@ -601,7 +605,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
       _pendingSnapshots.delete(id);
     }
 
-    const ready = new Promise<string | null>((resolve) => {
+    const ready = new Promise<WidgetSnapshot | null>((resolve) => {
       _pendingSnapshots.set(id, resolve);
     });
 

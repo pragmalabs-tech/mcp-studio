@@ -1,4 +1,5 @@
 import type { MockData } from "../mock-openai";
+import type { WidgetSnapshot } from "@/components/studio/preview/snapshot/snapshot";
 import type { Action } from "@/lib/action";
 import type {
   Severity,
@@ -71,7 +72,7 @@ export interface Widget {
   injectedHtml: string;
   mock: MockData;
   waitMs: number;
-  snapshot: string | null;
+  snapshot: WidgetSnapshot | null;
 }
 
 export type AuthMethod = "oauth" | "bearer" | "custom";
