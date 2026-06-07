@@ -19,6 +19,7 @@ export function WidgetRenderer({
   const lastWrittenRef = useRef<{
     targetId: string;
     injectedHtml: string;
+    replayEpoch: number;
   } | null>(null);
 
   const activeWidgetId = useWidgetStore((s) => s.activeWidgetId);
@@ -33,6 +34,7 @@ export function WidgetRenderer({
   const getViewportSize = useWidgetStore((s) => s.getViewportSize);
   const autoHeight = useWidgetStore((s) => s.autoHeight);
   const replaySizeLock = useWidgetStore((s) => s.replaySizeLock);
+  const replayEpoch = useWidgetStore((s) => s.replayEpoch);
   const profileName = useProfileStore((s) => {
     const profile = s.profiles.find((p) => p.id === s.activeProfileId);
     return profile?.name ?? null;
@@ -52,15 +54,26 @@ export function WidgetRenderer({
     const doc = iframe?.contentDocument;
     if (!iframe || !doc) return;
 
-    // Skip re-write if this exact content is already live in the iframe
+    // Skip re-write if this exact content is already live in the iframe.
+    // replayEpoch is included so each new replay run forces a full re-injection
+    // even when injectedHtml is identical — otherwise the old widget instance
+    // keeps running with its previous internal state (edit mode, scroll, etc.).
     if (
       lastWrittenRef.current?.targetId === targetId &&
-      lastWrittenRef.current?.injectedHtml === injectedHtml
+      lastWrittenRef.current?.injectedHtml === injectedHtml &&
+      lastWrittenRef.current?.replayEpoch === replayEpoch
     ) {
       useWidgetStore.getState()._extAppsMock?.update(entry.mock);
       return;
     }
-    lastWrittenRef.current = { targetId, injectedHtml };
+    lastWrittenRef.current = { targetId, injectedHtml, replayEpoch };
+
+    // Reset to inline so the new widget starts from a clean display state.
+    // Pass displayMode:"inline" into the mock so the host-context sent during
+    // initialization also says "inline" — otherwise the widget reads its
+    // recorded displayMode from hostContext and immediately re-requests it,
+    // undoing the reset. The widget can still call requestDisplayMode itself.
+    useWidgetStore.setState({ displayMode: "inline" });
 
     const prev = useWidgetStore.getState()._extAppsMock;
     if (prev) {
@@ -69,7 +82,7 @@ export function WidgetRenderer({
     }
     const extAppsMock = createClaudeMock(
       iframe,
-      entry.mock,
+      { ...entry.mock, displayMode: "inline" },
       (method, args) => logAction(method, args),
       (name, args) => callTool(name, args),
       platform === "claude"
@@ -84,7 +97,15 @@ export function WidgetRenderer({
     doc.close();
 
     return scheduleWidgetSnapshot(targetId, doc, entry.mock, entry.waitMs);
-  }, [targetId, injectedHtml, entry, platform, logAction, addPendingMessage]);
+  }, [
+    targetId,
+    injectedHtml,
+    entry,
+    platform,
+    logAction,
+    addPendingMessage,
+    replayEpoch,
+  ]);
 
   // Destroy the mock when this component unmounts.
   useEffect(() => {

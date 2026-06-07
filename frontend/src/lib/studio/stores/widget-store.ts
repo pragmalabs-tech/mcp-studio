@@ -217,6 +217,10 @@ interface WidgetState {
    *  recorded canvas taps reproduce. Overrides preset/custom and the responsive
    *  pane-shrink. Null in normal use. */
   replaySizeLock: ViewportSize | null;
+  /** Incremented at the start of each replay run. The widget renderer includes
+   *  this in its "already written" guard so identical injectedHtml still forces
+   *  a full re-injection — clearing the widget's internal state between runs. */
+  replayEpoch: number;
 
   // Selection & editor
   selected: SelectedItem | null;
@@ -305,6 +309,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
   viewportPreset: "desktop" as ViewportPreset,
   viewportCustom: { width: 430, height: 932 },
   replaySizeLock: null,
+  replayEpoch: 0,
 
   selected: null,
   editorValue: defaultEditorValue(),

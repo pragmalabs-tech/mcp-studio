@@ -81,6 +81,7 @@ export async function runReplay(
   const total = steps.length;
 
   recorder.suspend();
+  useWidgetStore.setState((s) => ({ replayEpoch: s.replayEpoch + 1 }));
 
   // Lock the preview to the size the canvas was recorded at. Canvas widgets map
   // screen pixels to scene coordinates at a fixed zoom, so replaying at a

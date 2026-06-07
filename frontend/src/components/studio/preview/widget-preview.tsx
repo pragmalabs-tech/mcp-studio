@@ -18,6 +18,7 @@ export function WidgetPreview({ widgetId }: { widgetId?: string } = {}) {
     viewportPreset,
     viewportWidth: viewportSize.width,
     viewportHeight: viewportSize.height,
+    displayMode,
     isFullscreen,
   };
 

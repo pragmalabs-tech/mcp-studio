@@ -7,6 +7,7 @@ interface ChatShellProps {
   viewportPreset: string;
   viewportWidth: number;
   viewportHeight: number;
+  displayMode?: string;
   isFullscreen?: boolean;
   children: React.ReactNode;
 }
@@ -17,6 +18,7 @@ export function ChatShell({
   viewportPreset,
   viewportWidth,
   viewportHeight,
+  displayMode,
   isFullscreen,
   children,
 }: ChatShellProps) {
@@ -39,14 +41,28 @@ export function ChatShell({
         <span className="text-xs font-medium" style={{ color: colors.text }}>
           {platform === "claude" ? "Claude" : "ChatGPT"}
         </span>
-        <span
-          className="text-[10px] uppercase tracking-wider"
-          style={{ color: colors.muted }}
-        >
-          {viewportPreset === "custom"
-            ? `${viewportWidth}×${viewportHeight}`
-            : viewportPreset}
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className="text-[10px] uppercase tracking-wider"
+            style={{ color: colors.muted }}
+          >
+            {viewportPreset === "custom"
+              ? `${viewportWidth}×${viewportHeight}`
+              : viewportPreset}
+          </span>
+          {displayMode && displayMode !== "inline" && (
+            <span
+              className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded"
+              style={{
+                color: "#f59e0b",
+                border: "1px solid #f59e0b",
+                background: "rgba(245,158,11,0.1)",
+              }}
+            >
+              {displayMode}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Pre-widget messages — always in tree, hidden in fullscreen to keep children position stable */}
