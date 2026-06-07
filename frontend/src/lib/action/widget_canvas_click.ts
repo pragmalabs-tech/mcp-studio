@@ -4,6 +4,7 @@ import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import type { CanvasLocator } from "./utils/widget-interaction-capture/types";
 import { describeFocus } from "./utils/describe-focus";
+import { serializeDoc } from "./utils/serialize-doc";
 import { waitUntil } from "@/lib/utils";
 
 /**
@@ -224,7 +225,7 @@ export class WidgetCanvasClickAction extends Action<{
       matchedSelector: resolved?.selector ?? this.data.canvas.selector,
       nx: this.data.nx,
       ny: this.data.ny,
-      snapshot: doc.documentElement.outerHTML,
+      snapshot: serializeDoc(doc),
     } satisfies WidgetCanvasClickResult);
   }
 
@@ -270,7 +271,7 @@ export class WidgetCanvasClickAction extends Action<{
       matchedSelector: resolved.selector,
       nx: this.data.nx,
       ny: this.data.ny,
-      snapshot: doc.documentElement.outerHTML,
+      snapshot: serializeDoc(doc),
       endFocus,
     } satisfies WidgetCanvasClickResult);
   }

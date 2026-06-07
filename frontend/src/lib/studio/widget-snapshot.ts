@@ -1,6 +1,7 @@
 import { useWidgetStore } from "./stores/widget-store";
 import { eventBus, WidgetRenderEvent } from "../event";
 import type { MockData } from "./mock-openai";
+import { serializeDoc } from "../action/utils/serialize-doc";
 
 /**
  * Schedules a DOM snapshot after `waitMs`, then stores it and emits
@@ -13,7 +14,7 @@ export function scheduleWidgetSnapshot(
   waitMs: number,
 ): () => void {
   const timer = setTimeout(() => {
-    const snap = doc.documentElement.outerHTML;
+    const snap = serializeDoc(doc);
     useWidgetStore.getState().setSnapshot(targetId, snap);
     const meta = (mock?._meta ?? {}) as Record<string, unknown>;
     const ui = meta.ui as Record<string, unknown> | undefined;

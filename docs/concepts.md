@@ -213,3 +213,32 @@ ignore untrusted `keydown`. Producing trusted input needs an external driver
 (Playwright / CDP `chromiumoxide` / WebDriver `thirtyfour`) running a real
 Chromium below the page — a future automated-runner concern, not the in-browser
 replay. (Tauri is not a shortcut: its macOS WKWebView has no CDP.)
+
+---
+
+## 6. Widget Snapshots
+
+After each action settles, the studio captures the widget iframe's HTML and stores it as a **snapshot** on the action result. Snapshots are review artifacts — they are shown in the result dialog side-by-side (Recorded vs Replay) so you can visually compare what happened in the original recording against what happened during replay. They are never asserted.
+
+### The canvas problem
+
+The browser's `document.documentElement.outerHTML` serializes the DOM tree but **not** `<canvas>` pixel content. A canvas element's drawing lives in a GPU/memory buffer that is invisible to the DOM. When the snapshot HTML is rendered in the `SnapshotPane` preview (a sandboxed iframe with scripts blocked), every canvas appears blank — even if the original widget was showing a fully drawn diagram.
+
+For canvas-heavy widgets like Excalidraw this made the snapshot useless: you'd see an empty white box where the diagram should be.
+
+### The fix — `serializeDoc`
+
+Before serializing, `serializeDoc(doc)` (`lib/action/utils/serialize-doc.ts`):
+
+1. Finds every `<canvas>` in the live document.
+2. Calls `canvas.toDataURL()` on each to capture the current pixels as a base64 PNG.
+3. Clones the document tree and swaps each `<canvas>` for an `<img src="data:...">` carrying that PNG.
+4. Returns `outerHTML` of the modified clone.
+
+The result is a self-contained HTML string where canvas drawings are frozen as images. When rendered in the snapshot pane (no scripts needed), the diagram appears correctly.
+
+Two edge cases are handled silently:
+- **Tainted canvas** — `toDataURL()` throws a `SecurityError` if the canvas has drawn cross-origin content. The canvas element is left as-is (appears blank).
+- **Empty canvas** — `toDataURL()` returns the stub `"data:,"` for a canvas that was never drawn on. Left as-is too.
+
+`serializeDoc` is a no-op for documents with no canvas elements (returns `outerHTML` directly), so non-canvas widgets pay no cost.

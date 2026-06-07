@@ -5,6 +5,7 @@ import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { WidgetCanvasClickAction } from "./widget_canvas_click";
 import { WidgetClickAction } from "./widget_click";
+import { serializeDoc } from "./utils/serialize-doc";
 
 export interface WidgetTextInputResult {
   matchedSelector: string | null;
@@ -152,7 +153,7 @@ export class WidgetTextInputAction extends Action<{
   private _captureSnapshot(): void {
     if (this._frozenSnapshot !== undefined) return;
     const doc = useWidgetStore.getState()._iframeRef?.contentDocument;
-    if (doc) this._frozenSnapshot = doc.documentElement.outerHTML;
+    if (doc) this._frozenSnapshot = serializeDoc(doc);
   }
 
   private _resetDebounce(): void {
@@ -425,7 +426,7 @@ export class WidgetTextInputAction extends Action<{
     this.setResult(true, {
       matchedSelector,
       matchedIndex,
-      snapshot: this._frozenSnapshot ?? doc.documentElement.outerHTML,
+      snapshot: this._frozenSnapshot ?? serializeDoc(doc),
       applied,
     } satisfies WidgetTextInputResult);
   }
