@@ -3,6 +3,7 @@ import { modeExact } from "./modes/exact";
 import { modeShape } from "./modes/shape";
 import { modeFlaky } from "./modes/flaky";
 import { modeIgnore } from "./modes/ignore";
+import { modeWarn } from "./modes/warn";
 
 /**
  * One place to add a new mode: extend `Mode` in `types.ts`, add a file
@@ -22,5 +23,7 @@ export function compareByMode(
       return modeFlaky(expected, actual);
     case "ignore":
       return modeIgnore();
+    case "warn":
+      return modeWarn(expected, actual);
   }
 }

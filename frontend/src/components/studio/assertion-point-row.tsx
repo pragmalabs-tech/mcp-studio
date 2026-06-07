@@ -31,6 +31,8 @@ export interface AssertionPointRowProps {
   actual: unknown;
   /** Provided when this point failed verification. Defaults the row to expanded. */
   failure?: PointFailure;
+  /** Provided when this point mismatched in "warn" mode (non-fatal). Defaults the row to expanded. */
+  warning?: PointFailure;
   /** True when verifyAction reported `skipped` (no recorded baseline). */
   skipped?: boolean;
   onModeChange: (mode: Mode) => void;
@@ -42,6 +44,7 @@ const MODE_TOOLTIP: Record<Mode, string> = {
   flaky:
     "Deep equal, but skip uuids, iso-dates, jwts, epoch-ms. Scalar arrays are order-insensitive.",
   ignore: "Skip this point entirely; always passes.",
+  warn: "Compare values but never fail. Mismatch shows as a warning.",
 };
 
 export function AssertionPointRow({
@@ -50,18 +53,22 @@ export function AssertionPointRow({
   expected,
   actual,
   failure,
+  warning,
   skipped,
   onModeChange,
 }: AssertionPointRowProps) {
   const failed = !!failure;
+  const warned = !failed && !!warning;
   const status = failed
     ? "failed"
-    : skipped || mode === "ignore"
-      ? "skipped"
-      : "passed";
-  // Failures default to expanded; passing/ignored rows collapse to stay
+    : warned
+      ? "warning"
+      : skipped || mode === "ignore"
+        ? "skipped"
+        : "passed";
+  // Failures and warnings default to expanded; passing/ignored rows collapse to stay
   // scannable but can still be toggled to inspect values.
-  const [expanded, setExpanded] = useState(failed);
+  const [expanded, setExpanded] = useState(failed || warned);
   const Chevron = expanded ? ChevronDownIcon : ChevronRightIcon;
   const hasDiff = expected !== undefined || actual !== undefined;
 
@@ -71,7 +78,9 @@ export function AssertionPointRow({
         "rounded border",
         failed
           ? "border-destructive/30 bg-destructive/5"
-          : "border-border bg-background/40",
+          : warned
+            ? "border-warning/30 bg-warning/5"
+            : "border-border bg-background/40",
       )}
     >
       {/* Header is a plain row of siblings (NOT a single <button>) so the
@@ -104,6 +113,10 @@ export function AssertionPointRow({
             <span className="text-[11px] text-destructive truncate max-w-[40%]">
               {failure.reason}
             </span>
+          ) : warned ? (
+            <span className="text-[11px] text-warning truncate max-w-[40%]">
+              {warning.reason}
+            </span>
           ) : null}
         </button>
         <Select value={mode} onValueChange={(v) => onModeChange(v as Mode)}>
@@ -128,7 +141,7 @@ export function AssertionPointRow({
             </div>
             <JsonView
               value={expected}
-              diffAgainst={failed ? actual : undefined}
+              diffAgainst={failed || warned ? actual : undefined}
             />
           </div>
           <div className="min-w-0">
@@ -137,7 +150,7 @@ export function AssertionPointRow({
             </div>
             <JsonView
               value={actual}
-              diffAgainst={failed ? expected : undefined}
+              diffAgainst={failed || warned ? expected : undefined}
             />
           </div>
         </div>

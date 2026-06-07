@@ -1,6 +1,6 @@
-export type AssertStatus = "passed" | "failed" | "skipped";
+export type AssertStatus = "passed" | "failed" | "skipped" | "warn";
 
-export type Mode = "exact" | "shape" | "flaky" | "ignore";
+export type Mode = "exact" | "shape" | "flaky" | "ignore" | "warn";
 
 /**
  * One assertable surface on an Action. Declared as a static array on each
@@ -38,6 +38,9 @@ export interface AssertResult {
     reason?: string;
     /** Populated by `verifyAction` when one or more points failed. */
     failures?: PointFailure[];
+    /** Populated by `verifyAction` for points in "warn" mode that mismatched.
+     *  Does not affect the overall status — the step still passes. */
+    warnings?: PointFailure[];
   };
 }
 

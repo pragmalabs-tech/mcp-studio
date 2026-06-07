@@ -35,6 +35,7 @@ export function verifyAction(
   }
 
   const failures: PointFailure[] = [];
+  const warnings: PointFailure[] = [];
   for (const point of points) {
     const mode = modes?.[point.key] ?? point.defaultMode;
     if (mode === "ignore") continue;
@@ -49,14 +50,34 @@ export function verifyAction(
         actual: got,
         reason: cmp.data.reason ?? "mismatch",
       });
+    } else if (cmp.status === "warn") {
+      warnings.push({
+        key: point.key,
+        mode,
+        expected,
+        actual: got,
+        reason: cmp.data.reason ?? "mismatch",
+      });
     }
   }
 
   if (failures.length) {
     return {
       status: "failed",
-      data: { expected: recorded, actual, failures },
+      data: {
+        expected: recorded,
+        actual,
+        failures,
+        ...(warnings.length ? { warnings } : {}),
+      },
     };
   }
-  return { status: "passed", data: { expected: recorded, actual } };
+  return {
+    status: "passed",
+    data: {
+      expected: recorded,
+      actual,
+      ...(warnings.length ? { warnings } : {}),
+    },
+  };
 }

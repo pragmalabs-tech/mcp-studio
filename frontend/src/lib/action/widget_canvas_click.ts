@@ -138,15 +138,15 @@ export class WidgetCanvasClickAction extends Action<{
       key: "matched",
       label: "Canvas found",
       path: "data.matchedSelector",
-      defaultMode: "exact",
-      supportedModes: ["exact", "ignore"],
+      defaultMode: "warn",
+      supportedModes: ["warn", "exact", "ignore"],
     },
     {
       key: "errorMessage",
       label: "Error message",
       path: "error.message",
-      defaultMode: "exact",
-      supportedModes: ["exact", "shape", "ignore"],
+      defaultMode: "warn",
+      supportedModes: ["warn", "exact", "shape", "ignore"],
     },
   ];
 

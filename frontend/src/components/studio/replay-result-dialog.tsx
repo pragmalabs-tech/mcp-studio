@@ -363,6 +363,9 @@ function ActionAssertions({
   const failureByKey = new Map(
     (live.data.failures ?? []).map((f) => [f.key, f]),
   );
+  const warningByKey = new Map(
+    (live.data.warnings ?? []).map((w) => [w.key, w]),
+  );
 
   const aggregateStatus: Status =
     live.status === "failed"
@@ -418,6 +421,7 @@ function ActionAssertions({
             expected={getByPath(recordedResult, p.path)}
             actual={getByPath(liveResult, p.path)}
             failure={failureByKey.get(p.key)}
+            warning={warningByKey.get(p.key)}
             skipped={recordedResult === undefined}
             onModeChange={(m) => onModeChange(p.key, m)}
           />
