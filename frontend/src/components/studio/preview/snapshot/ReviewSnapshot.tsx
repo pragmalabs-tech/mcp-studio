@@ -74,7 +74,7 @@ export function SnapshotIframeViewer({
   );
 }
 
-export function DemoSnapshotViewer({ snapshot }: { snapshot: WidgetSnapshot }) {
+export function SnapshotViewer({ snapshot }: { snapshot: WidgetSnapshot }) {
   const srcDoc = `<style>html,body{margin:0}</style>${snapshot.html}`;
   return (
     <SnapshotIframeViewer

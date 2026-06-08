@@ -96,7 +96,7 @@ export function WidgetRenderer({
     doc.write(injectedHtml);
     doc.close();
 
-    return scheduleWidgetSnapshot(targetId, iframe, entry.mock, entry.waitMs);
+    return scheduleWidgetSnapshot(targetId, entry.mock, entry.waitMs);
   }, [
     targetId,
     injectedHtml,
@@ -195,6 +195,7 @@ export function WidgetRenderer({
       </div>
       <iframe
         ref={setIframe}
+        id={targetId ? `widget-iframe-${targetId}` : undefined}
         style={{ height: fullscreen ? "100%" : viewportSize.height }}
         className={fullscreen ? "w-full h-full block" : "w-full block"}
         sandbox="allow-scripts allow-forms allow-modals allow-popups allow-same-origin"

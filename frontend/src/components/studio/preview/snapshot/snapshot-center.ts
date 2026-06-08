@@ -1,28 +1,37 @@
 import { serializeIframeDocument, type WidgetSnapshot } from "./snapshot";
 
+export type WidgetId = string;
+export type SnapshotId = string;
+
+export function getWidgetIframe(widgetId: WidgetId): HTMLIFrameElement | null {
+  return document.getElementById(
+    `widget-iframe-${widgetId}`,
+  ) as HTMLIFrameElement | null;
+}
+
 type SnapshotCenterRegisterItem = {
-  id: string;
-  html: HTMLIFrameElement;
+  id: SnapshotId;
+  widgetId: WidgetId;
   timeout_ms: number;
   result?: WidgetSnapshot;
   isProcessing: boolean;
 };
 
 type ISnapshotCenterRegister = {
-  [key: string]: SnapshotCenterRegisterItem;
+  [key: SnapshotId]: SnapshotCenterRegisterItem;
 };
 
 class SnapshotCenterRegister {
   private _register: ISnapshotCenterRegister = {};
-  private _timeoutFns: Record<string, number> = {};
+  private _timeoutFns: Record<SnapshotId, number> = {};
 
-  register(id: string, html: HTMLIFrameElement, timeout_ms: number): void {
+  register(id: SnapshotId, widgetId: WidgetId, timeout_ms: number): void {
     if (this._register[id]) {
       console.warn(`Snapshot already registered for ${id}, skipping`);
       return;
     }
 
-    this._register[id] = { id, html, timeout_ms, isProcessing: false };
+    this._register[id] = { id, widgetId, timeout_ms, isProcessing: false };
     this._timeoutFns[id] = setTimeout(() => {
       const data = this._register[id];
       if (data) {
@@ -33,7 +42,7 @@ class SnapshotCenterRegister {
     }, timeout_ms);
   }
 
-  takeSnapshot(id: string): void {
+  takeSnapshot(id: SnapshotId): void {
     const data = this._register[id];
     if (!data) {
       console.log("Cannot find data for snapshot", id);
@@ -48,7 +57,7 @@ class SnapshotCenterRegister {
     extractDataForSnapshot(data);
   }
 
-  getResult(id: string): WidgetSnapshot | undefined {
+  getResult(id: SnapshotId): WidgetSnapshot | undefined {
     return this._register[id]?.result;
   }
 }
@@ -64,8 +73,16 @@ function extractDataForSnapshot(data: SnapshotCenterRegisterItem) {
     return;
   }
 
+  const iframe = getWidgetIframe(data.widgetId);
+  if (!iframe) {
+    console.warn(
+      `Cannot find iframe for widget ${data.widgetId} (snapshot ${data.id})`,
+    );
+    return;
+  }
+
   data.isProcessing = true;
-  const snapshot = serializeIframeDocument(data.id, data.html);
+  const snapshot = serializeIframeDocument(data.id, iframe);
   data.result = snapshot;
 }
 
