@@ -3,157 +3,245 @@ import Base from "../layouts/Base.astro";
 import Nav from "../components/Nav.astro";
 import Footer from "../components/Footer.astro";
 
-// TODO: replace with real YouTube video ID when ready
 const VIDEO_ID = "";
 ---
 
 <Base>
   <Nav />
 
-  <main class="max-w-5xl mx-auto px-4">
-    <!-- Hero -->
-    <section class="pt-24 pb-10">
-      <p
-        class="text-xs font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-6"
-      >
-        [ MCP Studio ]
-      </p>
-      <h1
-        class="text-4xl sm:text-5xl font-bold leading-tight text-[var(--foreground)] mb-6 max-w-2xl"
-      >
-        The interactive test studio for MCP apps.
-      </h1>
-      <p
-        class="text-base text-[var(--muted-foreground)] max-w-xl leading-relaxed mb-10"
-      >
-        Interact with your MCP app in Studio: <span
-          class="text-[var(--foreground)] font-semibold"
-          >call tools, test widgets</span
-        >, and see them render live in your browser. Turn any interactive
-        session into an
-        <span class="text-[var(--foreground)] font-semibold"
-          >automated end-to-end test within 5 minutes.</span
-        >
-      </p>
+  <main class="overflow-hidden">
+    <section class="pt-16 flex flex-col xl:flex-row xl:items-start px-8 xl:pl-8 xl:pr-0 gap-12 xl:gap-16">
 
-      <!-- Terminal -->
-      <div
-        class="border border-[var(--border)] bg-[var(--card)] overflow-hidden mb-8"
-      >
-        <div
-          class="flex items-center gap-1.5 px-3 py-2 border-b border-[var(--border)]"
-        >
-          <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
-          <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
-          <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
-          <span class="ml-2 text-xs text-[var(--muted-foreground)]"
-            >terminal</span
-          >
+      <!-- Hero content -->
+      <div class="w-full xl:flex-shrink-0 xl:w-[440px] py-8 pb-8 xl:pb-20">
+        <p class="text-xs font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-6">
+          [ MCP Studio ]
+        </p>
+        <h1 class="text-4xl sm:text-5xl font-bold leading-tight text-[var(--foreground)] mb-6">
+          The E2E Test Studio for <span class="text-emerald-500 dark:text-emerald-400">MCP Apps</span>.
+        </h1>
+        <p class="text-base text-[var(--muted-foreground)] leading-relaxed mb-10">
+          Call tools, inject mock data, and preview widgets live in your browser.
+          Turn any interactive session into an automated end-to-end test in minutes.
+        </p>
+
+        <div class="flex flex-col gap-3">
+          {[
+            { label: "install", code: "curl -fsSL https://studio.pragmalabs.tech/install.sh | sh" },
+            { label: "run",     code: "mcp-studio" },
+          ].map((t) => (
+            <div class="border border-[var(--border)] bg-[var(--card)] overflow-hidden">
+              <div class="flex items-center gap-1.5 px-3 py-2 border-b border-[var(--border)]">
+                <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
+                <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
+                <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
+                <span class="ml-2 text-xs text-[var(--muted-foreground)]">{t.label}</span>
+                <button
+                  class="copy-btn ml-auto text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+                  data-copy={t.code}
+                  title="Copy"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                </button>
+              </div>
+              <pre class="px-4 py-4 text-xs text-[var(--foreground)] leading-relaxed overflow-hidden"><code><span class="text-emerald-400">$</span> {t.code}</code></pre>
+            </div>
+          ))}
         </div>
-        <pre
-          class="px-4 py-4 text-xs text-[var(--foreground)] leading-relaxed"><code><span class="text-[var(--muted-foreground)]"># Install</span>
-<span class="text-emerald-400">$</span> curl -fsSL https://studio.pragmalabs.tech/install.sh | sh
-
-<span class="text-[var(--muted-foreground)]"># Run</span>
-<span class="text-emerald-400">$</span> mcp-studio</code></pre>
       </div>
 
-      <a
-        href="/docs"
-        class="inline-flex items-center h-9 px-4 text-sm font-medium border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:border-[var(--foreground)] transition-colors"
-      >
-        Read the docs
-      </a>
-    </section>
-
-    <!-- Video -->
-    <section class="pb-16">
-      {
-        VIDEO_ID ? (
-          <div class="border border-[var(--border)] overflow-hidden aspect-video">
-            <iframe
-              src={`https://www.youtube.com/embed/${VIDEO_ID}`}
-              title="MCP Studio demo"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowfullscreen
-              class="w-full h-full"
+      <!-- Screenshot with hover play button -->
+      <div class="flex-1 min-w-0 group relative cursor-pointer" id="demo-trigger">
+        <!-- Window chrome -->
+        <div class="border border-[var(--border)] bg-[var(--card)] overflow-hidden">
+          <div class="flex items-center gap-1.5 px-3 py-2 border-b border-[var(--border)]">
+            <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
+            <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
+            <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
+            <span class="ml-2 text-xs text-[var(--muted-foreground)]">mcp studio</span>
+          </div>
+          <div class="relative">
+            <img
+              src="/screenshots/mcp-studio.png"
+              alt="MCP Studio interface"
+              class="w-full block"
             />
+            <!-- Hover overlay -->
+            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+              <div class="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                <!-- Play icon -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#111" class="ml-1">
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+              </div>
+            </div>
           </div>
-        ) : (
-          <div class="border border-dashed border-[var(--border)] aspect-video flex flex-col items-center justify-center gap-3 text-[var(--muted-foreground)]">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="32"
-              height="32"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-            <span class="text-sm">Video coming soon</span>
-          </div>
-        )
-      }
+        </div>
+      </div>
+
     </section>
 
-    <!-- Features -->
-    <section class="pb-24">
-      <p
-        class="text-xs font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-6"
-      >
-        [ What you can do ]
-      </p>
+    <!-- How it works: Cypress-style sticky left image + scrollable right steps -->
+    <section class="py-24 px-8 max-w-screen-xl mx-auto">
 
-      <div
-        class="grid grid-cols-1 sm:grid-cols-2 gap-px border border-[var(--border)]"
-      >
-        {
-          [
-            {
-              label: "Manual testing",
-              href: "/docs/manual-testing",
-              items: [
-                "Call tools with custom arguments",
-                "Inject mock data and preview widgets live",
-                "Switch between Claude, ChatGPT, desktop, and mobile views to preview your widget",
-              ],
-            },
-            {
-              label: "Automation E2E Testing",
-              href: "/docs/automation",
-              items: [
-                "Record any session into an end-to-end test",
-                "Replay step-by-step or auto-play",
-                "Organize tests with tags",
-                "Assertion modes: exact, shape, flaky, ignore",
-              ],
-            },
-          ].map((col) => (
-            <a
-              href={col.href}
-              class="block bg-[var(--card)] p-6 hover:bg-[var(--secondary)] transition-colors"
-            >
-              <p class="text-sm font-semibold text-[var(--foreground)] mb-4">
-                {col.label}
+      <!-- Header -->
+      <div class="text-center mb-20">
+        <p class="text-xs font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-4">
+          [ How it works ]
+        </p>
+        <h2 class="text-3xl sm:text-4xl font-bold text-[var(--foreground)] leading-tight">
+          Record, test, and replay <span class="text-emerald-500 dark:text-emerald-400">like never before</span>.
+        </h2>
+      </div>
+
+      <!-- Steps: image left, timeline dot + text right -->
+      <div class="relative flex flex-col gap-16">
+        <!-- Vertical line running through all dots -->
+        <div class="hidden lg:block absolute left-1/2 top-0 bottom-0 w-px border-l border-dashed border-[var(--border)]"></div>
+
+        {[
+          {
+            title: "Hit Record Test",
+            desc: "Click the Record Test button in the toolbar. Every tool call and widget interaction from this point is captured automatically — no code to write.",
+            href: "/docs/manual-testing",
+            img: null,
+            label: "Screenshot: Record Test button active in toolbar",
+          },
+          {
+            title: "Call your MCP tools",
+            desc: "Invoke any tool with custom arguments. Inject mock data without touching your code. Responses appear instantly in the log.",
+            href: "/docs/manual-testing",
+            img: "/screenshots/mcp-studio.png",
+            label: null,
+          },
+          {
+            title: "Interact with the widget",
+            desc: "See your widget render live in the browser. Switch between ChatGPT, Claude, desktop, and mobile viewports to test every context your users encounter.",
+            href: "/docs/manual-testing",
+            img: null,
+            label: "Screenshot: Widget preview — viewport switcher (ChatGPT / Claude / Desktop / Mobile)",
+          },
+          {
+            title: "Stop and save",
+            desc: "Click Stop Record Test. The session is saved as a named, reproducible E2E test in seconds.",
+            href: "/docs/automation",
+            img: null,
+            label: "Screenshot: Save test modal after Stop Record Test",
+          },
+          {
+            title: "Replay on every change",
+            desc: "Run the full test suite after any release or code change. Four assertion modes — exact, shape, flaky, ignore — give you precise control over what counts as a failure.",
+            href: "/docs/assertions",
+            img: null,
+            label: "Screenshot: Tests page with replay results",
+          },
+        ].map((step, i) => {
+          const isEven = i % 2 === 0;
+          const imageBlock = (
+            <div>
+              {step.img
+                ? (
+                  <div class="border border-[var(--border)] overflow-hidden">
+                    <div class="flex items-center gap-1.5 px-3 py-2 border-b border-[var(--border)]">
+                      <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
+                      <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
+                      <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
+                      <span class="ml-2 text-xs text-[var(--muted-foreground)]">mcp studio</span>
+                    </div>
+                    <img src={step.img} alt={step.title} class="w-full block" />
+                  </div>
+                )
+                : (
+                  <div class="border border-dashed border-[var(--border)] aspect-video flex flex-col items-center justify-center gap-3 text-center px-6">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-30">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                    <span class="text-xs text-[var(--muted-foreground)] leading-relaxed">{step.label}</span>
+                  </div>
+                )
+              }
+            </div>
+          );
+          const textBlock = (
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-widest text-emerald-500 dark:text-emerald-400 mb-3">
+                {String(i + 1).padStart(2, "0")}
               </p>
-              <ul class="flex flex-col gap-2">
-                {col.items.map((item) => (
-                  <li class="flex gap-2 text-sm text-[var(--muted-foreground)]">
-                    <span class="mt-1.5 shrink-0 w-1 h-1 bg-[var(--muted-foreground)]" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </a>
-          ))
-        }
+              <h3 class="text-lg font-bold text-[var(--foreground)] mb-3">{step.title}</h3>
+              <p class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-4">{step.desc}</p>
+              <a href={step.href} class="text-xs font-semibold text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors">
+                Learn more &rsaquo;
+              </a>
+            </div>
+          );
+          return (
+            <div class="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-6 lg:gap-12 items-center">
+              {isEven ? imageBlock : textBlock}
+              <!-- Center: step number dot -->
+              <div class="hidden lg:flex flex-col items-center justify-center gap-1 z-10">
+                <div class="w-9 h-9 rounded-full border border-[var(--border)] bg-[var(--background)] flex items-center justify-center text-[10px] font-bold text-emerald-500 dark:text-emerald-400">
+                  {String(i + 1).padStart(2, "0")}
+                </div>
+              </div>
+              {isEven ? textBlock : imageBlock}
+            </div>
+          );
+        })}
       </div>
     </section>
+
   </main>
+
+  <!-- Demo modal (wired up when VIDEO_ID is set) -->
+  <div id="demo-modal" class="hidden fixed inset-0 z-50 bg-black/80 items-center justify-center p-8">
+    <button id="demo-modal-close" class="absolute top-4 right-5 text-white text-3xl leading-none opacity-60 hover:opacity-100">&times;</button>
+    <div class="w-full max-w-4xl aspect-video">
+      {VIDEO_ID
+        ? <iframe id="demo-iframe" src={`https://www.youtube.com/embed/${VIDEO_ID}?autoplay=1`} class="w-full h-full" allow="autoplay; encrypted-media" allowfullscreen />
+        : <div class="w-full h-full border border-[var(--border)] flex items-center justify-center text-[var(--muted-foreground)] text-sm">Video coming soon</div>
+      }
+    </div>
+  </div>
 
   <Footer />
 </Base>
+
+<script>
+  // Copy buttons
+  function initCopy() {
+    document.querySelectorAll<HTMLButtonElement>(".copy-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const text = btn.dataset.copy!;
+        await navigator.clipboard.writeText(text);
+        const original = btn.innerHTML;
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+        btn.style.color = "rgb(16 185 129)";
+        setTimeout(() => { btn.innerHTML = original; btn.style.color = ""; }, 1500);
+      });
+    });
+  }
+  initCopy();
+  document.addEventListener("astro:page-load", initCopy);
+
+  const trigger = document.getElementById("demo-trigger")!;
+  const modal = document.getElementById("demo-modal")!;
+  const closeBtn = document.getElementById("demo-modal-close")!;
+
+  trigger.addEventListener("click", () => {
+    modal.classList.remove("hidden");
+    modal.classList.add("flex");
+    document.body.style.overflow = "hidden";
+  });
+
+  function closeModal() {
+    modal.classList.add("hidden");
+    modal.classList.remove("flex");
+    document.body.style.overflow = "";
+  }
+
+  closeBtn.addEventListener("click", closeModal);
+  modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+</script>
