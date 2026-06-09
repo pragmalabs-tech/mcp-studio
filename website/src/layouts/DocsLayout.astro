@@ -173,4 +173,22 @@ const next = currentIndex < pages.length - 1 ? pages[currentIndex + 1] : null;
 
   buildToc();
   document.addEventListener("astro:page-load", buildToc);
+
+  function initCopy() {
+    document.querySelectorAll<HTMLButtonElement>(".copy-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const text = btn.dataset.copy!;
+        await navigator.clipboard.writeText(text);
+        const original = btn.innerHTML;
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+        btn.style.color = "rgb(16 185 129)";
+        setTimeout(() => {
+          btn.innerHTML = original;
+          btn.style.color = "";
+        }, 1500);
+      });
+    });
+  }
+  initCopy();
+  document.addEventListener("astro:page-load", initCopy);
 </script>

@@ -252,14 +252,20 @@ const VIDEO_ID = "vCbNQKFpN78";
             return (
               <div class="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-6 lg:gap-12 items-center">
                 {/* Text always first in DOM → always on top on mobile */}
-                <div class={isEven ? "lg:order-3" : "lg:order-1"}>{textBlock}</div>
-                <div class={`hidden lg:flex flex-col items-center justify-center gap-1 z-10 lg:order-2`}>
+                <div class={isEven ? "lg:order-3" : "lg:order-1"}>
+                  {textBlock}
+                </div>
+                <div
+                  class={`hidden lg:flex flex-col items-center justify-center gap-1 z-10 lg:order-2`}
+                >
                   <div class="w-9 h-9 rounded-full border border-[var(--border)] bg-[var(--background)] flex items-center justify-center text-[10px] font-bold text-emerald-500 dark:text-emerald-400">
                     {String(i + 1).padStart(2, "0")}
                   </div>
                 </div>
                 {/* Image always last in DOM → always below text on mobile */}
-                <div class={isEven ? "lg:order-1" : "lg:order-3"}>{imageBlock}</div>
+                <div class={isEven ? "lg:order-1" : "lg:order-3"}>
+                  {imageBlock}
+                </div>
               </div>
             );
           })
