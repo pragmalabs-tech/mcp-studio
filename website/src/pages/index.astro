@@ -171,28 +171,28 @@ const VIDEO_ID = "vCbNQKFpN78";
               title: "Call your MCP tools",
               desc: "Invoke any tool with custom arguments. Inject mock data without touching your code. Responses appear instantly in the log.",
               href: "/docs/manual-testing",
-              img: "/screenshots/mcp-studio.png",
+              img: "/screenshots/mcp-studio-execute-tool.gif",
               label: null,
             },
             {
               title: "Interact with the widget",
               desc: "See your widget render live in the browser. Switch between ChatGPT, Claude, desktop, and mobile viewports to test every context your users encounter.",
               href: "/docs/manual-testing",
-              img: "/screenshots/mcp-studio-widget-interactive.png",
+              img: "/screenshots/mcp-studio-interactive-with-widget.gif",
               label: null,
             },
             {
               title: "Stop and save",
               desc: "Click Stop Record Test. The session is saved as a named, reproducible E2E test in seconds.",
               href: "/docs/automation",
-              img: "/screenshots/mcp-studio-show-test.png",
+              img: "/screenshots/mcp-studio-stop-record-test.png",
               label: null,
             },
             {
               title: "Replay on every change",
               desc: "Run the full test suite after any release or code change. Four assertion modes — exact, shape, flaky, ignore — give you precise control over what counts as a failure.",
               href: "/docs/assertions",
-              img: "/screenshots/mcp-studio-replay-result.png",
+              img: "/screenshots/mcp-studio-replay-test.gif",
               label: null,
             },
           ].map((step, i) => {
@@ -251,13 +251,15 @@ const VIDEO_ID = "vCbNQKFpN78";
             );
             return (
               <div class="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-6 lg:gap-12 items-center">
-                {isEven ? imageBlock : textBlock}
-                <div class="hidden lg:flex flex-col items-center justify-center gap-1 z-10">
+                {/* Text always first in DOM → always on top on mobile */}
+                <div class={isEven ? "lg:order-3" : "lg:order-1"}>{textBlock}</div>
+                <div class={`hidden lg:flex flex-col items-center justify-center gap-1 z-10 lg:order-2`}>
                   <div class="w-9 h-9 rounded-full border border-[var(--border)] bg-[var(--background)] flex items-center justify-center text-[10px] font-bold text-emerald-500 dark:text-emerald-400">
                     {String(i + 1).padStart(2, "0")}
                   </div>
                 </div>
-                {isEven ? textBlock : imageBlock}
+                {/* Image always last in DOM → always below text on mobile */}
+                <div class={isEven ? "lg:order-1" : "lg:order-3"}>{imageBlock}</div>
               </div>
             );
           })

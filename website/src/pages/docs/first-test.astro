@@ -13,11 +13,21 @@ import AppWindow from "../../components/AppWindow.astro";
     Your first test
   </h1>
   <p
-    class="text-base text-[var(--muted-foreground)] max-w-lg leading-relaxed mb-12"
+    class="text-base text-[var(--muted-foreground)] max-w-lg leading-relaxed mb-8"
   >
     Test your MCP application manually, then turn your session into an automated
     end-to-end test in under 5 minutes.
   </p>
+
+  <div class="mb-12 border border-[var(--border)] overflow-hidden aspect-video">
+    <iframe
+      src="https://www.youtube.com/embed/vCbNQKFpN78?vq=hd2160"
+      title="MCP Studio demo"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      allowfullscreen
+      class="w-full h-full"
+    />
+  </div>
 
   <ol class="flex flex-col gap-8">
     <li class="flex gap-4">
@@ -70,8 +80,8 @@ import AppWindow from "../../components/AppWindow.astro";
           class="mt-4"
         >
           <img
-            src="/screenshots/edit-profile.png"
-            alt="Profile editor in MCP Studio"
+            src="/screenshots/mcp-studio-setup-profile.gif"
+            alt="Setting up a profile in MCP Studio"
             class="w-full block"
             data-lightbox
           />
@@ -84,17 +94,26 @@ import AppWindow from "../../components/AppWindow.astro";
         class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
         >3</span
       >
-      <div>
+      <div class="flex-1">
         <h2
           id="call-a-tool"
           class="text-sm font-semibold text-[var(--foreground)] mb-1"
         >
           Call a tool
         </h2>
-        <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
-          [Pick a tool from the sidebar, fill in the arguments, and run it. Show
-          where the result appears.]
+        <p class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-4">
+          Pick a tool from the sidebar, fill in the arguments under the Tool
+          Arguments tab, and click Execute. The response appears in the Logs
+          panel below.
         </p>
+        <AppWindow caption="Executing a tool and inspecting the response in the log." class="mt-2">
+          <img
+            src="/screenshots/mcp-studio-execute-tool.gif"
+            alt="Calling a tool in MCP Studio"
+            class="w-full block"
+            data-lightbox
+          />
+        </AppWindow>
       </div>
     </li>
 
@@ -103,17 +122,26 @@ import AppWindow from "../../components/AppWindow.astro";
         class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
         >4</span
       >
-      <div>
+      <div class="flex-1">
         <h2
           id="interact-with-widget"
           class="text-sm font-semibold text-[var(--foreground)] mb-1"
         >
           Interact with widget UI
         </h2>
-        <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
-          [Pick a tool from the sidebar, fill in the arguments, and run it. Show
-          where the result appears.]
+        <p class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-4">
+          If the tool returns a widget, it renders automatically in the Preview
+          panel. Use the top bar to switch between ChatGPT, Claude, desktop, and
+          mobile viewports and interact with it just as your users would.
         </p>
+        <AppWindow caption="Widget rendered live — switching viewports in the preview panel." class="mt-2">
+          <img
+            src="/screenshots/mcp-studio-interactive-with-widget.gif"
+            alt="Interacting with a widget in MCP Studio"
+            class="w-full block"
+            data-lightbox
+          />
+        </AppWindow>
       </div>
     </li>
 
@@ -122,16 +150,37 @@ import AppWindow from "../../components/AppWindow.astro";
         class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
         >5</span
       >
-      <div>
+      <div class="flex-1">
         <h2
           id="record-session"
           class="text-sm font-semibold text-[var(--foreground)] mb-1"
         >
           Record the session
         </h2>
-        <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
-          [Click Record, repeat the tool call, click Stop, name the test, save.]
+        <p class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-4">
+          Click <strong class="text-[var(--foreground)]">Record Test</strong> in
+          the toolbar, repeat the tool calls you want to capture, then click
+          <strong class="text-[var(--foreground)]">Stop Record Test</strong>.
+          Give the test a name and save it — no code to write.
         </p>
+        <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <AppWindow caption="Click Record Test to start capturing.">
+            <img
+              src="/screenshots/mcp-studio-record-test.png"
+              alt="Record Test button in MCP Studio"
+              class="w-full block"
+              data-lightbox
+            />
+          </AppWindow>
+          <AppWindow caption="Click Stop Record Test, name it, and save.">
+            <img
+              src="/screenshots/mcp-studio-stop-record-test.png"
+              alt="Stop Record Test dialog in MCP Studio"
+              class="w-full block"
+              data-lightbox
+            />
+          </AppWindow>
+        </div>
       </div>
     </li>
 
@@ -140,17 +189,27 @@ import AppWindow from "../../components/AppWindow.astro";
         class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
         >6</span
       >
-      <div>
+      <div class="flex-1">
         <h2
           id="verify-e2e-test"
           class="text-sm font-semibold text-[var(--foreground)] mb-1"
         >
-          Verify the E2E test
+          Run step-by-step
         </h2>
-        <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
-          [Open the Tests drawer, find the test, run it. Walk through what a
-          passing and failing result looks like.]
+        <p class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-4">
+          Open the Tests panel, find the test you just saved, and use the
+          step-by-step controls to replay it one action at a time. Each step
+          shows its result inline so you can pinpoint exactly where something
+          differs.
         </p>
+        <AppWindow caption="Stepping through a recorded test one action at a time." class="mt-2">
+          <img
+            src="/screenshots/mcp-studio-run-step-by-step-test.gif"
+            alt="Step-by-step test replay in MCP Studio"
+            class="w-full block"
+            data-lightbox
+          />
+        </AppWindow>
       </div>
     </li>
 
@@ -159,17 +218,26 @@ import AppWindow from "../../components/AppWindow.astro";
         class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
         >7</span
       >
-      <div>
+      <div class="flex-1">
         <h2
           id="replay-e2e-test"
           class="text-sm font-semibold text-[var(--foreground)] mb-1"
         >
           Replay E2E test
         </h2>
-        <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
-          [Open the Tests drawer, find the test, run it. Walk through what a
-          passing and failing result looks like.]
+        <p class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-4">
+          Run the full test suite any time after a code change or new release.
+          Every recorded step is replayed automatically and checked against the
+          saved assertions — a pass/fail report is shown at the end.
         </p>
+        <AppWindow caption="Full E2E replay with pass/fail results." class="mt-2">
+          <img
+            src="/screenshots/mcp-studio-replay-test.gif"
+            alt="E2E test replay results in MCP Studio"
+            class="w-full block"
+            data-lightbox
+          />
+        </AppWindow>
       </div>
     </li>
   </ol>
