@@ -7,13 +7,20 @@
 //! best-effort projections for the catalog UI.
 
 use axum::Json;
-use axum::extract::Path;
+use axum::extract::{Path, Query};
 use axum::http::StatusCode;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::server::AppError;
 use crate::storage;
+
+#[derive(Deserialize, Default)]
+pub struct ListParams {
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+    pub test_id: Option<String>,
+}
 
 #[derive(Serialize)]
 pub struct RunResultSummary {
@@ -87,7 +94,9 @@ fn lift_summary(id: &str, file: storage::JsonFile, value: &Value) -> RunResultSu
     }
 }
 
-pub async fn list_run_results() -> Result<Json<Vec<RunResultSummary>>, AppError> {
+pub async fn list_run_results(
+    Query(params): Query<ListParams>,
+) -> Result<Json<Vec<RunResultSummary>>, AppError> {
     let dir =
         storage::run_results_dir().ok_or_else(|| AppError::Internal("no home directory".into()))?;
     let files = storage::list_json(&dir).map_err(|e| AppError::Internal(e.to_string()))?;
@@ -96,8 +105,19 @@ pub async fn list_run_results() -> Result<Json<Vec<RunResultSummary>>, AppError>
         let path = dir.join(format!("{}.json", file.name));
         let id = file.name.clone();
         let value = storage::read_json(&path).unwrap_or(Value::Null);
-        out.push(lift_summary(&id, file, &value));
+        let summary = lift_summary(&id, file, &value);
+        if let Some(ref filter_id) = params.test_id
+            && summary.test_id.as_deref() != Some(filter_id.as_str())
+        {
+            continue;
+        }
+        out.push(summary);
     }
+    let offset = params.offset.unwrap_or(0);
+    let out: Vec<_> = match params.limit {
+        Some(limit) => out.into_iter().skip(offset).take(limit).collect(),
+        None => out.into_iter().skip(offset).collect(),
+    };
     Ok(Json(out))
 }
 

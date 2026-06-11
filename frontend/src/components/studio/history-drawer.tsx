@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { History, Trash2 } from "lucide-react";
+import { History, Loader2, Trash2 } from "lucide-react";
 import {
   Drawer,
   DrawerContent,
@@ -221,6 +221,8 @@ function ResultRow({ summary, onView, onDeleted }: ResultRowProps) {
   );
 }
 
+const PAGE_SIZE = 30;
+
 interface HistoryDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -228,13 +230,36 @@ interface HistoryDrawerProps {
 
 export function HistoryDrawer({ open, onOpenChange }: HistoryDrawerProps) {
   const [summaries, setSummaries] = useState<ReplaySummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [replayResult, setReplayResult] = useState<SavedReplay | null>(null);
   const [replayDialogOpen, setReplayDialogOpen] = useState(false);
   const runState = useTestStore((s) => s.runState);
 
   const refresh = async () => {
-    const all = await listReplaySummaries();
-    setSummaries(all);
+    setLoading(true);
+    try {
+      const page = await listReplaySummaries({ limit: PAGE_SIZE });
+      setSummaries(page);
+      setHasMore(page.length === PAGE_SIZE);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadMore = async () => {
+    setLoadingMore(true);
+    try {
+      const page = await listReplaySummaries({
+        limit: PAGE_SIZE,
+        offset: summaries.length,
+      });
+      setSummaries((prev) => [...prev, ...page]);
+      setHasMore(page.length === PAGE_SIZE);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   // Load on open and after each completed replay (runState flipping to null)
@@ -258,15 +283,18 @@ export function HistoryDrawer({ open, onOpenChange }: HistoryDrawerProps) {
   };
 
   const handleClearAll = async () => {
+    // Fetch all summaries (no limit) so we delete beyond the current page.
+    const all = await listReplaySummaries();
     const ok = await confirm({
       title: "Clear all history?",
-      description: `Permanently deletes all ${summaries.length} replay result${summaries.length === 1 ? "" : "s"}. This can't be undone.`,
+      description: `Permanently deletes all ${all.length} replay result${all.length === 1 ? "" : "s"}. This can't be undone.`,
       confirmLabel: "Clear all",
       tone: "destructive",
     });
     if (!ok) return;
-    await Promise.all(summaries.map((s) => deleteReplay(s.id)));
+    await Promise.all(all.map((s) => deleteReplay(s.id)));
     setSummaries([]);
+    setHasMore(false);
   };
 
   return (
@@ -295,7 +323,11 @@ export function HistoryDrawer({ open, onOpenChange }: HistoryDrawerProps) {
           </DrawerHeader>
 
           <ScrollArea className="h-[calc(100vh-9rem)] mt-3 -mx-2 px-2">
-            {summaries.length === 0 ? (
+            {loading ? (
+              <div className="flex items-center justify-center h-64 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+              </div>
+            ) : summaries.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-center text-muted-foreground">
                 <History className="h-12 w-12 mb-4 opacity-50" />
                 <p className="text-sm">No runs yet</p>
@@ -320,6 +352,17 @@ export function HistoryDrawer({ open, onOpenChange }: HistoryDrawerProps) {
                     ))}
                   </div>
                 ))}
+                {hasMore && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-xs text-muted-foreground"
+                    onClick={loadMore}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore ? "Loading…" : "Load more"}
+                  </Button>
+                )}
               </div>
             )}
           </ScrollArea>

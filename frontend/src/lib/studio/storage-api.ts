@@ -104,8 +104,23 @@ export async function deleteTest(slug: string): Promise<void> {
 
 // ── Replays ───────────────────────────────────────────────────────────────
 
-export async function listReplaySummaries(): Promise<ReplaySummary[]> {
-  return asJson<ReplaySummary[]>(await fetch("/api/studio/run-results"));
+export interface ListReplaySummariesParams {
+  limit?: number;
+  offset?: number;
+  testId?: string;
+}
+
+export async function listReplaySummaries(
+  params: ListReplaySummariesParams = {},
+): Promise<ReplaySummary[]> {
+  const qs = new URLSearchParams();
+  if (params.limit != null) qs.set("limit", String(params.limit));
+  if (params.offset != null) qs.set("offset", String(params.offset));
+  if (params.testId != null) qs.set("test_id", params.testId);
+  const query = qs.size > 0 ? `?${qs.toString()}` : "";
+  return asJson<ReplaySummary[]>(
+    await fetch(`/api/studio/run-results${query}`),
+  );
 }
 
 export async function getReplay(id: string): Promise<SavedReplay | null> {

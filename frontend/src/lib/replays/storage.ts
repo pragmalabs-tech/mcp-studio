@@ -39,17 +39,16 @@ export async function saveReplay(replay: SavedReplay): Promise<void> {
 }
 
 /**
- * Fetch every replay belonging to a test. Lists summaries, filters by
- * `test_id`, then hydrates each into a full `SavedReplay` so callers can
- * read per-step `assert` reports for the history badges. N is typically
- * small (one user's runs against one test); the parallel fetch is fine.
+ * Fetch every replay belonging to a test. Filters by `test_id` server-side,
+ * then hydrates each summary into a full `SavedReplay` for per-step assert
+ * reports. N is typically small (one user's runs against one test); the
+ * parallel fetch is fine.
  */
 export async function loadReplaysForTest(
   testId: string,
 ): Promise<SavedReplay[]> {
-  const summaries = await listReplaySummaries();
-  const ids = summaries.filter((s) => s.test_id === testId).map((s) => s.id);
-  const replays = await Promise.all(ids.map((id) => getReplay(id)));
+  const summaries = await listReplaySummaries({ testId });
+  const replays = await Promise.all(summaries.map((s) => getReplay(s.id)));
   return replays.filter((r): r is SavedReplay => r !== null);
 }
 
