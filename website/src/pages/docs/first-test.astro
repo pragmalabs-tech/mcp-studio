@@ -34,7 +34,7 @@ import AppWindow from "../../components/AppWindow.astro";
         class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
         >1</span
       >
-      <div>
+      <div class="flex-1 min-w-0">
         <h2
           id="start-mcp-studio"
           class="text-sm font-semibold text-[var(--foreground)] mb-1"
@@ -46,8 +46,9 @@ import AppWindow from "../../components/AppWindow.astro";
           your browser automatically, or you can navigate there manually.
         </p>
         <div class="border border-[var(--border)] bg-[var(--card)]">
-          <pre
-            class="px-4 py-3 text-xs text-[var(--foreground)]"><code><span class="text-emerald-400">$</span> mcp-studio</code></pre>
+          <pre class="px-4 py-3 text-xs text-[var(--foreground)]"
+            ><code><span class="text-emerald-400">$</span> mcp-studio</code></pre
+          >
         </div>
       </div>
     </li>
@@ -57,7 +58,7 @@ import AppWindow from "../../components/AppWindow.astro";
         class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
         >2</span
       >
-      <div>
+      <div class="flex-1 min-w-0">
         <h2
           id="create-profile"
           class="text-sm font-semibold text-[var(--foreground)] mb-1"
@@ -93,7 +94,7 @@ import AppWindow from "../../components/AppWindow.astro";
         class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
         >3</span
       >
-      <div class="flex-1">
+      <div class="flex-1 min-w-0">
         <h2
           id="call-a-tool"
           class="text-sm font-semibold text-[var(--foreground)] mb-1"
@@ -143,13 +144,15 @@ import AppWindow from "../../components/AppWindow.astro";
             </button>
           </div>
           <pre
-            class="px-4 py-3 text-xs text-[var(--foreground)] leading-relaxed overflow-x-auto scrollbar-none"><code>{`{
+            class="px-4 py-3 text-xs text-[var(--foreground)] leading-relaxed overflow-x-auto scrollbar-none"
+            ><code>{`{
   "elements": "[
     { "type": "rectangle", "id": "b1", "label": { "text": "Hello" }, ... },
     { "type": "arrow",     "id": "a1", ... },
     { "type": "rectangle", "id": "b2", "label": { "text": "MCP Studio" }, ... }
   ]"
-}`}</code></pre>
+}`}</code></pre
+          >
         </div>
         <AppWindow
           caption="Executing a tool and inspecting the response in the log."
@@ -170,7 +173,7 @@ import AppWindow from "../../components/AppWindow.astro";
         class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
         >4</span
       >
-      <div class="flex-1">
+      <div class="flex-1 min-w-0">
         <h2
           id="interact-with-widget"
           class="text-sm font-semibold text-[var(--foreground)] mb-1"
@@ -201,7 +204,7 @@ import AppWindow from "../../components/AppWindow.astro";
         class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
         >5</span
       >
-      <div class="flex-1">
+      <div class="flex-1 min-w-0">
         <h2
           id="record-session"
           class="text-sm font-semibold text-[var(--foreground)] mb-1"
@@ -240,7 +243,7 @@ import AppWindow from "../../components/AppWindow.astro";
         class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
         >6</span
       >
-      <div class="flex-1">
+      <div class="flex-1 min-w-0">
         <h2
           id="verify-e2e-test"
           class="text-sm font-semibold text-[var(--foreground)] mb-1"
@@ -272,7 +275,7 @@ import AppWindow from "../../components/AppWindow.astro";
         class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
         >7</span
       >
-      <div class="flex-1">
+      <div class="flex-1 min-w-0">
         <h2
           id="replay-e2e-test"
           class="text-sm font-semibold text-[var(--foreground)] mb-1"

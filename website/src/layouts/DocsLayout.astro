@@ -30,13 +30,14 @@ const pages = [
 const currentIndex = pages.findIndex((p) => p.href === pathname);
 const prev = currentIndex > 0 ? pages[currentIndex - 1] : null;
 const next = currentIndex < pages.length - 1 ? pages[currentIndex + 1] : null;
+const currentPage = pages[currentIndex];
 ---
 
 <Base title={title}>
   <Nav />
 
   <div class="max-w-6xl mx-auto px-4 flex gap-12 min-h-screen">
-    <!-- Left sidebar -->
+    <!-- Left sidebar (desktop only) -->
     <aside class="hidden md:block w-44 shrink-0 pt-12">
       <nav class="sticky top-20 flex flex-col gap-6">
         {
@@ -75,6 +76,24 @@ const next = currentIndex < pages.length - 1 ? pages[currentIndex + 1] : null;
 
     <!-- Content -->
     <main class="flex-1 pt-12 pb-24 min-w-0">
+      <!-- Mobile top bar with hamburger -->
+      <div
+        class="md:hidden flex items-center justify-between mb-8 px-3 py-2 border border-[var(--border)]"
+      >
+        <span class="text-xs text-[var(--muted-foreground)]">
+          {currentPage ? currentPage.label : "Docs"}
+        </span>
+        <button
+          id="docs-menu-btn"
+          class="flex flex-col gap-1 p-1 text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+          aria-label="Open docs menu"
+        >
+          <span class="block w-4 h-px bg-current"></span>
+          <span class="block w-4 h-px bg-current"></span>
+          <span class="block w-4 h-px bg-current"></span>
+        </button>
+      </div>
+
       <slot />
 
       {
@@ -124,6 +143,82 @@ const next = currentIndex < pages.length - 1 ? pages[currentIndex + 1] : null;
     </aside>
   </div>
 
+  <!-- Mobile drawer overlay -->
+  <div
+    id="docs-drawer-overlay"
+    class="hidden fixed inset-0 z-40 bg-black/60 md:hidden"
+  >
+  </div>
+
+  <!-- Mobile drawer panel -->
+  <nav
+    id="docs-drawer"
+    class="fixed top-0 left-0 h-full w-64 z-50 bg-[var(--background)] border-r border-[var(--border)] overflow-y-auto transition-transform duration-200 ease-in-out md:hidden"
+    style="transform: translateX(-100%)"
+  >
+    <div
+      class="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]"
+    >
+      <span
+        class="text-xs uppercase tracking-widest text-[var(--muted-foreground)]"
+        >Docs</span
+      >
+      <button
+        id="docs-drawer-close"
+        class="w-7 h-7 flex items-center justify-center text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+        aria-label="Close docs menu"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+    <div class="px-4 py-4 flex flex-col gap-6">
+      {
+        nav.map((section) => {
+          const sectionActive = section.items.some(
+            (item) => pathname === item.href.split("#")[0],
+          );
+          return (
+            <div>
+              <p
+                class={`text-xs uppercase tracking-widest mb-3 ${sectionActive ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]"}`}
+              >
+                {section.group}
+              </p>
+              <ul class="flex flex-col gap-1">
+                {section.items.map((item) => {
+                  const itemActive = pathname === item.href.split("#")[0];
+                  return (
+                    <li>
+                      <a
+                        href={item.href}
+                        class={`drawer-nav-link block text-sm py-1.5 px-2 transition-colors ${itemActive ? "text-[var(--foreground)] bg-[var(--card)] border border-[var(--border)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+                      >
+                        {item.label}
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })
+      }
+    </div>
+  </nav>
+
   <Footer />
 </Base>
 
@@ -148,7 +243,6 @@ const next = currentIndex < pages.length - 1 ? pages[currentIndex + 1] : null;
       )
       .join("");
 
-    // Highlight active heading on scroll
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -189,6 +283,38 @@ const next = currentIndex < pages.length - 1 ? pages[currentIndex + 1] : null;
       });
     });
   }
+
   initCopy();
   document.addEventListener("astro:page-load", initCopy);
+
+  function initDrawer() {
+    const menuBtn = document.getElementById("docs-menu-btn");
+    const closeBtn = document.getElementById("docs-drawer-close");
+    const overlay = document.getElementById("docs-drawer-overlay");
+    const drawer = document.getElementById("docs-drawer");
+    if (!menuBtn || !closeBtn || !overlay || !drawer) return;
+
+    function openDrawer() {
+      overlay.classList.remove("hidden");
+      drawer.style.transform = "translateX(0)";
+      document.body.style.overflow = "hidden";
+    }
+
+    function closeDrawer() {
+      overlay.classList.add("hidden");
+      drawer.style.transform = "translateX(-100%)";
+      document.body.style.overflow = "";
+    }
+
+    menuBtn.addEventListener("click", openDrawer);
+    closeBtn.addEventListener("click", closeDrawer);
+    overlay.addEventListener("click", closeDrawer);
+
+    drawer.querySelectorAll(".drawer-nav-link").forEach((link) => {
+      link.addEventListener("click", closeDrawer);
+    });
+  }
+
+  initDrawer();
+  document.addEventListener("astro:page-load", initDrawer);
 </script>
