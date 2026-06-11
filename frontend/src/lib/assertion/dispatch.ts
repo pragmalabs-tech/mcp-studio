@@ -1,7 +1,6 @@
 import type { AssertResult, Mode } from "./types";
 import { modeExact } from "./modes/exact";
 import { modeShape } from "./modes/shape";
-import { modeFlaky } from "./modes/flaky";
 import { modeIgnore } from "./modes/ignore";
 import { modeWarn } from "./modes/warn";
 
@@ -19,8 +18,6 @@ export function compareByMode(
       return modeExact(expected, actual);
     case "shape":
       return modeShape(expected, actual);
-    case "flaky":
-      return modeFlaky(expected, actual);
     case "ignore":
       return modeIgnore();
     case "warn":

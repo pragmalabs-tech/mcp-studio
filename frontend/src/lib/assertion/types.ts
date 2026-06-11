@@ -1,6 +1,6 @@
 export type AssertStatus = "passed" | "failed" | "skipped" | "warn";
 
-export type Mode = "exact" | "shape" | "flaky" | "ignore" | "warn";
+export type Mode = "exact" | "shape" | "ignore" | "warn";
 
 /**
  * One assertable surface on an Action. Declared as a static array on each

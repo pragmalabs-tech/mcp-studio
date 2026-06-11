@@ -470,7 +470,7 @@ function StateAssertions({
   }
 
   const stateMode = resolveStateMode(test.assertions, recordedActionId);
-  const stateSupportedModes: Mode[] = ["exact", "shape", "flaky", "ignore"];
+  const stateSupportedModes: Mode[] = ["exact", "shape", "ignore"];
 
   const onModeChange = (m: Mode) => {
     const cfg = test.assertions ?? {};

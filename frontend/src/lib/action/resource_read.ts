@@ -28,7 +28,7 @@ export class ResourceReadAction extends Action<{ uri: string }> {
       label: "Contents",
       path: "data.contents",
       defaultMode: "exact",
-      supportedModes: ["exact", "shape", "flaky", "ignore"],
+      supportedModes: ["exact", "shape", "ignore"],
     },
     {
       key: "errorMessage",

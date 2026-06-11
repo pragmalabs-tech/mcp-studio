@@ -1,7 +1,7 @@
 /**
  * Re-derive replay step status against the user's *current* assertion
  * modes. Replays bake their per-step `AssertReport` at run time, but the
- * user can later change modes (flaky / shape / ignore) on the test —
+ * user can later change modes (shape / ignore) on the test —
  * which should make a previously-failed step pass without re-running.
  * Both the replay dialog and the test card's history list use these
  * helpers so their pass/fail UI stays consistent.

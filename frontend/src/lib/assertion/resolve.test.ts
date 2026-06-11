@@ -15,7 +15,7 @@ const points: AssertablePoint[] = [
     label: "Content",
     path: "data.content",
     defaultMode: "ignore",
-    supportedModes: ["exact", "shape", "flaky", "ignore"],
+    supportedModes: ["exact", "shape", "ignore"],
   },
 ];
 
@@ -29,17 +29,17 @@ describe("resolveResultModes", () => {
 
   it("override wins over default", () => {
     const cfg: TestAssertionConfig = {
-      perAction: { a: { result: { content: "flaky" } } },
+      perAction: { a: { result: { content: "shape" } } },
     };
     expect(resolveResultModes(cfg, "a", points)).toEqual({
       success: "exact",
-      content: "flaky",
+      content: "shape",
     });
   });
 
   it("config for a different action does not leak", () => {
     const cfg: TestAssertionConfig = {
-      perAction: { b: { result: { content: "flaky" } } },
+      perAction: { b: { result: { content: "shape" } } },
     };
     expect(resolveResultModes(cfg, "a", points).content).toBe("ignore");
   });

@@ -52,9 +52,8 @@ export class ToolCallAction extends Action<{
 }> {
   /**
    * Defaults are strict (`exact`) for every point — users opt into
-   * `flaky` / `shape` / `ignore` per field via the assertion config
-   * when a tool returns server-generated values that aren't worth
-   * comparing strictly.
+   * `shape` / `ignore` per field via the assertion config when a tool
+   * returns server-generated values that aren't worth comparing strictly.
    *
    * Paths reach into `data.tool.*` now that the outcome is wrapped.
    * The `widget` URI is the comparable "did the same widget render?"
@@ -80,14 +79,14 @@ export class ToolCallAction extends Action<{
       label: "Structured content",
       path: "data.tool.structuredContent",
       defaultMode: "exact",
-      supportedModes: ["exact", "shape", "flaky", "ignore"],
+      supportedModes: ["exact", "shape", "ignore"],
     },
     {
       key: "content",
       label: "Content blocks",
       path: "data.tool.content",
       defaultMode: "exact",
-      supportedModes: ["exact", "shape", "flaky", "ignore"],
+      supportedModes: ["exact", "shape", "ignore"],
     },
     {
       key: "errorMessage",

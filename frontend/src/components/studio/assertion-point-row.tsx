@@ -40,9 +40,8 @@ export interface AssertionPointRowProps {
 
 const MODE_TOOLTIP: Record<Mode, string> = {
   exact: "Deep equal. Values must match exactly.",
-  shape: "Same structure (keys + types). Values may differ.",
-  flaky:
-    "Deep equal, but skip uuids, iso-dates, jwts, epoch-ms. Scalar arrays are order-insensitive.",
+  shape:
+    "Same structure (keys + types). Generated formats (uuid, date-time, jwt, epoch) are validated by format, not exact value.",
   ignore: "Skip this point entirely; always passes.",
   warn: "Compare values but never fail. Mismatch shows as a warning.",
 };
