@@ -106,7 +106,7 @@ export const captureEventsInjection: Injection = {
   }
 
   // Locator for a <canvas>: combined-class selector + index among all canvases.
-  function describeCanvas(canvas) {
+  function describeCanvas(canvas, rect) {
     var stable = stableClasses(canvas);
     var selector = stable.length ? 'canvas.' + stable.map(cssEscape).join('.') : 'canvas';
     var all = Array.prototype.slice.call(document.querySelectorAll('canvas'));
@@ -116,6 +116,8 @@ export const captureEventsInjection: Injection = {
       total: all.length,
       vw: window.innerWidth,
       vh: window.innerHeight,
+      cw: rect.width,
+      ch: rect.height,
     };
   }
 
@@ -136,7 +138,7 @@ export const captureEventsInjection: Injection = {
     window.parent.postMessage({
       type: 'studio_input',
       kind: 'canvas_click',
-      canvas: describeCanvas(canvas),
+      canvas: describeCanvas(canvas, rect),
       nx: (e.clientX - rect.left) / rect.width,
       ny: (e.clientY - rect.top) / rect.height,
       detail: e.detail,

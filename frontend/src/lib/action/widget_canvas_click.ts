@@ -59,8 +59,9 @@ function resolveCanvas(
  * Dispatch `count` taps (pointer + mirrored mouse) at normalized coords, with
  * increasing click `detail`, plus a trailing `dblclick` for count>=2. Events
  * are constructed in the iframe's own realm (`doc.defaultView`) so `instanceof`
- * checks inside the widget pass; `clientX/Y` are recomputed from the live rect
- * so position is independent of where/how big the canvas is now.
+ * checks inside the widget pass; `clientX/Y` are computed from the live rect
+ * origin but use recorded canvas dimensions when available, so the absolute
+ * pixel offset matches the original tap regardless of current canvas size.
  */
 function dispatchTaps(
   doc: Document,
@@ -68,10 +69,12 @@ function dispatchTaps(
   nx: number,
   ny: number,
   count: number,
+  recordedCw?: number,
+  recordedCh?: number,
 ): void {
   const rect = canvas.getBoundingClientRect();
-  const clientX = rect.left + nx * rect.width;
-  const clientY = rect.top + ny * rect.height;
+  const clientX = rect.left + nx * (recordedCw ?? rect.width);
+  const clientY = rect.top + ny * (recordedCh ?? rect.height);
   const win = doc.defaultView as (Window & typeof globalThis) | null;
   if (!win) return;
   const P = win.PointerEvent;
@@ -193,6 +196,8 @@ export class WidgetCanvasClickAction extends Action<{
       this.data.nx,
       this.data.ny,
       this.data.detail,
+      this.data.canvas.cw,
+      this.data.canvas.ch,
     );
     return true;
   }
@@ -265,6 +270,8 @@ export class WidgetCanvasClickAction extends Action<{
       this.data.nx,
       this.data.ny,
       this.data.detail,
+      this.data.canvas.cw,
+      this.data.canvas.ch,
     );
 
     await new Promise<void>((resolve) => {

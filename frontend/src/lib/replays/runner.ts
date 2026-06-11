@@ -83,15 +83,16 @@ export async function runReplay(
   recorder.suspend();
   useWidgetStore.setState((s) => ({ replayEpoch: s.replayEpoch + 1 }));
 
-  // Lock the preview to the size the canvas was recorded at. Canvas widgets map
-  // screen pixels to scene coordinates at a fixed zoom, so replaying at a
-  // different size lands taps in the wrong place. Use the first canvas action's
-  // recorded iframe size; wait for the preview to actually reach it before steps.
+  // Old recordings (without cw/ch) need the iframe locked to the recorded
+  // viewport size so normalized taps land at the right absolute pixel.
+  // New recordings carry cw/ch and correct for canvas size in dispatchTaps,
+  // so no size lock is needed.
   const recordedCanvas = steps.find(
     (s) =>
       s.action instanceof WidgetCanvasClickAction &&
       typeof s.action.data.canvas.vw === "number" &&
-      typeof s.action.data.canvas.vh === "number",
+      typeof s.action.data.canvas.vh === "number" &&
+      typeof s.action.data.canvas.cw !== "number",
   )?.action as WidgetCanvasClickAction | undefined;
   if (recordedCanvas) {
     const { vw, vh } = recordedCanvas.data.canvas;

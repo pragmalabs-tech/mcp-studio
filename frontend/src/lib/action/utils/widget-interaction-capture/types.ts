@@ -40,12 +40,15 @@ export interface CanvasLocator {
   index: number;
   /** Total canvas count — sanity check on replay before trusting `index`. */
   total: number;
-  /** Iframe viewport size at record time (`window.innerWidth/Height` inside the
-   *  iframe). Replay locks the preview to this so normalized taps reproduce — a
-   *  canvas maps screen pixels to scene coords at a fixed zoom, so a different
-   *  size lands the tap on the wrong place. Optional for older recordings. */
+  /** Iframe viewport size at record time. Only used as a fallback size-lock for
+   *  older recordings that lack `cw`/`ch`. Optional. */
   vw?: number;
   vh?: number;
+  /** Canvas bounding rect dimensions at record time. Replay uses these to fire
+   *  taps at the same absolute pixel offset regardless of current canvas size,
+   *  eliminating the need to lock the iframe viewport. Optional for older recordings. */
+  cw?: number;
+  ch?: number;
 }
 
 export interface WidgetInputEvent {
