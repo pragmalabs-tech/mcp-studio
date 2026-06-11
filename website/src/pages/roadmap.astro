@@ -88,20 +88,24 @@ import Footer from "../components/Footer.astro";
           {
             [
               {
-                label: "Better assertions",
-                desc: "[Description of planned assertion improvements.]",
+                label: "Load Data from Custom Source",
+                desc: "Store test cases and results in a custom source, such as your own codebase.",
               },
               {
-                label: "AI-native use",
-                desc: "Let Claude or another AI call your MCP application directly through the studio.",
+                label: "Agent Use",
+                desc: "Let Claude or another AI agent use MCP Studio to test your MCP application directly through the studio.",
               },
               {
-                label: "Programmable logic",
+                label: "Programmable Assertion",
                 desc: "Write custom code to handle special cases in your tests.",
               },
               {
-                label: "CI/CD integration",
+                label: "CI/CD Integration",
                 desc: "Run your test suite in a pipeline with a single command.",
+              },
+              {
+                label: "Agent Test",
+                desc: "Test your MCP app flows with real AI models like ChatGPT or Claude.",
               },
             ].map((item) => (
               <li class="flex gap-3">

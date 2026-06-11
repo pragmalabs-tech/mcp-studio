@@ -281,19 +281,32 @@ function ReplayActionInspector({
           ) : null}
 
           {(() => {
-            const liveSnap = (action.result?.data as { snapshot?: unknown })
-              ?.snapshot;
-            const recordedSnap = (
-              recorded?.action.result?.data as { snapshot?: unknown }
-            )?.snapshot;
+            const liveData = action.result?.data as {
+              snapshot?: unknown;
+              snapshotBounds?: { width: number; height: number };
+            };
+            const recordedData = recorded?.action.result?.data as {
+              snapshot?: unknown;
+              snapshotBounds?: { width: number; height: number };
+            };
+            const liveSnap = liveData?.snapshot;
+            const recordedSnap = recordedData?.snapshot;
             const hasAny =
               typeof liveSnap === "string" || typeof recordedSnap === "string";
             if (!hasAny) return null;
             return (
               <Section label="Snapshot">
                 <div className="grid grid-cols-2 gap-2 min-w-0">
-                  <SnapshotPane label="Recorded" snapshot={recordedSnap} />
-                  <SnapshotPane label="Replay" snapshot={liveSnap} />
+                  <SnapshotPane
+                    label="Recorded"
+                    snapshot={recordedSnap}
+                    bounds={recordedData?.snapshotBounds}
+                  />
+                  <SnapshotPane
+                    label="Replay"
+                    snapshot={liveSnap}
+                    bounds={liveData?.snapshotBounds}
+                  />
                 </div>
               </Section>
             );
@@ -604,9 +617,11 @@ function Section({
 function SnapshotPane({
   label,
   snapshot,
+  bounds,
 }: {
   label: string;
   snapshot: unknown;
+  bounds?: { width: number; height: number };
 }) {
   const hasSnapshot = typeof snapshot === "string" && snapshot.length > 0;
   const srcDoc = hasSnapshot
@@ -621,6 +636,7 @@ function SnapshotPane({
         <SnapshotIframeViewer
           srcDoc={srcDoc}
           title={label}
+          bounds={bounds}
           className="w-full h-80"
         />
       ) : (

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Maximize2 } from "lucide-react";
 import {
   Dialog,
@@ -13,27 +13,65 @@ import type { WidgetSnapshot } from "./snapshot";
 export function SnapshotIframeViewer({
   srcDoc,
   title,
+  bounds,
   className,
 }: {
   srcDoc: string;
   title: string;
+  bounds?: { width: number; height: number };
   className?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!bounds || !containerRef.current) return;
+    const el = containerRef.current;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) {
+        setScale(Math.min(width / bounds.width, height / bounds.height));
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [bounds]);
+
+  const dialogWidth = bounds ? `min(${bounds.width}px, 95vw)` : "90vw";
+  const dialogHeight = bounds ? `min(${bounds.height + 56}px, 90vh)` : "90vh";
+
   return (
     <>
       <div
+        ref={containerRef}
         className={cn(
           "relative group rounded border bg-background overflow-hidden",
           className,
         )}
       >
-        <iframe
-          srcDoc={srcDoc}
-          sandbox=""
-          title={`Widget snapshot — ${title}`}
-          className="w-full h-full"
-        />
+        {bounds && scale !== null ? (
+          <iframe
+            srcDoc={srcDoc}
+            sandbox=""
+            title={`Widget snapshot — ${title}`}
+            style={{
+              width: bounds.width,
+              height: bounds.height,
+              transform: `scale(${scale})`,
+              transformOrigin: "top left",
+              display: "block",
+              flexShrink: 0,
+            }}
+          />
+        ) : (
+          <iframe
+            srcDoc={srcDoc}
+            sandbox=""
+            title={`Widget snapshot — ${title}`}
+            className="w-full h-full"
+          />
+        )}
         <button
           onClick={() => setExpanded(true)}
           className="absolute top-1.5 right-1.5 p-1 rounded bg-background/80 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
@@ -45,9 +83,9 @@ export function SnapshotIframeViewer({
       <Dialog open={expanded} onOpenChange={setExpanded}>
         <DialogContent
           style={{
-            width: "90vw",
-            maxWidth: "90vw",
-            height: "90vh",
+            width: dialogWidth,
+            maxWidth: "95vw",
+            height: dialogHeight,
             display: "flex",
             flexDirection: "column",
             padding: 0,
@@ -80,6 +118,7 @@ export function SnapshotViewer({ snapshot }: { snapshot: WidgetSnapshot }) {
     <SnapshotIframeViewer
       srcDoc={srcDoc}
       title={snapshot.id}
+      bounds={snapshot.bounds}
       className="w-full h-[800px]"
     />
   );

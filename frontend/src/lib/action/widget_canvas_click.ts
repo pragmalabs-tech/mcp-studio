@@ -18,6 +18,7 @@ export interface WidgetCanvasClickResult {
   nx: number;
   ny: number;
   snapshot: string | null;
+  snapshotBounds?: { width: number; height: number };
   /** What held focus at the end of this step. A following text step reads this
    *  (via the forward `previous` context) to decide whether this click opened an
    *  editable editor worth re-opening. */
@@ -234,15 +235,16 @@ export class WidgetCanvasClickAction extends Action<{
       useWidgetStore.setState({ openClick: null });
     }
     const resolved = resolveCanvas(doc, this.data.canvas);
+    const snap = serializeIframeDocument(
+      this.data.widgetId,
+      useWidgetStore.getState()._iframeRef!,
+    );
     this.setResult(true, {
       matchedSelector: resolved?.selector ?? this.data.canvas.selector,
       nx: this.data.nx,
       ny: this.data.ny,
-      snapshot:
-        serializeIframeDocument(
-          this.data.widgetId,
-          useWidgetStore.getState()._iframeRef!,
-        )?.html ?? null,
+      snapshot: snap?.html ?? null,
+      snapshotBounds: snap?.bounds,
     } satisfies WidgetCanvasClickResult);
   }
 
@@ -289,14 +291,17 @@ export class WidgetCanvasClickAction extends Action<{
     // Report what holds focus at step end so a following text step can tell
     // whether this click opened an editable editor worth re-opening.
     const endFocus = describeFocus(doc);
+    const snap = serializeIframeDocument(
+      this.data.widgetId,
+      useWidgetStore.getState()._iframeRef!,
+    );
 
     this.setResult(true, {
       matchedSelector: resolved.selector,
       nx: this.data.nx,
       ny: this.data.ny,
-      snapshot:
-        serializeIframeDocument(this.data.widgetId, store._iframeRef!)?.html ??
-        null,
+      snapshot: snap?.html ?? null,
+      snapshotBounds: snap?.bounds,
       endFocus,
     } satisfies WidgetCanvasClickResult);
   }

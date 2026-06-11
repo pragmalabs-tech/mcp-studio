@@ -5,12 +5,16 @@ import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { WidgetCanvasClickAction } from "./widget_canvas_click";
 import { WidgetClickAction } from "./widget_click";
-import { serializeIframeDocument } from "../../components/studio/preview/snapshot/snapshot";
+import {
+  serializeIframeDocument,
+  type WidgetSnapshot,
+} from "../../components/studio/preview/snapshot/snapshot";
 
 export interface WidgetTextInputResult {
   matchedSelector: string | null;
   matchedIndex: number;
   snapshot: string | null;
+  snapshotBounds?: { width: number; height: number };
   /** Whether the iframe actually acted on the input — our proof the event was
    *  consumed, not just dispatched into the void:
    *   - matched field: the field's value reads back as the value we set;
@@ -119,7 +123,7 @@ export class WidgetTextInputAction extends Action<{
   private _debounceTimer?: ReturnType<typeof setTimeout>;
   /** Snapshot frozen synchronously before close() — used by recordFromUserInput
    *  to avoid capturing DOM changes made by the next element's event handlers. */
-  private _frozenSnapshot?: string;
+  private _frozenSnapshot?: WidgetSnapshot;
 
   /** Resolves AFTER the orchestrator has handed this action to the recorder. */
   readonly recorded: Promise<void>;
@@ -157,7 +161,7 @@ export class WidgetTextInputAction extends Action<{
       this._frozenSnapshot = serializeIframeDocument(
         this.data.widgetId,
         iframe,
-      )?.html;
+      );
   }
 
   private _resetDebounce(): void {
@@ -230,7 +234,8 @@ export class WidgetTextInputAction extends Action<{
     this.setResult(true, {
       matchedSelector: opts.matchedSelector,
       matchedIndex: opts.matchedIndex,
-      snapshot: this._frozenSnapshot ?? null,
+      snapshot: this._frozenSnapshot?.html ?? null,
+      snapshotBounds: this._frozenSnapshot?.bounds,
       applied: true, // recorded from a real user keystroke — definitionally applied
     } satisfies WidgetTextInputResult);
   }
@@ -427,13 +432,17 @@ export class WidgetTextInputAction extends Action<{
       useWidgetStore.setState({ openTextInput: null });
     }
 
+    const snap =
+      this._frozenSnapshot ??
+      serializeIframeDocument(
+        this.data.widgetId,
+        useWidgetStore.getState()._iframeRef!,
+      );
     this.setResult(true, {
       matchedSelector,
       matchedIndex,
-      snapshot:
-        this._frozenSnapshot ??
-        serializeIframeDocument(this.data.widgetId, store._iframeRef!)?.html ??
-        null,
+      snapshot: snap?.html ?? null,
+      snapshotBounds: snap?.bounds,
       applied,
     } satisfies WidgetTextInputResult);
   }

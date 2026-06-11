@@ -2,8 +2,18 @@ export type WidgetSnapshot = {
   id: string;
   html: string; // cloned DOM
   scroll?: { x: number; y: number };
+  bounds?: { width: number; height: number };
   createdAt: string;
 };
+
+export function getIframeBounds(
+  iframe: HTMLIFrameElement,
+): { width: number; height: number } | undefined {
+  const rect = iframe.getBoundingClientRect();
+  const w = rect.width || iframe.offsetWidth;
+  const h = rect.height || iframe.offsetHeight;
+  return w > 0 && h > 0 ? { width: w, height: h } : undefined;
+}
 
 export function serializeIframeDocument(
   id: string,
@@ -33,6 +43,7 @@ export function serializeIframeDocument(
       x: sourceWin.scrollX,
       y: sourceWin.scrollY,
     },
+    bounds: getIframeBounds(iframe),
     createdAt: new Date().toISOString(),
   };
 }
