@@ -222,6 +222,9 @@ export async function runReplay(
       });
       onProgress?.({ step: i, total, action, phase: "after" });
       previous = action;
+
+      // This will let the widget has enough time to render.
+      await new Promise((r) => setTimeout(r, 1000));
     }
   } finally {
     recorder.resume();
