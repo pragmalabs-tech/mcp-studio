@@ -67,14 +67,17 @@ import AppWindow from "../../components/AppWindow.astro";
             Execute
           </p>
           <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
-            Click <strong class="text-[var(--foreground)]">Execute</strong>.
-            The response appears in the Logs panel. If the tool returns a
-            widget, it renders automatically in the Widget Preview panel.
+            Click <strong class="text-[var(--foreground)]">Execute</strong>. The
+            response appears in the Logs panel. If the tool returns a widget, it
+            renders automatically in the Widget Preview panel.
           </p>
         </div>
       </li>
     </ol>
-    <AppWindow caption="Executing a tool and inspecting the response in the log." class="mt-6">
+    <AppWindow
+      caption="Executing a tool and inspecting the response in the log."
+      class="mt-6"
+    >
       <img
         src="/screenshots/mcp-studio-execute-tool.gif"
         alt="Executing a tool in MCP Studio"
@@ -103,9 +106,9 @@ import AppWindow from "../../components/AppWindow.astro";
         Example — <code class="font-mono">read_me</code> (Excalidraw)
       </p>
       <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
-        Calling <code class="text-[var(--foreground)]">read_me</code> returns a
-        text description of the current Excalidraw canvas. MCP Studio renders
-        it in the preview panel as static content — no interaction needed.
+        Calling <code class="text-[var(--foreground)]">read_me</code> returns a text
+        description of the current Excalidraw canvas. MCP Studio renders it in the
+        preview panel as static content — no interaction needed.
       </p>
     </div>
     <AppWindow caption="read_me returns plain data shown as a read-only view.">
@@ -137,9 +140,9 @@ import AppWindow from "../../components/AppWindow.astro";
         Example — <code class="font-mono">create_view</code> (Excalidraw)
       </p>
       <p class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-3">
-        Pass an <code class="text-[var(--foreground)]">elements</code> array and
-        Excalidraw renders a live, interactive diagram in the preview panel.
-        The example below draws two boxes connected by an arrow:
+        Pass an <code class="text-[var(--foreground)]">elements</code> array and Excalidraw
+        renders a live, interactive diagram in the preview panel. The example below
+        draws two boxes connected by an arrow:
         <strong class="text-[var(--foreground)]">Hello → MCP Studio</strong>.
       </p>
       <div class="border border-[var(--border)] bg-[var(--background)]">
@@ -187,7 +190,10 @@ import AppWindow from "../../components/AppWindow.astro";
         >
       </div>
     </div>
-    <AppWindow caption="create_view renders Hello → MCP Studio as an interactive diagram." class="mb-4">
+    <AppWindow
+      caption="create_view renders Hello → MCP Studio as an interactive diagram."
+      class="mb-4"
+    >
       <img
         src="/screenshots/excalidraw-create-view.png"
         alt="create_view result rendered in MCP Studio"
@@ -195,7 +201,9 @@ import AppWindow from "../../components/AppWindow.astro";
         data-lightbox
       />
     </AppWindow>
-    <AppWindow caption="Interacting with the live widget after calling create_view.">
+    <AppWindow
+      caption="Interacting with the live widget after calling create_view."
+    >
       <img
         src="/screenshots/mcp-studio-interactive-with-widget.gif"
         alt="Interactive widget rendered after calling create_view"

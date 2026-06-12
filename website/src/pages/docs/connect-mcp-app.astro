@@ -16,9 +16,9 @@ import AppWindow from "../../components/AppWindow.astro";
     class="text-base text-[var(--muted-foreground)] max-w-lg leading-relaxed mb-10"
   >
     A <strong class="text-[var(--foreground)]">Profile</strong> stores an MCP server
-    URL and its credentials. Every tool call, resource read, and test replay is
-    routed through the active profile — switching profiles re-routes everything
-    instantly without touching your tests.
+    URL and its credentials. Every tool call, resource read, and test replay is routed
+    through the active profile — switching profiles re-routes everything instantly
+    without touching your tests.
   </p>
 
   <!-- What is a Profile -->
@@ -73,7 +73,9 @@ import AppWindow from "../../components/AppWindow.astro";
       in the left sidebar to expand it, then click the profile name or the pencil
       icon. The Profiles dialog opens with the active profile already in edit mode.
     </p>
-    <AppWindow caption="Profile panel in the sidebar — click to open the profile manager.">
+    <AppWindow
+      caption="Profile panel in the sidebar — click to open the profile manager."
+    >
       <img
         src="/screenshots/mcp-studio-setup-profile.gif"
         alt="Opening the profile manager in MCP Studio"
@@ -117,7 +119,9 @@ import AppWindow from "../../components/AppWindow.astro";
           <p class="text-sm font-semibold text-[var(--foreground)] mb-1">
             Set the server URL
           </p>
-          <p class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-3">
+          <p
+            class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-3"
+          >
             Paste the full URL to your MCP endpoint. Local servers and remote
             HTTPS endpoints are both supported.
           </p>
@@ -181,7 +185,10 @@ https://mcp.example.com/mcp</code></pre
       activate it. The active profile shows a green check badge. All subsequent
       tool calls and test replays immediately use that profile's URL.
     </p>
-    <AppWindow caption="Switching the active profile from the sidebar." class="mb-4">
+    <AppWindow
+      caption="Switching the active profile from the sidebar."
+      class="mb-4"
+    >
       <img
         src="/screenshots/mcp-studio-switch-profile.gif"
         alt="Switching profiles in MCP Studio"

@@ -28,6 +28,18 @@ const nav = [
       { label: "MCP Authentication", href: "/docs/authentication" },
     ],
   },
+  {
+    group: "E2E Testing",
+    items: [
+      { label: "Record a Test", href: "/docs/record-test" },
+      { label: "Replay Test", href: "/docs/replay-test" },
+      { label: "Assertions", href: "/docs/assertions" },
+      {
+        label: "Programmable Assertions",
+        href: "/docs/programmable-assertions",
+      },
+    ],
+  },
 ];
 
 const pathname = Astro.url.pathname;
@@ -40,6 +52,10 @@ const pages = [
   { label: "MCP Tools", href: "/docs/call-tool" },
   { label: "MCP Resources", href: "/docs/mcp-resources" },
   { label: "MCP Authentication", href: "/docs/authentication" },
+  { label: "Record a Test", href: "/docs/record-test" },
+  { label: "Replay Test", href: "/docs/replay-test" },
+  { label: "Assertions", href: "/docs/assertions" },
+  { label: "Programmable Assertions", href: "/docs/programmable-assertions" },
 ];
 
 const currentIndex = pages.findIndex((p) => p.href === pathname);

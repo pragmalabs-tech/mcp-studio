@@ -1,0 +1,182 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import AppWindow from "../../components/AppWindow.astro";
+---
+
+<DocsLayout title="Record a Test — MCP Studio" current="record-test">
+  <p
+    class="text-xs font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-4"
+  >
+    [ E2E Testing ]
+  </p>
+  <h1 class="text-2xl font-bold text-[var(--foreground)] mb-4">
+    Record a Test
+  </h1>
+  <p
+    class="text-base text-[var(--muted-foreground)] max-w-lg leading-relaxed mb-10"
+  >
+    Use your MCP application normally while recording — every tool call,
+    resource read, and widget interaction is captured as a step. Stop recording,
+    give the test a name, and save. No code to write.
+  </p>
+
+  <div class="mb-10 border border-[var(--border)] overflow-hidden aspect-video">
+    <iframe
+      src="https://www.youtube.com/embed/vCbNQKFpN78?vq=hd2160"
+      title="Record a Test in MCP Studio"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      allowfullscreen
+      class="w-full h-full"></iframe>
+  </div>
+
+  <!-- Steps -->
+  <section class="mb-10">
+    <h2
+      id="how-to-record"
+      class="text-sm font-semibold uppercase tracking-widest text-[var(--foreground)] mb-4"
+    >
+      How to record
+    </h2>
+    <ol class="flex flex-col gap-6">
+      <li class="flex gap-4">
+        <span
+          class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
+          >1</span
+        >
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold text-[var(--foreground)] mb-1">
+            Click Record Test
+          </p>
+          <p
+            class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-3"
+          >
+            Click the <strong class="text-[var(--foreground)]"
+              >Record Test</strong
+            > button in the top toolbar. The toolbar turns red to indicate recording
+            is active.
+          </p>
+          <AppWindow caption="Click Record Test to start capturing.">
+            <img
+              src="/screenshots/mcp-studio-record-test.png"
+              alt="Record Test button in MCP Studio"
+              class="w-full block"
+              data-lightbox
+            />
+          </AppWindow>
+        </div>
+      </li>
+
+      <li class="flex gap-4">
+        <span
+          class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
+          >2</span
+        >
+        <div>
+          <p class="text-sm font-semibold text-[var(--foreground)] mb-1">
+            Perform your actions
+          </p>
+          <p
+            class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-3"
+          >
+            Use the app as normal. Every action you take is recorded as a test
+            step. We are continuously adding support for more action types — if
+            you see something missing, <a
+              href="mailto:team@pragmalabs.tech"
+              class="text-[var(--foreground)] underline underline-offset-2 hover:opacity-70 transition-opacity"
+              >let us know</a
+            >.
+          </p>
+          <div
+            class="border border-[var(--border)] grid grid-cols-1 sm:grid-cols-2 gap-px"
+          >
+            {
+              [
+                { label: "Tool call", desc: "arguments, result, status" },
+                { label: "Resource read", desc: "URI, contents, status" },
+                { label: "Widget click", desc: "element selector, snapshot" },
+                {
+                  label: "Widget text input",
+                  desc: "element selector, value, snapshot",
+                },
+              ].map((row) => (
+                <div class="bg-[var(--card)] px-4 py-3">
+                  <p class="text-xs font-semibold text-[var(--foreground)] mb-0.5">
+                    {row.label}
+                  </p>
+                  <p class="text-xs text-[var(--muted-foreground)]">
+                    {row.desc}
+                  </p>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      </li>
+
+      <li class="flex gap-4">
+        <span
+          class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
+          >3</span
+        >
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold text-[var(--foreground)] mb-1">
+            Stop, name, and save
+          </p>
+          <p
+            class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-3"
+          >
+            Click <strong class="text-[var(--foreground)]"
+              >Stop Record Test</strong
+            >. Give the test a name and save it — it appears immediately in the
+            Tests panel.
+          </p>
+          <AppWindow caption="Stop recording, name the test, and save.">
+            <img
+              src="/screenshots/mcp-studio-stop-record-test.png"
+              alt="Stop Record Test dialog in MCP Studio"
+              class="w-full block"
+              data-lightbox
+            />
+          </AppWindow>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- Tips -->
+  <section class="mb-10">
+    <h2
+      id="tips"
+      class="text-sm font-semibold uppercase tracking-widest text-[var(--foreground)] mb-4"
+    >
+      Tips
+    </h2>
+    <div class="flex flex-col gap-px border border-[var(--border)]">
+      {
+        [
+          {
+            label: "Keep recordings focused",
+            desc: "One test per scenario. Short, focused tests are easier to debug when a step fails.",
+          },
+          {
+            label: "Record against a stable server",
+            desc: "The saved baseline is compared on every replay. Recording against a server with random data will produce unreliable assertions — use shape or ignore mode to handle non-deterministic fields.",
+          },
+          {
+            label: "Tests follow the active profile",
+            desc: "Recordings are not bound to a specific profile. Switch profiles before replaying to run the same test against a different environment.",
+          },
+        ].map((item) => (
+          <div class="bg-[var(--card)] p-4">
+            <p class="text-xs font-semibold text-[var(--foreground)] mb-1">
+              {item.label}
+            </p>
+            <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
+              {item.desc}
+            </p>
+          </div>
+        ))
+      }
+    </div>
+  </section>
+</DocsLayout>

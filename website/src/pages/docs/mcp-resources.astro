@@ -15,12 +15,12 @@ import AppWindow from "../../components/AppWindow.astro";
   <p
     class="text-base text-[var(--muted-foreground)] max-w-lg leading-relaxed mb-10"
   >
-    MCP resources can return any content — text, JSON, or data. But because
-    MCP Studio is built for MCP applications with UI, it gives first-class
-    support to <strong class="text-[var(--foreground)]">UI resources</strong>:
-    resources that return an HTML widget. These render live in the Widget
-    Preview panel and let you inject tool input and output to test how the UI
-    behaves — without running a full tool call.
+    MCP resources can return any content — text, JSON, or data. But because MCP
+    Studio is built for MCP applications with UI, it gives first-class support
+    to <strong class="text-[var(--foreground)]">UI resources</strong>: resources
+    that return an HTML widget. These render live in the Widget Preview panel
+    and let you inject tool input and output to test how the UI behaves —
+    without running a full tool call.
   </p>
 
   <!-- Resource types -->
@@ -80,8 +80,8 @@ import AppWindow from "../../components/AppWindow.astro";
       UI resources are ideal for building and validating widget layout in
       isolation. Iterate on the HTML, use <strong
         class="text-[var(--foreground)]">Reload widget</strong
-      > to instantly refresh the preview with the latest layout, and only wire
-      the widget up to a tool once the UI looks right.
+      > to instantly refresh the preview with the latest layout, and only wire the
+      widget up to a tool once the UI looks right.
     </p>
   </div>
 
@@ -119,12 +119,12 @@ import AppWindow from "../../components/AppWindow.astro";
             Execute
           </p>
           <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
-            Click <strong class="text-[var(--foreground)]">Execute</strong>.
-            MCP Studio fetches the resource and renders the returned HTML in
-            the Widget Preview panel. Use <strong
-              class="text-[var(--foreground)]">Reload widget</strong
-            > at any time to refresh the preview with the latest layout without
-            re-fetching from the server.
+            Click <strong class="text-[var(--foreground)]">Execute</strong>. MCP
+            Studio fetches the resource and renders the returned HTML in the
+            Widget Preview panel. Use <strong class="text-[var(--foreground)]"
+              >Reload widget</strong
+            > at any time to refresh the preview with the latest layout without re-fetching
+            from the server.
           </p>
         </div>
       </li>
@@ -145,15 +145,18 @@ import AppWindow from "../../components/AppWindow.astro";
               class="text-[var(--foreground)]">Test Data</strong
             > tab and inject <code class="text-[var(--foreground)]"
               >toolInput</code
-            > and <code class="text-[var(--foreground)]">toolOutput</code> to
-            simulate how the UI renders with real data. Click <strong
+            > and <code class="text-[var(--foreground)]">toolOutput</code> to simulate
+            how the UI renders with real data. Click <strong
               class="text-[var(--foreground)]">Inject</strong
             > to apply.
           </p>
         </div>
       </li>
     </ol>
-    <AppWindow caption="Reading a resource and interacting with the rendered widget UI." class="mt-6">
+    <AppWindow
+      caption="Reading a resource and interacting with the rendered widget UI."
+      class="mt-6"
+    >
       <img
         src="/screenshots/mcp-studio-resource-ui-read.gif"
         alt="Reading a resource and interacting with the widget in MCP Studio"
@@ -172,8 +175,8 @@ import AppWindow from "../../components/AppWindow.astro";
       Injecting test data
     </h2>
     <p class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-4">
-      Widget resources are HTML templates — they expect tool input and output
-      to be passed in so they can render meaningful content. The <strong
+      Widget resources are HTML templates — they expect tool input and output to
+      be passed in so they can render meaningful content. The <strong
         class="text-[var(--foreground)]">Test Data</strong
       > tab lets you supply that data without wiring up a full tool call first.
     </p>

@@ -4,96 +4,111 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
 
 <DocsLayout title="Assertions — MCP Studio" current="assertions">
   <p
-    class="text-[10px] font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-4"
+    class="text-xs font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-4"
   >
-    [ Assertions ]
+    [ E2E Testing ]
   </p>
-  <h1 class="text-2xl font-bold text-[var(--foreground)] mb-4">
-    Assertion modes
-  </h1>
+  <h1 class="text-2xl font-bold text-[var(--foreground)] mb-4">Assertions</h1>
   <p
-    class="text-sm text-[var(--muted-foreground)] max-w-lg leading-relaxed mb-12"
+    class="text-base text-[var(--muted-foreground)] max-w-lg leading-relaxed mb-10"
   >
-    [Intro: each recorded step has assertion points. You pick a mode per point.
-    Modes control how the live result is compared to the baseline.]
+    Every recorded step has assertion points — named fields in the result that
+    are compared against the saved baseline on replay. For each point you choose
+    a <strong class="text-[var(--foreground)]">mode</strong> that controls how strict
+    the comparison is.
   </p>
 
-  <!-- Modes table -->
-  <section class="mb-12">
-    <div class="border border-[var(--border)]">
-      <div
-        class="flex gap-6 px-4 py-2 border-b border-[var(--border)] text-[10px] uppercase tracking-widest text-[var(--muted-foreground)]"
-      >
-        <span class="w-20 shrink-0">Mode</span>
-        <span>What it checks</span>
-      </div>
+  <!-- Modes -->
+  <section class="mb-10">
+    <h2
+      id="modes"
+      class="text-sm font-semibold uppercase tracking-widest text-[var(--foreground)] mb-4"
+    >
+      Assertion modes
+    </h2>
+    <div class="flex flex-col gap-px border border-[var(--border)]">
       {
         [
           {
             mode: "exact",
-            desc: "Deep equality. The result must match the recorded value byte-for-byte.",
+            when: "Default for most fields",
+            desc: "Deep structural equality. The live result must match the recorded baseline exactly.",
           },
           {
             mode: "shape",
-            desc: "Same keys and types, values may differ. Good when content changes but structure should not.",
-          },
-          {
-            mode: "flaky",
-            desc: "Deep equality, but UUIDs, ISO dates, JWTs, and epoch timestamps are normalized before comparison. Array order is ignored for scalar arrays.",
+            when: "Content changes, structure must not",
+            desc: "Infers a JSON Schema from the recorded value and validates the live result against it. Same keys and types are required; values may differ.",
           },
           {
             mode: "ignore",
-            desc: "Always passes. Use to skip an assertion point that is not relevant to the test.",
+            when: "Irrelevant fields",
+            desc: "Always passes. Use to skip an assertion point that is not meaningful for the test.",
           },
-        ].map((row, i) => (
-          <div
-            class={`flex gap-6 px-4 py-4 text-xs ${i !== 0 ? "border-t border-[var(--border)]" : ""}`}
-          >
-            <span class="w-20 shrink-0 font-semibold text-[var(--foreground)]">
-              {row.mode}
-            </span>
-            <span class="text-[var(--muted-foreground)] max-w-lg leading-relaxed">
+        ].map((row) => (
+          <div class="bg-[var(--card)] p-4">
+            <div class="flex items-baseline gap-3 mb-1">
+              <p class="text-sm font-semibold text-[var(--foreground)]">
+                {row.mode}
+              </p>
+              <p class="text-[10px] text-[var(--muted-foreground)]">
+                {row.when}
+              </p>
+            </div>
+            <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
               {row.desc}
-            </span>
+            </p>
           </div>
         ))
       }
     </div>
   </section>
 
-  <!-- Assertion points -->
-  <section class="mb-12">
-    <h2 class="text-sm font-semibold text-[var(--foreground)] mb-3">
-      Assertion points per action type
+  <!-- Points per action -->
+  <section class="mb-10">
+    <h2
+      id="assertion-points"
+      class="text-sm font-semibold uppercase tracking-widest text-[var(--foreground)] mb-4"
+    >
+      Assertion points per action
     </h2>
+    <p class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-4">
+      Each action type exposes a fixed set of points you can assert on. State
+      (how many times something was called) is also checked automatically on
+      every step.
+    </p>
     <div class="border border-[var(--border)]">
       <div
-        class="flex gap-6 px-4 py-2 border-b border-[var(--border)] text-[10px] uppercase tracking-widest text-[var(--muted-foreground)]"
+        class="grid grid-cols-2 px-4 py-2 border-b border-[var(--border)] text-[10px] uppercase tracking-widest text-[var(--muted-foreground)]"
       >
-        <span class="w-40 shrink-0">Action</span>
-        <span>Points you can assert on</span>
+        <span>Action</span>
+        <span>Points</span>
       </div>
       {
         [
-          { action: "Tool call", points: ["input", "output", "status"] },
-          { action: "Resource read", points: ["contents", "status"] },
+          {
+            action: "Tool call",
+            points:
+              "success, isError, content, structuredContent, errorMessage, widget",
+          },
+          {
+            action: "Resource read",
+            points: "success, contents, errorMessage",
+          },
           {
             action: "Widget click",
-            points: ["rendered_html", "rendered_text"],
+            points: "success, matched, errorMessage",
           },
           {
             action: "Widget text input",
-            points: ["rendered_html", "rendered_text"],
+            points: "success, matched, applied, errorMessage",
           },
         ].map((row, i) => (
           <div
-            class={`flex gap-6 px-4 py-3 text-xs ${i !== 0 ? "border-t border-[var(--border)]" : ""}`}
+            class={`grid grid-cols-2 px-4 py-3 text-sm ${i !== 0 ? "border-t border-[var(--border)]" : ""}`}
           >
-            <span class="w-40 shrink-0 text-[var(--foreground)]">
-              {row.action}
-            </span>
-            <span class="text-[var(--muted-foreground)]">
-              {row.points.join(", ")}
+            <span class="text-[var(--foreground)]">{row.action}</span>
+            <span class="text-[var(--muted-foreground)] font-mono text-xs leading-relaxed">
+              {row.points}
             </span>
           </div>
         ))
@@ -101,22 +116,55 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
     </div>
   </section>
 
-  <!-- How to configure -->
-  <section class="mb-12">
-    <h2 class="text-sm font-semibold text-[var(--foreground)] mb-1">
-      Configuring assertions
+  <!-- State assertions -->
+  <section class="mb-10">
+    <h2
+      id="state-assertions"
+      class="text-sm font-semibold uppercase tracking-widest text-[var(--foreground)] mb-3"
+    >
+      State assertions
     </h2>
-    <p
-      class="text-xs text-[var(--muted-foreground)] leading-relaxed mb-4 max-w-lg"
-    >
-      [Where in the UI to change a mode: open the replay result, expand a step,
-      find the assertion point row, pick a mode from the dropdown. Changes apply
-      live without re-running the test.]
+    <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
+      In addition to result fields, each step checks the <strong
+        class="text-[var(--foreground)]">state delta</strong
+      > — how many times tools were called, resources were read, and widgets were
+      rendered during that step. This catches side-effects that don't show up in the
+      direct result, such as a widget click that silently triggers an extra tool call.
     </p>
-    <div
-      class="border border-dashed border-[var(--border)] h-40 flex items-center justify-center text-xs text-[var(--muted-foreground)]"
+  </section>
+
+  <!-- Configuring -->
+  <section class="mb-10">
+    <h2
+      id="configuring"
+      class="text-sm font-semibold uppercase tracking-widest text-[var(--foreground)] mb-3"
     >
-      screenshot: assertion point row with mode selector
+      Configuring assertion modes
+    </h2>
+    <p class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-4">
+      After a replay, open the result for any step and find the assertion point
+      row. Use the mode selector to change the mode — the change applies
+      immediately without re-running the test. Set a default state mode for all
+      steps in the test settings if you want to relax state checking globally.
+    </p>
+    <div class="border border-[var(--border)] bg-[var(--card)] p-4">
+      <p class="text-xs font-semibold text-[var(--foreground)] mb-2">
+        When to use each mode
+      </p>
+      <ul class="flex flex-col gap-2">
+        {
+          [
+            "Use exact for tool results that must not change — stable APIs, deterministic outputs.",
+            "Use shape when the content is dynamic but the structure (keys, types) must stay the same.",
+            "Use ignore for fields you don't care about in a given test, like metadata or debug info.",
+          ].map((item) => (
+            <li class="flex gap-2 text-sm text-[var(--muted-foreground)]">
+              <span class="mt-1.5 shrink-0 w-1 h-1 bg-[var(--muted-foreground)]" />
+              {item}
+            </li>
+          ))
+        }
+      </ul>
     </div>
   </section>
 </DocsLayout>
