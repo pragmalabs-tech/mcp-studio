@@ -1,0 +1,260 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import AppWindow from "../../components/AppWindow.astro";
+---
+
+<DocsLayout title="MCP Tools — MCP Studio" current="call-tool">
+  <p
+    class="text-xs font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-4"
+  >
+    [ Features ]
+  </p>
+  <h1 class="text-2xl font-bold text-[var(--foreground)] mb-4">MCP Tools</h1>
+  <p
+    class="text-base text-[var(--muted-foreground)] max-w-lg leading-relaxed mb-10"
+  >
+    Select a tool from the sidebar, fill in its arguments, and execute it. MCP
+    Studio handles two kinds of tools: ones that return plain data and ones that
+    return an interactive widget.
+  </p>
+
+  <!-- How to call a tool -->
+  <section class="mb-10">
+    <h2
+      id="how-to-call"
+      class="text-sm font-semibold uppercase tracking-widest text-[var(--foreground)] mb-4"
+    >
+      How to call a tool
+    </h2>
+    <ol class="flex flex-col gap-6">
+      <li class="flex gap-4">
+        <span
+          class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
+          >1</span
+        >
+        <div>
+          <p class="text-sm font-semibold text-[var(--foreground)] mb-1">
+            Pick a tool
+          </p>
+          <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
+            Click any tool name in the left sidebar under the active profile.
+            The execution panel loads its argument schema.
+          </p>
+        </div>
+      </li>
+      <li class="flex gap-4">
+        <span
+          class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
+          >2</span
+        >
+        <div>
+          <p class="text-sm font-semibold text-[var(--foreground)] mb-1">
+            Fill in the arguments
+          </p>
+          <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
+            Enter values for each argument in the Tool Arguments tab. Arguments
+            are validated against the tool's schema before the call is sent.
+          </p>
+        </div>
+      </li>
+      <li class="flex gap-4">
+        <span
+          class="shrink-0 w-6 h-6 border border-[var(--border)] flex items-center justify-center text-xs text-[var(--foreground)]"
+          >3</span
+        >
+        <div>
+          <p class="text-sm font-semibold text-[var(--foreground)] mb-1">
+            Execute
+          </p>
+          <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
+            Click <strong class="text-[var(--foreground)]">Execute</strong>.
+            The response appears in the Logs panel. If the tool returns a
+            widget, it renders automatically in the Widget Preview panel.
+          </p>
+        </div>
+      </li>
+    </ol>
+    <AppWindow caption="Executing a tool and inspecting the response in the log." class="mt-6">
+      <img
+        src="/screenshots/mcp-studio-execute-tool.gif"
+        alt="Executing a tool in MCP Studio"
+        class="w-full block"
+        data-lightbox
+      />
+    </AppWindow>
+  </section>
+
+  <!-- Non-interactive tool -->
+  <section class="mb-10">
+    <h2
+      id="non-interactive-tool"
+      class="text-sm font-semibold uppercase tracking-widest text-[var(--foreground)] mb-3"
+    >
+      Non-interactive tool
+    </h2>
+    <p class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-4">
+      Some tools return plain data — text, JSON, or markdown. The response is
+      displayed in the Widget Preview panel as a read-only view. There is
+      nothing to click or interact with; the panel just shows you what the
+      server returned.
+    </p>
+    <div class="border border-[var(--border)] bg-[var(--card)] p-4 mb-4">
+      <p class="text-xs font-semibold text-[var(--foreground)] mb-2">
+        Example — <code class="font-mono">read_me</code> (Excalidraw)
+      </p>
+      <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
+        Calling <code class="text-[var(--foreground)]">read_me</code> returns a
+        text description of the current Excalidraw canvas. MCP Studio renders
+        it in the preview panel as static content — no interaction needed.
+      </p>
+    </div>
+    <AppWindow caption="read_me returns plain data shown as a read-only view.">
+      <img
+        src="/screenshots/excalidraw-read-me.png"
+        alt="read_me tool result in MCP Studio"
+        class="w-full block"
+        data-lightbox
+      />
+    </AppWindow>
+  </section>
+
+  <!-- Interactive tool -->
+  <section class="mb-10">
+    <h2
+      id="interactive-tool"
+      class="text-sm font-semibold uppercase tracking-widest text-[var(--foreground)] mb-3"
+    >
+      Interactive tool
+    </h2>
+    <p class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-4">
+      Other tools return a widget — a live UI rendered inside an iframe in the
+      Widget Preview panel. You can click, type, drag, and interact with it
+      exactly as an end user would. Any interactions can be recorded and turned
+      into an automated test step.
+    </p>
+    <div class="border border-[var(--border)] bg-[var(--card)] p-4 mb-4">
+      <p class="text-xs font-semibold text-[var(--foreground)] mb-3">
+        Example — <code class="font-mono">create_view</code> (Excalidraw)
+      </p>
+      <p class="text-sm text-[var(--muted-foreground)] leading-relaxed mb-3">
+        Pass an <code class="text-[var(--foreground)]">elements</code> array and
+        Excalidraw renders a live, interactive diagram in the preview panel.
+        The example below draws two boxes connected by an arrow:
+        <strong class="text-[var(--foreground)]">Hello → MCP Studio</strong>.
+      </p>
+      <div class="border border-[var(--border)] bg-[var(--background)]">
+        <div
+          class="flex items-center gap-1.5 px-3 py-2 border-b border-[var(--border)]"
+        >
+          <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
+          <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
+          <span class="w-2 h-2 rounded-full bg-[var(--border)]"></span>
+          <span class="ml-2 text-xs text-[var(--muted-foreground)]"
+            >create_view — arguments</span
+          >
+          <button
+            class="copy-btn ml-auto text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+            data-copy={`{"elements":"[{\\"type\\":\\"cameraUpdate\\",\\"width\\":800,\\"height\\":600,\\"x\\":0,\\"y\\":0},{\\"type\\":\\"rectangle\\",\\"id\\":\\"b1\\",\\"x\\":100,\\"y\\":220,\\"width\\":180,\\"height\\":80,\\"roundness\\":{\\"type\\":3},\\"backgroundColor\\":\\"#a5d8ff\\",\\"fillStyle\\":\\"solid\\",\\"strokeColor\\":\\"#4a9eed\\",\\"strokeWidth\\":2,\\"label\\":{\\"text\\":\\"Hello\\",\\"fontSize\\":22}},{\\"type\\":\\"arrow\\",\\"id\\":\\"a1\\",\\"x\\":280,\\"y\\":260,\\"width\\":160,\\"height\\":0,\\"points\\":[[0,0],[160,0]],\\"endArrowhead\\":\\"arrow\\",\\"strokeColor\\":\\"#1e1e1e\\",\\"strokeWidth\\":2},{\\"type\\":\\"rectangle\\",\\"id\\":\\"b2\\",\\"x\\":440,\\"y\\":220,\\"width\\":220,\\"height\\":80,\\"roundness\\":{\\"type\\":3},\\"backgroundColor\\":\\"#d0bfff\\",\\"fillStyle\\":\\"solid\\",\\"strokeColor\\":\\"#8b5cf6\\",\\"strokeWidth\\":2,\\"label\\":{\\"text\\":\\"MCP Studio\\",\\"fontSize\\":22}}]"}`}
+            title="Copy"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="9" y="9" width="13" height="13" rx="2"></rect><path
+                d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+              ></path>
+            </svg>
+          </button>
+        </div>
+        <pre
+          class="px-4 py-3 text-xs text-[var(--foreground)] leading-relaxed overflow-x-auto"
+          ><code>{`{
+  "elements": "[
+    { \\"type\\": \\"cameraUpdate\\", \\"width\\": 800, \\"height\\": 600, \\"x\\": 0, \\"y\\": 0 },
+    { \\"type\\": \\"rectangle\\", \\"id\\": \\"b1\\", \\"label\\": { \\"text\\": \\"Hello\\" }, ... },
+    { \\"type\\": \\"arrow\\",     \\"id\\": \\"a1\\", ... },
+    { \\"type\\": \\"rectangle\\", \\"id\\": \\"b2\\", \\"label\\": { \\"text\\": \\"MCP Studio\\" }, ... }
+  ]"
+}`}</code></pre
+        >
+      </div>
+    </div>
+    <AppWindow caption="create_view renders Hello → MCP Studio as an interactive diagram." class="mb-4">
+      <img
+        src="/screenshots/excalidraw-create-view.png"
+        alt="create_view result rendered in MCP Studio"
+        class="w-full block"
+        data-lightbox
+      />
+    </AppWindow>
+    <AppWindow caption="Interacting with the live widget after calling create_view.">
+      <img
+        src="/screenshots/mcp-studio-interactive-with-widget.gif"
+        alt="Interactive widget rendered after calling create_view"
+        class="w-full block"
+        data-lightbox
+      />
+    </AppWindow>
+  </section>
+
+  <!-- Comparison -->
+  <section class="mb-10">
+    <h2
+      id="comparison"
+      class="text-sm font-semibold uppercase tracking-widest text-[var(--foreground)] mb-4"
+    >
+      At a glance
+    </h2>
+    <div
+      class="grid grid-cols-1 sm:grid-cols-2 gap-px border border-[var(--border)]"
+    >
+      {
+        [
+          {
+            label: "Non-interactive",
+            example: "read_me",
+            points: [
+              "Returns text, JSON, or markdown",
+              "Preview panel shows data as read-only",
+              "No clickable UI elements",
+            ],
+          },
+          {
+            label: "Interactive",
+            example: "create_view",
+            points: [
+              "Returns a widget (live iframe)",
+              "Preview panel renders a full UI",
+              "Clicks and inputs can be recorded as test steps",
+            ],
+          },
+        ].map((col) => (
+          <div class="bg-[var(--card)] p-4">
+            <p class="text-xs font-semibold text-[var(--foreground)] mb-0.5">
+              {col.label}
+            </p>
+            <p class="text-[10px] font-mono text-[var(--muted-foreground)] mb-3">
+              e.g. {col.example}
+            </p>
+            <ul class="flex flex-col gap-1.5">
+              {col.points.map((p) => (
+                <li class="flex gap-2 text-sm text-[var(--muted-foreground)]">
+                  <span class="mt-1.5 shrink-0 w-1 h-1 bg-[var(--muted-foreground)]" />
+                  {p}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      }
+    </div>
+  </section>
+</DocsLayout>
