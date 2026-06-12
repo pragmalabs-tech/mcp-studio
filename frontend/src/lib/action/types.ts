@@ -22,6 +22,11 @@ export interface ActionResult {
  *  by replaying the previous click. Optional; most actions ignore it. */
 export interface ExecuteContext {
   previous?: Action;
+  /** Widget snapshot captured just before this step runs (runner injects this).
+   *  Stored in the action result as the "what was on screen when this ran" artifact. */
+  snapshot?:
+    | import("@/components/studio/preview/snapshot/snapshot").WidgetSnapshot
+    | null;
 }
 
 /**
@@ -55,6 +60,11 @@ export abstract class Action<T = any> {
    *  open-window Actions accept events arriving asynchronously from
    *  external sources (bridge, future server push). */
   events: Event[] = [];
+
+  /** Set by the runner before execute() to indicate how many events were
+   *  recorded for this step. execute() uses this to self-close the settle
+   *  window once the expected events arrive. Undefined during recording. */
+  expectedEvents?: number;
 
   /**
    * Static-declared assertable surface. Subclasses override with their
@@ -116,6 +126,19 @@ export abstract class Action<T = any> {
     error?: { message: string },
   ): void {
     this.result = { success, data, error };
+  }
+
+  /** Patch the snapshot fields in result.data after the fact. Used by the
+   *  runner to inject the post-step snapshot once the widget has settled. */
+  updateSnapshot(
+    snap:
+      | import("@/components/studio/preview/snapshot/snapshot").WidgetSnapshot
+      | null,
+  ): void {
+    if (!this.result?.data || typeof this.result.data !== "object") return;
+    const d = this.result.data as Record<string, unknown>;
+    d.snapshot = snap?.html ?? null;
+    if (snap?.bounds) d.snapshotBounds = snap.bounds;
   }
 
   toJSON(): object {

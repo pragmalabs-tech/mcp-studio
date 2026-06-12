@@ -3,7 +3,8 @@ import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { createClaudeMock } from "@/lib/studio/mock-claude";
 import { callTool } from "@/lib/studio/api";
 import { getWidgetColors } from "@/lib/core/widget/colors";
-import { scheduleWidgetSnapshot } from "@/lib/studio/widget-snapshot";
+import { snapshotCenter } from "./snapshot/snapshot-center";
+import { eventBus, WidgetRenderEvent } from "@/lib/event";
 import { useProfileStore } from "@/lib/studio/stores/profile-store";
 
 export function WidgetRenderer({
@@ -96,7 +97,22 @@ export function WidgetRenderer({
     doc.write(injectedHtml);
     doc.close();
 
-    return scheduleWidgetSnapshot(targetId, entry.mock, entry.waitMs);
+    const mock = entry.mock;
+    snapshotCenter.register(targetId, entry.waitMs, (snap) => {
+      useWidgetStore.getState().setSnapshot(targetId, snap);
+      if (snap) {
+        const meta = (mock?._meta ?? {}) as Record<string, unknown>;
+        const ui = meta.ui as Record<string, unknown> | undefined;
+        const uri =
+          (typeof ui?.resourceUri === "string" && ui.resourceUri) ||
+          (typeof ui?.uri === "string" && ui.uri) ||
+          (typeof meta?.["openai/outputTemplate"] === "string" &&
+            (meta["openai/outputTemplate"] as string)) ||
+          targetId;
+        eventBus.emit(new WidgetRenderEvent(targetId, uri, { success: true }));
+      }
+    });
+    return () => snapshotCenter.unregister(targetId);
   }, [
     targetId,
     injectedHtml,

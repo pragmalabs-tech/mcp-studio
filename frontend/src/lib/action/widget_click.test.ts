@@ -1,6 +1,28 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// snapshotCenter uses getWidgetIframe (DOM lookup) which won't find elements in
+// the test environment — mock it so takeSnapshot/getResult work with test data.
+const mockGetResult = vi.hoisted(() =>
+  vi
+    .fn<
+      () =>
+        | import("@/components/studio/preview/snapshot/snapshot").WidgetSnapshot
+        | null
+    >()
+    .mockReturnValue(null),
+);
+vi.mock("../../components/studio/preview/snapshot/snapshot-center", () => ({
+  captureWidgetSnapshot: vi.fn().mockReturnValue(null),
+  snapshotCenter: {
+    register: vi.fn(),
+    takeSnapshot: vi.fn(),
+    getResult: mockGetResult,
+    unregister: vi.fn(),
+    waitFor: vi.fn().mockResolvedValue(null),
+  },
+}));
+
 vi.mock("@/lib/studio/stores/widget-store", () => {
   const state: Record<string, unknown> = {
     logAction: vi.fn(),
@@ -75,12 +97,17 @@ describe("WidgetClickAction", () => {
 
   it("falls back through the candidate list and records which one matched", async () => {
     setupStore(`<button id="real">Save</button>`);
+    const snap = {
+      id: "w1",
+      html: '<!DOCTYPE html><html><body><button id="real">Save</button></body></html>',
+      createdAt: new Date().toISOString(),
+    };
     const action = new WidgetClickAction("w1", [
       '[data-testid="missing"]',
       "#real",
       "button",
     ]);
-    const settled = action.execute();
+    const settled = action.execute({ snapshot: snap });
     // Action is now hanging in the settle window. Close it.
     action.close();
     await settled;

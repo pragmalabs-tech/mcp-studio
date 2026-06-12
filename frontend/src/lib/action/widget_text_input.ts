@@ -5,10 +5,11 @@ import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { WidgetCanvasClickAction } from "./widget_canvas_click";
 import { WidgetClickAction } from "./widget_click";
+import { waitUntil } from "@/lib/utils";
 import {
-  serializeIframeDocument,
+  captureWidgetSnapshot,
   type WidgetSnapshot,
-} from "../../components/studio/preview/snapshot/snapshot";
+} from "../../components/studio/preview/snapshot/snapshot-center";
 
 export interface WidgetTextInputResult {
   matchedSelector: string | null;
@@ -121,9 +122,7 @@ export class WidgetTextInputAction extends Action<{
   private _closeResolve?: () => void;
   private _markRecorded!: () => void;
   private _debounceTimer?: ReturnType<typeof setTimeout>;
-  /** Snapshot frozen synchronously before close() — used by recordFromUserInput
-   *  to avoid capturing DOM changes made by the next element's event handlers. */
-  private _frozenSnapshot?: WidgetSnapshot;
+  private _snapshot: WidgetSnapshot | null = null;
 
   /** Resolves AFTER the orchestrator has handed this action to the recorder. */
   readonly recorded: Promise<void>;
@@ -152,46 +151,20 @@ export class WidgetTextInputAction extends Action<{
     this._resetDebounce();
   }
 
-  /** Capture the current iframe HTML into _frozenSnapshot if not already set.
-   *  First caller wins — subsequent calls are no-ops. */
-  private _captureSnapshot(): void {
-    if (this._frozenSnapshot !== undefined) return;
-    const iframe = useWidgetStore.getState()._iframeRef;
-    if (iframe)
-      this._frozenSnapshot = serializeIframeDocument(
-        this.data.widgetId,
-        iframe,
-      );
-  }
-
   private _resetDebounce(): void {
     if (this._debounceTimer !== undefined) clearTimeout(this._debounceTimer);
     this._debounceTimer = setTimeout(() => {
-      // Case 2: debounce settled — capture snapshot now, before close().
-      // At this point no new element has started typing, so the DOM reflects
-      // only this action's typed value.
-      this._captureSnapshot();
       this.close();
     }, WidgetTextInputAction.DEBOUNCE_MS);
   }
 
   /** Resolves the settle window. Idempotent. Called by the debounce timer,
-   *  store.execute() (next user action), recorder.stop(), or the runner.
-   *
-   *  Case 1: close() is the snapshot gate — capturing here covers every
-   *  caller (new element in onKeyup, store.execute, safety cap) without
-   *  needing the caller to know about snapshot timing. */
+   *  store.execute() (next user action), recorder.stop(), or the runner. */
   close(): void {
     if (this._debounceTimer !== undefined) {
       clearTimeout(this._debounceTimer);
       this._debounceTimer = undefined;
     }
-    // Capture the snapshot at the moment of close if not already frozen.
-    // When called from the debounce timer, _captureSnapshot() already ran so
-    // this is a no-op. When called externally (new action, safety cap), this
-    // is the actual capture — still correct because the caller closes us
-    // before the next action mutates the DOM.
-    this._captureSnapshot();
     const r = this._closeResolve;
     this._closeResolve = undefined;
     r?.();
@@ -216,6 +189,8 @@ export class WidgetTextInputAction extends Action<{
       initialValue: string;
     },
   ): Promise<void> {
+    // Capture the widget state before the user's typing changes the DOM.
+    this._snapshot = captureWidgetSnapshot(this.data.widgetId);
     this.data.value = opts.initialValue;
     useWidgetStore.setState({ openTextInput: this });
 
@@ -228,14 +203,11 @@ export class WidgetTextInputAction extends Action<{
     if (useWidgetStore.getState().openTextInput === this) {
       useWidgetStore.setState({ openTextInput: null });
     }
-    // _frozenSnapshot is always set by the time we reach here: close() calls
-    // _captureSnapshot() as its first step, and every code path that resolves
-    // this promise goes through close() (debounce timer, external close, safety cap).
     this.setResult(true, {
       matchedSelector: opts.matchedSelector,
       matchedIndex: opts.matchedIndex,
-      snapshot: this._frozenSnapshot?.html ?? null,
-      snapshotBounds: this._frozenSnapshot?.bounds,
+      snapshot: this._snapshot?.html ?? null,
+      snapshotBounds: this._snapshot?.bounds,
       applied: true, // recorded from a real user keystroke — definitionally applied
     } satisfies WidgetTextInputResult);
   }
@@ -423,26 +395,27 @@ export class WidgetTextInputAction extends Action<{
       );
     }
 
-    await new Promise<void>((resolve) => {
+    const settled = new Promise<void>((resolve) => {
       this._closeResolve = resolve;
       setTimeout(resolve, 5_000);
     });
+
+    if (this.expectedEvents !== undefined) {
+      await waitUntil(() => this.events.length >= this.expectedEvents!, 5000);
+      await new Promise((r) => setTimeout(r, 150));
+      this.close();
+    }
+
+    await settled;
 
     if (useWidgetStore.getState().openTextInput === this) {
       useWidgetStore.setState({ openTextInput: null });
     }
 
-    const snap =
-      this._frozenSnapshot ??
-      serializeIframeDocument(
-        this.data.widgetId,
-        useWidgetStore.getState()._iframeRef!,
-      );
     this.setResult(true, {
       matchedSelector,
       matchedIndex,
-      snapshot: snap?.html ?? null,
-      snapshotBounds: snap?.bounds,
+      snapshot: null,
       applied,
     } satisfies WidgetTextInputResult);
   }

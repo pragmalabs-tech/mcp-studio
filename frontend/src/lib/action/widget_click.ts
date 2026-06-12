@@ -1,9 +1,14 @@
 import { Action } from "./types";
+import type { ExecuteContext } from "./types";
 import type { StateChange, ToolState, WidgetState } from "@/lib/state/types";
 import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { describeFocus } from "./utils/describe-focus";
-import { serializeIframeDocument } from "../../components/studio/preview/snapshot/snapshot";
+import { waitUntil } from "@/lib/utils";
+import {
+  captureWidgetSnapshot,
+  type WidgetSnapshot,
+} from "../../components/studio/preview/snapshot/snapshot-center";
 
 /**
  * Outcome data carried on `action.result.data`.
@@ -79,6 +84,7 @@ export class WidgetClickAction extends Action<{
   ];
 
   private _closeResolve?: () => void;
+  private _snapshot: WidgetSnapshot | null = null;
   private _markRecorded!: () => void;
 
   /** Resolves AFTER the orchestrator has handed this action to the recorder.
@@ -125,9 +131,7 @@ export class WidgetClickAction extends Action<{
     return false;
   }
 
-  /** Resolves the open settle window. Idempotent. Called by store.execute()
-   *  (next user action), recorder.stop() (end of slice), or the runner
-   *  after expected events have arrived. */
+  /** Resolves the open settle window. Idempotent. */
   close(): void {
     const r = this._closeResolve;
     this._closeResolve = undefined;
@@ -152,6 +156,12 @@ export class WidgetClickAction extends Action<{
     doc: Document,
     opts: { matchedSelector: string; matchedIndex: number },
   ): Promise<void> {
+    // Capture the widget state now — this is the state when the user's click
+    // fired (best we can do in recording mode; DOM already reflects the click).
+    this._snapshot = captureWidgetSnapshot(this.data.widgetId);
+    console.log(
+      `[WIDGET_CLICK record] snapshot captured: ${this._snapshot ? `html.length=${this._snapshot.html.length}` : "null"}`,
+    );
     useWidgetStore.setState({ openClick: this });
     await new Promise<void>((resolve) => {
       this._closeResolve = resolve;
@@ -160,19 +170,15 @@ export class WidgetClickAction extends Action<{
     if (useWidgetStore.getState().openClick === this) {
       useWidgetStore.setState({ openClick: null });
     }
-    const snap = serializeIframeDocument(
-      this.data.widgetId,
-      useWidgetStore.getState()._iframeRef!,
-    );
     this.setResult(true, {
       matchedSelector: opts.matchedSelector,
       matchedIndex: opts.matchedIndex,
-      snapshot: snap?.html ?? null,
-      snapshotBounds: snap?.bounds,
+      snapshot: this._snapshot?.html ?? null,
+      snapshotBounds: this._snapshot?.bounds,
     } satisfies WidgetClickResult);
   }
 
-  async execute(): Promise<void> {
+  async execute(ctx?: ExecuteContext): Promise<void> {
     const store = useWidgetStore.getState();
     store.logAction("system", `Click widget ${this.data.widgetId}…`);
     const doc = store._iframeRef?.contentDocument;
@@ -201,29 +207,28 @@ export class WidgetClickAction extends Action<{
     useWidgetStore.setState({ openClick: this });
     dispatchClicks(doc, el as HTMLElement, this.data.detail);
 
-    // Wait for external close. The 30s cap is a dev-safety net — orchestrators
-    // (store.execute, runner) should close us well before that.
-    await new Promise<void>((resolve) => {
+    const settled = new Promise<void>((resolve) => {
       this._closeResolve = resolve;
       setTimeout(resolve, 5_000);
     });
+
+    if (this.expectedEvents !== undefined) {
+      await waitUntil(() => this.events.length >= this.expectedEvents!, 5000);
+      await new Promise((r) => setTimeout(r, 150));
+      this.close();
+    }
+
+    await settled;
 
     if (useWidgetStore.getState().openClick === this) {
       useWidgetStore.setState({ openClick: null });
     }
 
-    // Report what holds focus at step end so a following text step can tell
-    // whether this click opened an editable editor worth re-opening.
     const endFocus = describeFocus(doc);
-    const snap = serializeIframeDocument(
-      this.data.widgetId,
-      useWidgetStore.getState()._iframeRef!,
-    );
     this.setResult(true, {
       matchedSelector,
       matchedIndex,
-      snapshot: snap?.html ?? null,
-      snapshotBounds: snap?.bounds,
+      snapshot: null,
       endFocus,
     } satisfies WidgetClickResult);
   }

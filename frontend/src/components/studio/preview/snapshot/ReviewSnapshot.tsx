@@ -24,8 +24,13 @@ export function SnapshotIframeViewer({
   const [expanded, setExpanded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState<number | null>(null);
+  // Tracks which srcDoc has finished loading — automatically false when srcDoc changes.
+  const [loadedSrcDoc, setLoadedSrcDoc] = useState<string | null>(null);
+  const loaded = loadedSrcDoc === srcDoc;
 
   useEffect(() => {
+    // Reset scale so stale value from previous step never flashes.
+    setScale(null);
     if (!bounds || !containerRef.current) return;
     const el = containerRef.current;
     const observer = new ResizeObserver(([entry]) => {
@@ -50,6 +55,11 @@ export function SnapshotIframeViewer({
           className,
         )}
       >
+        {!loaded && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted/40">
+            <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/20 border-t-muted-foreground/60 animate-spin" />
+          </div>
+        )}
         {bounds && scale !== null ? (
           <iframe
             srcDoc={srcDoc}
@@ -62,7 +72,9 @@ export function SnapshotIframeViewer({
               transformOrigin: "top left",
               display: "block",
               flexShrink: 0,
+              opacity: loaded ? 1 : 0,
             }}
+            onLoad={() => setLoadedSrcDoc(srcDoc)}
           />
         ) : (
           <iframe
@@ -70,6 +82,8 @@ export function SnapshotIframeViewer({
             sandbox=""
             title={`Widget snapshot — ${title}`}
             className="w-full h-full"
+            style={{ opacity: loaded ? 1 : 0 }}
+            onLoad={() => setLoadedSrcDoc(srcDoc)}
           />
         )}
         <button

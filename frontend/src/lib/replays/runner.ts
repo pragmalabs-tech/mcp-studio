@@ -1,6 +1,4 @@
 import { reconstructAction, type Action } from "@/lib/action";
-import { WidgetClickAction } from "@/lib/action/widget_click";
-import { WidgetTextInputAction } from "@/lib/action/widget_text_input";
 import { WidgetCanvasClickAction } from "@/lib/action/widget_canvas_click";
 import { recorder } from "@/lib/recorder/recorder";
 import type { RecordedAction } from "@/lib/recorder/schema";
@@ -14,6 +12,10 @@ import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import type { SavedTest } from "@/lib/tests/storage";
 import { saveReplay, type ReplayedAction, type SavedReplay } from "./storage";
 import { waitUntil } from "@/lib/utils";
+import {
+  captureWidgetSnapshot,
+  type WidgetSnapshot,
+} from "@/components/studio/preview/snapshot/snapshot-center";
 
 function nowMs(): number {
   return typeof performance !== "undefined" && performance.now
@@ -105,13 +107,32 @@ export async function runReplay(
   }
 
   const runStart = nowMs();
-  const out: ReplayedAction[] = [];
   let anyFailed = false;
   let aborted = false;
+
+  // Live action refs kept until after the loop so we can inject snapshots
+  // before serializing. Serialization happens in the post-loop pass below.
+  const liveSteps: Array<{
+    relMs: number;
+    action: Action;
+    liveChange: ReturnType<Action["change"]>;
+    report: AssertReport;
+    recordedActionId: string;
+  }> = [];
   // The previously executed action, threaded into the next step's execute() so
   // it can react to what was left behind (e.g. a text step re-opening an
   // ephemeral editor by replaying the prior click).
   let previous: Action | undefined;
+
+  // One snapshot slot per step. Populated as the run progresses:
+  //   snapshots[i] = widget state captured after step i ran.
+  // Step 0 stays null (nothing ran before it).
+  // Middle steps are captured at the START of the next step (synchronously
+  // before the next execute, so the DOM hasn't changed yet).
+  // Last step is captured AFTER it runs (300ms settle).
+  const snapshots: Array<WidgetSnapshot | null> = new Array(steps.length).fill(
+    null,
+  );
 
   try {
     for (let i = 0; i < steps.length; i++) {
@@ -119,6 +140,7 @@ export async function runReplay(
         aborted = true;
         break;
       }
+
       const { source, action } = steps[i];
       onProgress?.({ step: i, total, action, phase: "before" });
 
@@ -130,34 +152,25 @@ export async function runReplay(
         break;
       }
 
+      const widgetId = useWidgetStore.getState().activeWidgetId;
+      const shouldSnapshotBeforNextAction = i > 0 && !!widgetId;
+      const shouldTakeSnapshotAfterTimeout =
+        i === steps.length - 1 && !!widgetId;
+
+      // ── execute && take snapshot widget ────────────────────────────────────────────────
       const stepStart = nowMs();
+      action.expectedEvents =
+        (source.action as { events?: unknown[] }).events?.length ?? 0;
       eventBus.setActive(action);
       try {
-        if (
-          action instanceof WidgetClickAction ||
-          action instanceof WidgetTextInputAction ||
-          action instanceof WidgetCanvasClickAction
-        ) {
-          // Open-window actions: drive close via the recorded event count
-          // (live events flow in asynchronously via the bus during the
-          // settle window).
-          const expectedEvents =
-            (source.action as { events?: unknown[] }).events?.length ?? 0;
-          const settled = action.execute({ previous });
-          await waitUntil(() => action.events.length >= expectedEvents, 5000);
-          await new Promise((r) => setTimeout(r, 150)); // DOM rerender grace
-          action.close();
-          await settled;
-        } else {
-          // Direct action: execute resolves when its own I/O is done; events
-          // accumulate synchronously via the bus during that window.
-          await action.execute({ previous });
+        if (shouldSnapshotBeforNextAction) {
+          snapshots[i - 1] = captureWidgetSnapshot(widgetId);
+          console.log(
+            `[runner step ${i}] snapshots[${i - 1}] captured before executing step ${i}: ${snapshots[i - 1] ? `html.length=${snapshots[i - 1]!.html.length}` : "null"}`,
+          );
         }
+        await action.execute({ previous });
       } catch (err) {
-        // A thrown step (e.g. a widget click that can't be dispatched against
-        // a canvas element) must not sink the whole replay. Capture it as a
-        // failed result so the run still saves and the offending step shows
-        // up in the report instead of vanishing.
         if (!action.result) {
           action.setResult(false, undefined, {
             message: err instanceof Error ? err.message : String(err),
@@ -166,8 +179,18 @@ export async function runReplay(
       } finally {
         eventBus.setActive(null);
       }
-      const liveChange = action.change();
+      const executeResult = action.result;
 
+      if (shouldTakeSnapshotAfterTimeout) {
+        await new Promise<void>((r) => setTimeout(r, 300));
+        snapshots[i] = captureWidgetSnapshot(widgetId);
+        console.log(
+          `[runner step ${i}] last step — snapshots[${i}] captured after 300ms: ${snapshots[i] ? `html.length=${snapshots[i]!.html.length}` : "null"}`,
+        );
+      }
+
+      // ── assertion ──────────────────────────────────────────────────
+      const liveChange = action.change();
       const recordedId = source.action.id;
       const modes = resolveResultModes(
         test.assertions,
@@ -175,7 +198,6 @@ export async function runReplay(
         action.getAssertablePoints(),
       );
       const stateMode = resolveStateMode(test.assertions, recordedId);
-
       const report: AssertReport = {
         action: action.verifyResult(source.action.result, modes),
         state: await action.verifyStateChange(source.stateChange, {
@@ -191,11 +213,11 @@ export async function runReplay(
         anyFailed = true;
       }
 
-      out.push({
+      liveSteps.push({
         relMs: stepStart - runStart,
-        action: action.toJSON() as RecordedAction["action"],
-        stateChange: liveChange,
-        assert: report,
+        action,
+        liveChange,
+        report,
         recordedActionId: recordedId,
       });
       onProgress?.({ step: i, total, action, phase: "after" });
@@ -205,6 +227,26 @@ export async function runReplay(
     recorder.resume();
     if (recordedCanvas) useWidgetStore.setState({ replaySizeLock: null });
   }
+
+  // Inject captured snapshots into action results, then serialize.
+  // snapshots[i] = widget state after step i ran; injected into each action
+  // so ReviewSnapshot shows the correct state for that step.
+  for (let i = 0; i < liveSteps.length; i++) {
+    if (snapshots[i]) {
+      console.log(
+        `[runner] injecting snapshots[${i}] into action ${liveSteps[i].action.type}`,
+      );
+      liveSteps[i].action.updateSnapshot(snapshots[i]);
+    }
+  }
+
+  const out: ReplayedAction[] = liveSteps.map((s) => ({
+    relMs: s.relMs,
+    action: s.action.toJSON() as RecordedAction["action"],
+    stateChange: s.liveChange,
+    assert: s.report,
+    recordedActionId: s.recordedActionId,
+  }));
 
   const replay: SavedReplay = {
     id: crypto.randomUUID(),

@@ -1,10 +1,14 @@
 import { Action } from "./types";
+import type { ExecuteContext } from "./types";
 import type { StateChange, ToolState, WidgetState } from "@/lib/state/types";
 import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import type { CanvasLocator } from "./utils/widget-interaction-capture/types";
 import { describeFocus } from "./utils/describe-focus";
-import { serializeIframeDocument } from "../../components/studio/preview/snapshot/snapshot";
+import {
+  captureWidgetSnapshot,
+  type WidgetSnapshot,
+} from "../../components/studio/preview/snapshot/snapshot-center";
 import { waitUntil } from "@/lib/utils";
 
 /**
@@ -158,6 +162,7 @@ export class WidgetCanvasClickAction extends Action<{
 
   private _closeResolve?: () => void;
   private _closeCalled = false;
+  private _snapshot: WidgetSnapshot | null = null;
   private _markRecorded!: () => void;
 
   /** Resolves AFTER the orchestrator has handed this action to the recorder. */
@@ -222,6 +227,11 @@ export class WidgetCanvasClickAction extends Action<{
    * dispatch and just park the settle window so downstream events route here.
    */
   async recordFromUserClick(doc: Document): Promise<void> {
+    // Capture before anything else mutates the DOM further.
+    this._snapshot = captureWidgetSnapshot(this.data.widgetId);
+    console.log(
+      `[WIDGET_CANVAS_CLICK record] snapshot captured: ${this._snapshot ? `html.length=${this._snapshot.html.length}` : "null"}`,
+    );
     useWidgetStore.setState({ openClick: this });
     await new Promise<void>((resolve) => {
       if (this._closeCalled) {
@@ -235,20 +245,16 @@ export class WidgetCanvasClickAction extends Action<{
       useWidgetStore.setState({ openClick: null });
     }
     const resolved = resolveCanvas(doc, this.data.canvas);
-    const snap = serializeIframeDocument(
-      this.data.widgetId,
-      useWidgetStore.getState()._iframeRef!,
-    );
     this.setResult(true, {
       matchedSelector: resolved?.selector ?? this.data.canvas.selector,
       nx: this.data.nx,
       ny: this.data.ny,
-      snapshot: snap?.html ?? null,
-      snapshotBounds: snap?.bounds,
+      snapshot: this._snapshot?.html ?? null,
+      snapshotBounds: this._snapshot?.bounds,
     } satisfies WidgetCanvasClickResult);
   }
 
-  async execute(): Promise<void> {
+  async execute(ctx?: ExecuteContext): Promise<void> {
     const store = useWidgetStore.getState();
     store.logAction("system", `Canvas click ${this.data.widgetId}…`);
     const doc = store._iframeRef?.contentDocument;
@@ -256,16 +262,19 @@ export class WidgetCanvasClickAction extends Action<{
       this.setResult(false, undefined, { message: "iframe not mounted" });
       return;
     }
+
+    useWidgetStore.setState({ openClick: this });
+
     // Canvas may not be in the DOM yet if the widget is still rendering —
     // poll for up to 3s before giving up (matches step-by-step human delay).
     await waitUntil(() => resolveCanvas(doc, this.data.canvas) !== null, 3000);
     const resolved = resolveCanvas(doc, this.data.canvas);
     if (!resolved) {
+      useWidgetStore.setState({ openClick: null });
       this.setResult(false, undefined, { message: "canvas not found" });
       return;
     }
 
-    useWidgetStore.setState({ openClick: this });
     dispatchTaps(
       doc,
       resolved.el,
@@ -276,7 +285,7 @@ export class WidgetCanvasClickAction extends Action<{
       this.data.canvas.ch,
     );
 
-    await new Promise<void>((resolve) => {
+    const settled = new Promise<void>((resolve) => {
       if (this._closeCalled) {
         resolve();
         return;
@@ -284,24 +293,25 @@ export class WidgetCanvasClickAction extends Action<{
       this._closeResolve = resolve;
       setTimeout(resolve, 5_000);
     });
+
+    if (this.expectedEvents !== undefined) {
+      await waitUntil(() => this.events.length >= this.expectedEvents!, 5000);
+      await new Promise((r) => setTimeout(r, 150));
+      this.close();
+    }
+
+    await settled;
+
     if (useWidgetStore.getState().openClick === this) {
       useWidgetStore.setState({ openClick: null });
     }
 
-    // Report what holds focus at step end so a following text step can tell
-    // whether this click opened an editable editor worth re-opening.
     const endFocus = describeFocus(doc);
-    const snap = serializeIframeDocument(
-      this.data.widgetId,
-      useWidgetStore.getState()._iframeRef!,
-    );
-
     this.setResult(true, {
       matchedSelector: resolved.selector,
       nx: this.data.nx,
       ny: this.data.ny,
-      snapshot: snap?.html ?? null,
-      snapshotBounds: snap?.bounds,
+      snapshot: null,
       endFocus,
     } satisfies WidgetCanvasClickResult);
   }

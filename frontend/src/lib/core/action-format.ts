@@ -22,9 +22,9 @@ export function clickVerb(detail: unknown): string {
   return `Click ×${n}`;
 }
 
-/** Normalized 0..1 coord formatted as a scale factor, e.g. 0.674 → "0.67". */
+/** Normalized 0..1 coord as a percentage, e.g. 0.674 → "67%". */
 function coord(v: unknown): string {
-  return typeof v === "number" ? v.toFixed(2) : "?";
+  return typeof v === "number" ? `${Math.round(v * 100)}%` : "?";
 }
 
 /** Short, human-readable label for an action (used by the run header). */
@@ -41,7 +41,7 @@ export function actionLabel(a: AnyAction): string {
     case "WIDGET_CLICK":
       return `${clickVerb(j.data?.detail)} · ${j.data?.fallbackText ?? j.data?.candidates?.[0] ?? "?"}`;
     case "WIDGET_CANVAS_CLICK":
-      return `Canvas ${clickVerb(j.data?.detail).toLowerCase()} · x${coord(j.data?.nx)} y${coord(j.data?.ny)}`;
+      return `Canvas ${clickVerb(j.data?.detail).toLowerCase()} · ${coord(j.data?.nx)}×${coord(j.data?.ny)}`;
     default:
       return j.type;
   }

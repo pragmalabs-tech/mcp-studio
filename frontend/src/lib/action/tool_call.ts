@@ -5,7 +5,6 @@ import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import type { WidgetSnapshot } from "@/components/studio/preview/snapshot/snapshot";
 import { validateToolResult } from "@/lib/studio/validate-tool-result";
-import { raceWithTimeout } from "@/lib/core/util/race-with-timeout";
 import {
   buildMockFromResponse,
   resolveWidgetUri,
@@ -183,16 +182,11 @@ export class ToolCallAction extends Action<{
             displayMode: liveStore.displayMode,
           });
           const waitMs = this.data.waitMs ?? DEFAULT_WAIT_MS;
-          const ready = useWidgetStore.getState().insertWidget(widgetUri, {
+          snapshot = await useWidgetStore.getState().insertWidget(widgetUri, {
             originalHtml: html,
             mock,
             waitMs,
           });
-          snapshot = await raceWithTimeout<WidgetSnapshot | null>(
-            ready,
-            waitMs * 2 + 500,
-            null,
-          );
           store.logAction("system", `Widget "${widgetUri}" rendered`);
         } else {
           store.logAction("warn", `Widget "${widgetUri}" HTML missing`);

@@ -135,7 +135,7 @@ describe("ToolCallAction", () => {
     });
   });
 
-  it("snapshot stays null when the WidgetPreview never resolves (timeout fallback)", async () => {
+  it("snapshot stays null when the widget renders but captures no snapshot", async () => {
     const widgetUri = "ui://widget/weather";
     mockedCallTool.mockResolvedValueOnce({
       _meta: { ui: { resourceUri: widgetUri } },
@@ -144,8 +144,8 @@ describe("ToolCallAction", () => {
       contents: [{ text: "<html></html>" }],
     });
 
-    // Promise that never resolves — exercises raceWithTimeout's fallback.
-    const insertWidget = vi.fn().mockReturnValue(new Promise(() => {}));
+    // insertWidget resolves with null — widget rendered but snapshot not available.
+    const insertWidget = vi.fn().mockResolvedValue(null);
     const s = useWidgetStore.getState() as unknown as Record<string, unknown>;
     s.resources = [
       {

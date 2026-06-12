@@ -1,6 +1,26 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+const mockGetResult = vi.hoisted(() =>
+  vi
+    .fn<
+      () =>
+        | import("@/components/studio/preview/snapshot/snapshot").WidgetSnapshot
+        | null
+    >()
+    .mockReturnValue(null),
+);
+vi.mock("../../components/studio/preview/snapshot/snapshot-center", () => ({
+  captureWidgetSnapshot: vi.fn().mockReturnValue(null),
+  snapshotCenter: {
+    register: vi.fn(),
+    takeSnapshot: vi.fn(),
+    getResult: mockGetResult,
+    unregister: vi.fn(),
+    waitFor: vi.fn().mockResolvedValue(null),
+  },
+}));
+
 vi.mock("@/lib/studio/stores/widget-store", () => {
   const state: Record<string, unknown> = {
     logAction: vi.fn(),
@@ -186,12 +206,17 @@ describe("WidgetTextInputAction", () => {
 
   it("falls back through the candidate list and records which matched", async () => {
     setupStore(`<textarea id="msg"></textarea>`);
+    const snap = {
+      id: "w1",
+      html: '<!DOCTYPE html><html><body><textarea id="msg">hello world</textarea></body></html>',
+      createdAt: new Date().toISOString(),
+    };
     const action = new WidgetTextInputAction(
       "w1",
       ['input[name="missing"]', "#msg", "textarea"],
       "hello world",
     );
-    const settled = action.execute();
+    const settled = action.execute({ snapshot: snap });
     action.close();
     await settled;
 

@@ -35,6 +35,7 @@ import type {
   Widget,
   CspViolation,
 } from "./types";
+import { snapshotCenter } from "@/components/studio/preview/snapshot/snapshot-center";
 import type { WidgetSnapshot } from "@/components/studio/preview/snapshot/snapshot";
 
 export { VIEWPORT_PRESETS } from "./types";
@@ -50,12 +51,6 @@ export type {
   Widget,
   CspViolation,
 };
-
-/** Resolvers parked by `insertWidget` and fulfilled by `setSnapshot`. */
-const _pendingSnapshots = new Map<
-  string,
-  (snap: WidgetSnapshot | null) => void
->();
 
 function closeOpenClick(): void {
   const open = useWidgetStore.getState().openClick;
@@ -599,16 +594,6 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
   setAutoHeight: (h) => set({ autoHeight: h }),
 
   insertWidget: (id, entry) => {
-    const prior = _pendingSnapshots.get(id);
-    if (prior) {
-      prior(null);
-      _pendingSnapshots.delete(id);
-    }
-
-    const ready = new Promise<WidgetSnapshot | null>((resolve) => {
-      _pendingSnapshots.set(id, resolve);
-    });
-
     const { platform, strictMode, addCspViolation } = get();
     const { html: injectedHtml, cspDomains } = renderHtml({
       html: entry.originalHtml,
@@ -647,7 +632,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
       autoHeight: null,
     }));
 
-    return ready;
+    return snapshotCenter.waitFor(id, entry.waitMs * 2 + 500);
   },
 
   setSnapshot: (id, snapshot) => {
@@ -658,11 +643,6 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
         widgets: { ...s.widgets, [id]: { ...existing, snapshot } },
       };
     });
-    const resolve = _pendingSnapshots.get(id);
-    if (resolve) {
-      resolve(snapshot);
-      _pendingSnapshots.delete(id);
-    }
   },
 
   loadWidget: async () => {
