@@ -8,7 +8,7 @@ import { waitUntil } from "@/lib/utils";
 import {
   captureWidgetSnapshot,
   type WidgetSnapshot,
-} from "../../components/studio/preview/snapshot/snapshot-center";
+} from "../../components/studio/preview/snapshot/snapshot-utils";
 
 /**
  * Outcome data carried on `action.result.data`.
@@ -156,12 +156,11 @@ export class WidgetClickAction extends Action<{
     doc: Document,
     opts: { matchedSelector: string; matchedIndex: number },
   ): Promise<void> {
-    // Capture the widget state now — this is the state when the user's click
-    // fired (best we can do in recording mode; DOM already reflects the click).
-    this._snapshot = captureWidgetSnapshot(this.data.widgetId);
-    console.log(
-      `[WIDGET_CLICK record] snapshot captured: ${this._snapshot ? `html.length=${this._snapshot.html.length}` : "null"}`,
-    );
+    // Let snapsnot after 0.5s click
+    setTimeout(() => {
+      this._snapshot = captureWidgetSnapshot(this.data.widgetId);
+    }, 500);
+
     useWidgetStore.setState({ openClick: this });
     await new Promise<void>((resolve) => {
       this._closeResolve = resolve;

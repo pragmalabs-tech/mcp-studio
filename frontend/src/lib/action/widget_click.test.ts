@@ -12,16 +12,6 @@ const mockGetResult = vi.hoisted(() =>
     >()
     .mockReturnValue(null),
 );
-vi.mock("../../components/studio/preview/snapshot/snapshot-center", () => ({
-  captureWidgetSnapshot: vi.fn().mockReturnValue(null),
-  snapshotCenter: {
-    register: vi.fn(),
-    takeSnapshot: vi.fn(),
-    getResult: mockGetResult,
-    unregister: vi.fn(),
-    waitFor: vi.fn().mockResolvedValue(null),
-  },
-}));
 
 vi.mock("@/lib/studio/stores/widget-store", () => {
   const state: Record<string, unknown> = {

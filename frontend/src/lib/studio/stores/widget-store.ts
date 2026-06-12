@@ -35,8 +35,8 @@ import type {
   Widget,
   CspViolation,
 } from "./types";
-import { snapshotCenter } from "@/components/studio/preview/snapshot/snapshot-center";
 import type { WidgetSnapshot } from "@/components/studio/preview/snapshot/snapshot";
+import { captureWidgetSnapshot } from "@/components/studio/preview/snapshot/snapshot-utils";
 
 export { VIEWPORT_PRESETS } from "./types";
 export type {
@@ -593,7 +593,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
 
   setAutoHeight: (h) => set({ autoHeight: h }),
 
-  insertWidget: (id, entry) => {
+  insertWidget: async (id, entry) => {
     const { platform, strictMode, addCspViolation } = get();
     const { html: injectedHtml, cspDomains } = renderHtml({
       html: entry.originalHtml,
@@ -632,7 +632,9 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
       autoHeight: null,
     }));
 
-    return snapshotCenter.waitFor(id, entry.waitMs * 2 + 500);
+    // wait 0.3s to allow widget can render
+    await new Promise((res) => setTimeout(res, 300));
+    return captureWidgetSnapshot(id);
   },
 
   setSnapshot: (id, snapshot) => {

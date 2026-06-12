@@ -8,7 +8,7 @@ import { describeFocus } from "./utils/describe-focus";
 import {
   captureWidgetSnapshot,
   type WidgetSnapshot,
-} from "../../components/studio/preview/snapshot/snapshot-center";
+} from "../../components/studio/preview/snapshot/snapshot-utils";
 import { waitUntil } from "@/lib/utils";
 
 /**
@@ -227,11 +227,9 @@ export class WidgetCanvasClickAction extends Action<{
    * dispatch and just park the settle window so downstream events route here.
    */
   async recordFromUserClick(doc: Document): Promise<void> {
-    // Capture before anything else mutates the DOM further.
-    this._snapshot = captureWidgetSnapshot(this.data.widgetId);
-    console.log(
-      `[WIDGET_CANVAS_CLICK record] snapshot captured: ${this._snapshot ? `html.length=${this._snapshot.html.length}` : "null"}`,
-    );
+    setTimeout(() => {
+      this._snapshot = captureWidgetSnapshot(this.data.widgetId);
+    }, 500);
     useWidgetStore.setState({ openClick: this });
     await new Promise<void>((resolve) => {
       if (this._closeCalled) {

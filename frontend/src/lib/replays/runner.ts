@@ -15,7 +15,7 @@ import { waitUntil } from "@/lib/utils";
 import {
   captureWidgetSnapshot,
   type WidgetSnapshot,
-} from "@/components/studio/preview/snapshot/snapshot-center";
+} from "@/components/studio/preview/snapshot/snapshot-utils";
 
 function nowMs(): number {
   return typeof performance !== "undefined" && performance.now
@@ -179,7 +179,6 @@ export async function runReplay(
       } finally {
         eventBus.setActive(null);
       }
-      const executeResult = action.result;
 
       if (shouldTakeSnapshotAfterTimeout) {
         await new Promise<void>((r) => setTimeout(r, 300));

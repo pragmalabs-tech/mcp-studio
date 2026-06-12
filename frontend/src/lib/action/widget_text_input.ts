@@ -9,7 +9,7 @@ import { waitUntil } from "@/lib/utils";
 import {
   captureWidgetSnapshot,
   type WidgetSnapshot,
-} from "../../components/studio/preview/snapshot/snapshot-center";
+} from "../../components/studio/preview/snapshot/snapshot-utils";
 
 export interface WidgetTextInputResult {
   matchedSelector: string | null;
@@ -189,8 +189,11 @@ export class WidgetTextInputAction extends Action<{
       initialValue: string;
     },
   ): Promise<void> {
-    // Capture the widget state before the user's typing changes the DOM.
-    this._snapshot = captureWidgetSnapshot(this.data.widgetId);
+    // Let snapsnot after 0.5s click
+    setTimeout(() => {
+      this._snapshot = captureWidgetSnapshot(this.data.widgetId);
+    }, 500);
+
     this.data.value = opts.initialValue;
     useWidgetStore.setState({ openTextInput: this });
 
