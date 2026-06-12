@@ -19,8 +19,9 @@ const nav = [
     ],
   },
   {
-    group: "Interface",
+    group: "Features",
     items: [
+      { label: "Interface", href: "/docs/interface" },
       { label: "Connect MCP App", href: "/docs/connect-mcp-app" },
     ],
   },
@@ -30,8 +31,9 @@ const pathname = Astro.url.pathname;
 
 const pages = [
   { label: "Overview", href: "/docs" },
-  { label: "Connect MCP App", href: "/docs/connect-mcp-app" },
   { label: "Your first test", href: "/docs/first-test" },
+  { label: "Interface", href: "/docs/interface" },
+  { label: "Connect MCP App", href: "/docs/connect-mcp-app" },
 ];
 
 const currentIndex = pages.findIndex((p) => p.href === pathname);

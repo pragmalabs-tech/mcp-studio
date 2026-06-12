@@ -1,0 +1,111 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import AppWindow from "../../components/AppWindow.astro";
+---
+
+<DocsLayout title="Interface — MCP Studio" current="interface">
+  <p
+    class="text-xs font-semibold uppercase tracking-widest text-[var(--muted-foreground)] mb-4"
+  >
+    [ Features ]
+  </p>
+  <h1 class="text-2xl font-bold text-[var(--foreground)] mb-4">Interface</h1>
+  <p
+    class="text-base text-[var(--muted-foreground)] max-w-lg leading-relaxed mb-10"
+  >
+    MCP Studio is divided into four areas. Each area has a dedicated role so you
+    can configure, execute, preview, and test your MCP application without
+    switching between separate tools.
+  </p>
+
+  <AppWindow caption="MCP Studio interface overview." class="mb-10">
+    <img
+      src="/screenshots/mcp-studio-interface.png"
+      alt="MCP Studio interface overview"
+      class="w-full block"
+      data-lightbox
+    />
+  </AppWindow>
+
+  <!-- Areas -->
+  <section class="mb-10">
+    <h2
+      id="areas"
+      class="text-sm font-semibold uppercase tracking-widest text-[var(--foreground)] mb-4"
+    >
+      Areas
+    </h2>
+    <div class="flex flex-col gap-px border border-[var(--border)]">
+      <!-- Red -->
+      <div class="bg-[var(--card)] p-4 flex gap-4">
+        <span
+          class="shrink-0 mt-0.5 w-3 h-3 rounded-sm bg-red-500/80"
+          aria-hidden="true"></span>
+        <div>
+          <p class="text-sm font-semibold text-[var(--foreground)] mb-1">
+            Configuration sidebar
+          </p>
+          <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
+            Manage your MCP connections and toolset. This is where you set the
+            server URL, switch profiles, browse the list of available tools and
+            resources, and configure app settings.
+          </p>
+        </div>
+      </div>
+
+      <!-- Orange -->
+      <div class="bg-[var(--card)] p-4 flex gap-4">
+        <span
+          class="shrink-0 mt-0.5 w-3 h-3 rounded-sm bg-orange-400/80"
+          aria-hidden="true"></span>
+        <div>
+          <p class="text-sm font-semibold text-[var(--foreground)] mb-1">
+            Execution panel
+          </p>
+          <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
+            The main area for interacting with your MCP server. Execute tools,
+            inspect arguments and responses, read logs, and check authentication
+            status — everything that involves sending a request and seeing what
+            comes back.
+          </p>
+        </div>
+      </div>
+
+      <!-- Yellow -->
+      <div class="bg-[var(--card)] p-4 flex gap-4">
+        <span
+          class="shrink-0 mt-0.5 w-3 h-3 rounded-sm bg-yellow-400/80"
+          aria-hidden="true"></span>
+        <div>
+          <p class="text-sm font-semibold text-[var(--foreground)] mb-1">
+            Widget preview
+          </p>
+          <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
+            Renders the widget UI returned by a tool call. Interact with it just
+            as an end user would — click elements, type into inputs, and switch
+            between viewport presets (ChatGPT, Claude, desktop, mobile). Widget
+            display settings live here too.
+          </p>
+        </div>
+      </div>
+
+      <!-- Green -->
+      <div class="bg-[var(--card)] p-4 flex gap-4">
+        <span
+          class="shrink-0 mt-0.5 w-3 h-3 rounded-sm bg-green-500/80"
+          aria-hidden="true"></span>
+        <div>
+          <p class="text-sm font-semibold text-[var(--foreground)] mb-1">
+            Tests panel
+          </p>
+          <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
+            Record, manage, and run your end-to-end tests. List all saved tests,
+            start and stop recording sessions, replay tests one step at a time
+            or in full, and browse the history of past runs with their
+            pass/fail results.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+</DocsLayout>
