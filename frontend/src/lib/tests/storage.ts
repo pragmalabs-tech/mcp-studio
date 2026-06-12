@@ -81,3 +81,9 @@ export async function updateTestTags(
   if (!existing) return;
   await putTest(id, { ...existing, tags: normalizeTags(tags) });
 }
+
+export async function updateTestName(id: string, name: string): Promise<void> {
+  const existing = await apiGetTest(id);
+  if (!existing) return;
+  await putTest(id, { ...existing, name });
+}

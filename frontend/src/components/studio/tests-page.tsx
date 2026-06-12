@@ -7,7 +7,7 @@ import {
   Trash2,
   ChevronDown,
   ChevronRight,
-  Download,
+  Pencil,
   Loader2,
   Plus,
   X,
@@ -35,6 +35,7 @@ import {
   loadTests,
   deleteTest,
   updateTestTags,
+  updateTestName,
   type SavedTest,
 } from "@/lib/tests/storage";
 import { collectTags, normalizeTag } from "@/lib/tests/tags";
@@ -181,19 +182,6 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
     }
   };
 
-  const handleExport = (test: SavedTest) => {
-    const json = JSON.stringify(test, null, 2);
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${test.name.replace(/[^a-z0-9]/gi, "_").toLowerCase()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
   const handleRunAll = async () => {
     if (runState || visibleTests.length === 0) return;
 
@@ -332,7 +320,14 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
                       await deleteTest(test.id);
                       setTests(tests.filter((t) => t.id !== test.id));
                     }}
-                    onExport={() => handleExport(test)}
+                    onNameChange={async (name) => {
+                      setTests((prev) =>
+                        prev.map((t) =>
+                          t.id === test.id ? { ...t, name } : t,
+                        ),
+                      );
+                      await updateTestName(test.id, name);
+                    }}
                     onTagsChange={(updated) => {
                       setTests((prev) =>
                         prev.map((t) =>
@@ -375,7 +370,7 @@ interface TestCardProps {
   onRun: () => void;
   onStep: () => void;
   onDelete: () => void;
-  onExport: () => void;
+  onNameChange: (name: string) => void;
   onTagsChange: (tags: string[]) => void;
 }
 
@@ -386,50 +381,88 @@ function TestCard({
   onRun,
   onStep,
   onDelete,
-  onExport,
+  onNameChange,
   onTagsChange,
 }: TestCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameBuffer, setNameBuffer] = useState("");
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const actionCount = test.session.actions.length;
   const capturedAt = new Date(test.session.capturedAt).toLocaleString();
+
+  function startEditingName() {
+    setNameBuffer(test.name);
+    setEditingName(true);
+    setTimeout(() => nameInputRef.current?.focus(), 0);
+  }
+
+  function commitName() {
+    const trimmed = nameBuffer.trim();
+    if (trimmed && trimmed !== test.name) onNameChange(trimmed);
+    setEditingName(false);
+  }
 
   return (
     <div className="border rounded-lg overflow-hidden bg-card">
       <div className="px-3 py-2.5 hover:bg-accent/40 transition-colors">
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="flex-1 min-w-0 flex items-center gap-2 text-left"
-          >
-            {expanded ? (
-              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            )}
-            <div className="flex-1 min-w-0">
-              <h3 className="font-medium text-sm truncate">{test.name}</h3>
-              <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground">
-                <span>
-                  {actionCount} action{actionCount === 1 ? "" : "s"}
-                </span>
-                <span>·</span>
-                <span className="truncate">{capturedAt}</span>
-              </div>
-              {(test.tags ?? []).length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {(test.tags ?? []).map((tag) => (
-                    <Badge
-                      key={tag}
-                      variant="secondary"
-                      className="text-[10px] px-1.5 py-0 font-normal"
-                    >
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
+          {editingName ? (
+            <div className="flex-1 min-w-0 flex items-center gap-2">
+              {expanded ? (
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               )}
+              <input
+                ref={nameInputRef}
+                value={nameBuffer}
+                onChange={(e) => setNameBuffer(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    commitName();
+                  } else if (e.key === "Escape") setEditingName(false);
+                }}
+                onBlur={commitName}
+                className="flex-1 text-sm font-medium px-1.5 py-0.5 rounded border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring/50 dark:bg-input/30"
+              />
             </div>
-          </button>
+          ) : (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="flex-1 min-w-0 flex items-center gap-2 text-left"
+            >
+              {expanded ? (
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              )}
+              <div className="flex-1 min-w-0">
+                <h3 className="font-medium text-sm truncate">{test.name}</h3>
+                <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground">
+                  <span>
+                    {actionCount} action{actionCount === 1 ? "" : "s"}
+                  </span>
+                  <span>·</span>
+                  <span className="truncate">{capturedAt}</span>
+                </div>
+                {(test.tags ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {(test.tags ?? []).map((tag) => (
+                      <Badge
+                        key={tag}
+                        variant="secondary"
+                        className="text-[10px] px-1.5 py-0 font-normal"
+                      >
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </button>
+          )}
           <div className="flex items-center gap-0.5 shrink-0">
             <Button
               size="sm"
@@ -463,10 +496,10 @@ function TestCard({
               size="sm"
               variant="ghost"
               className="h-8 w-8 p-0"
-              onClick={onExport}
-              title="Export test as JSON"
+              onClick={startEditingName}
+              title="Rename test"
             >
-              <Download className="h-3.5 w-3.5" />
+              <Pencil className="h-3.5 w-3.5" />
             </Button>
             <Button
               size="sm"
