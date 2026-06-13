@@ -5,10 +5,10 @@ const { spawnSync } = require("child_process");
 const os = require("os");
 
 const PLATFORM_MAP = {
-  "darwin-arm64": "mcp-studio-darwin-arm64",
-  "darwin-x64":   "mcp-studio-darwin-x64",
-  "linux-x64":    "mcp-studio-linux-x64",
-  "linux-arm64":  "mcp-studio-linux-arm64",
+  "darwin-arm64": "@pragmalabs/mcp-studio-darwin-arm64",
+  "darwin-x64":   "@pragmalabs/mcp-studio-darwin-x64",
+  "linux-x64":    "@pragmalabs/mcp-studio-linux-x64",
+  "linux-arm64":  "@pragmalabs/mcp-studio-linux-arm64",
 };
 
 function getBinaryPath() {

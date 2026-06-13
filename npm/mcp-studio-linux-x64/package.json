@@ -1,5 +1,5 @@
 {
-  "name": "mcp-studio-linux-x64",
+  "name": "@pragmalabs/mcp-studio-linux-x64",
   "version": "0.3.38",
   "description": "Linux x64 binary for mcp-studio",
   "license": "Unlicense",

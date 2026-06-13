@@ -185,9 +185,7 @@ jobs:
             DIR="npm/${PKG}"
 
             # Set version
-            cd "$DIR"
-            npm version "$VERSION" --no-git-tag-version
-            cd -
+            (cd "$DIR" && npm version "$VERSION" --no-git-tag-version)
 
             # Download and extract binary
             mkdir -p "${DIR}/bin"
@@ -195,19 +193,19 @@ jobs:
               | tar -xz -C "${DIR}/bin" mcp-studio
             chmod +x "${DIR}/bin/mcp-studio"
 
-            npm publish "${DIR}" --access public
+            (cd "$DIR" && npm publish --access public)
           done
 
           # Publish main package
-          cd npm/mcp-studio
-          npm version "$VERSION" --no-git-tag-version
-          # Update optionalDependencies versions
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            for (const k of Object.keys(pkg.optionalDependencies)) {
-              pkg.optionalDependencies[k] = process.env.VERSION;
-            }
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
-          npm publish --access public
+          (cd npm/mcp-studio && \
+            npm version "$VERSION" --no-git-tag-version && \
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              for (const k of Object.keys(pkg.optionalDependencies)) {
+                pkg.optionalDependencies[k] = process.env.VERSION;
+              }
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            " && \
+            npm publish --access public \
+          )
