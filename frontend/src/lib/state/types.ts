@@ -55,20 +55,3 @@ export function createInitialState(): State {
 
 /** Sparse partial of `State` — the counter delta one action contributes. */
 export type StateChange = Partial<State>;
-
-/**
- * Reduce a `State` by merging in a `StateChange`. Tool/resource slices
- * replace atomically; `network` replaces wholesale.
- */
-export function applyChange(state: State, change: StateChange): State {
-  return {
-    tools: change.tools ? { ...state.tools, ...change.tools } : state.tools,
-    resources: change.resources
-      ? { ...state.resources, ...change.resources }
-      : state.resources,
-    network: change.network ?? state.network,
-    widgets: change.widgets
-      ? { ...state.widgets, ...change.widgets }
-      : state.widgets,
-  };
-}

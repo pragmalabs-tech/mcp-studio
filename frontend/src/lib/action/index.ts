@@ -4,7 +4,6 @@ import { ResourceReadAction } from "./resource_read";
 import { WidgetClickAction } from "./widget_click";
 import { WidgetTextInputAction } from "./widget_text_input";
 import { WidgetCanvasClickAction } from "./widget_canvas_click";
-import { reconstructEvent } from "@/lib/event";
 import type { AssertablePoint } from "@/lib/assertion/types";
 
 export * from "./types";
@@ -14,11 +13,6 @@ export * from "./widget_click";
 export * from "./widget_text_input";
 export * from "./widget_canvas_click";
 
-/**
- * Rebuild a live Action instance from its serialized `toJSON()` blob — the
- * inverse of `Action.toJSON()`. Returns `null` for unknown action types so
- * the replay runner can skip them instead of failing the whole run.
- */
 /**
  * Rebuild a LIVE Action instance from a recorded JSON blob — used by the
  * replay runner. Live actions start with `events: []` on purpose: the

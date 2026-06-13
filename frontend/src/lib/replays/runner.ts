@@ -11,18 +11,12 @@ import { eventBus } from "@/lib/event";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import type { SavedTest } from "@/lib/tests/storage";
 import { saveReplay, type ReplayedAction, type SavedReplay } from "./storage";
-import { waitUntil } from "@/lib/utils";
+import { waitUntil, nowMs } from "@/lib/utils";
 import {
   captureWidgetSnapshot,
   type WidgetSnapshot,
 } from "@/components/studio/preview/snapshot/snapshot-utils";
 import { CONFIG } from "@/lib/config";
-
-function nowMs(): number {
-  return typeof performance !== "undefined" && performance.now
-    ? performance.now()
-    : Date.now();
-}
 
 export interface ReplayProgress {
   /** 0-indexed step about to run (or just-finished if `phase === "after"`). */
@@ -166,9 +160,6 @@ export async function runReplay(
       try {
         if (shouldSnapshotBeforNextAction) {
           snapshots[i - 1] = captureWidgetSnapshot(widgetId);
-          console.log(
-            `[runner step ${i}] snapshots[${i - 1}] captured before executing step ${i}: ${snapshots[i - 1] ? `html.length=${snapshots[i - 1]!.html.length}` : "null"}`,
-          );
         }
         await action.execute({ previous });
       } catch (err) {
@@ -186,9 +177,6 @@ export async function runReplay(
           setTimeout(r, CONFIG.TIMEOUT_WIDGET_RENDER),
         );
         snapshots[i] = captureWidgetSnapshot(widgetId);
-        console.log(
-          `[runner step ${i}] last step — snapshots[${i}] captured after 300ms: ${snapshots[i] ? `html.length=${snapshots[i]!.html.length}` : "null"}`,
-        );
       }
 
       // ── assertion ──────────────────────────────────────────────────
@@ -237,9 +225,6 @@ export async function runReplay(
   // so ReviewSnapshot shows the correct state for that step.
   for (let i = 0; i < liveSteps.length; i++) {
     if (snapshots[i]) {
-      console.log(
-        `[runner] injecting snapshots[${i}] into action ${liveSteps[i].action.type}`,
-      );
       liveSteps[i].action.updateSnapshot(snapshots[i]);
     }
   }

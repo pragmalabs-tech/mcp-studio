@@ -5,6 +5,8 @@
  * Also provides MCP spec compliance checking and token decoding.
  */
 
+import { formatTimestamp } from "@/lib/utils";
+
 // ── Types ──
 
 export type OAuthFlowStep =
@@ -73,15 +75,6 @@ export interface DecodedToken {
 let eventCounter = 0;
 function nextEventId(): string {
   return `oauth_${++eventCounter}_${Date.now()}`;
-}
-
-function formatTimestamp(): string {
-  const now = new Date();
-  return (
-    now.toTimeString().split(" ")[0] +
-    "." +
-    String(now.getMilliseconds()).padStart(3, "0")
-  );
 }
 
 // ── Debug Event Creation ──

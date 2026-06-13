@@ -3,16 +3,7 @@ import { readResource } from "@/lib/studio/api";
 import type { StateChange } from "@/lib/state/types";
 import type { AssertablePoint } from "@/lib/assertion/types";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
-
-function errorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  try {
-    return JSON.stringify(err);
-  } catch {
-    return String(err);
-  }
-}
+import { errorMessage } from "@/lib/utils";
 
 export class ResourceReadAction extends Action<{ uri: string }> {
   static assertablePoints: AssertablePoint[] = [

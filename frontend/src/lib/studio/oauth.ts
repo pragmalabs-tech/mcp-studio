@@ -13,6 +13,7 @@ import {
   type DebugEventCallback,
   type OAuthServerMetadata,
 } from "./oauth-debug";
+import { generateRandomString } from "@/lib/utils";
 
 // ── Storage keys (per-origin) ──
 
@@ -40,14 +41,6 @@ function remove(baseUrl: string, key: string) {
 }
 
 // ── PKCE ──
-
-function generateRandomString(length: number): string {
-  const array = new Uint8Array(length);
-  crypto.getRandomValues(array);
-  return Array.from(array, (b) => b.toString(36).padStart(2, "0"))
-    .join("")
-    .slice(0, length);
-}
 
 async function sha256(plain: string): Promise<ArrayBuffer> {
   const encoder = new TextEncoder();

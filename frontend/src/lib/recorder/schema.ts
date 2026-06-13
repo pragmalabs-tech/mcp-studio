@@ -26,8 +26,7 @@ export interface SetupConfig {
  *
  *   - `action.result` — the response/error data, used by `action.verify`.
  *   - `action.events` — side-effect observations during the action's
- *     window (tools/call, widget/render, etc.). Reconstructed via
- *     `reconstructEvent`.
+ *     window (tools/call, widget/render, etc.).
  *   - `stateChange` — the counter delta, used by `verifyState`.
  *
  * Result, events, and stateChange are independent: mismatches in each

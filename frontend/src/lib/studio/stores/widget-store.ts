@@ -38,6 +38,7 @@ import type {
 import type { WidgetSnapshot } from "@/components/studio/preview/snapshot/snapshot";
 import { captureWidgetSnapshot } from "@/components/studio/preview/snapshot/snapshot-utils";
 import { CONFIG } from "@/lib/config";
+import { formatTimestamp } from "@/lib/utils";
 
 export { VIEWPORT_PRESETS } from "./types";
 export type {
@@ -164,15 +165,6 @@ function toolArgsFromSchema(schema?: Record<string, unknown>): string {
   const props = schema.properties as Record<string, JsonSchemaProperty>;
   const required = schema.required as string[] | undefined;
   return JSON.stringify(sampleFromProperties(props, required), null, 2);
-}
-
-function formatTimestamp(): string {
-  const now = new Date();
-  return (
-    now.toTimeString().split(" ")[0] +
-    "." +
-    String(now.getMilliseconds()).padStart(3, "0")
-  );
 }
 
 function reInjectAll(

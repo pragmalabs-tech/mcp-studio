@@ -2,18 +2,13 @@ import type { Action } from "@/lib/action/types";
 import type { StateChange } from "@/lib/state/types";
 import type { RecordedAction, Session, SetupConfig } from "./schema";
 import { SCHEMA_VERSION } from "./schema";
+import { nowMs } from "@/lib/utils";
 
 type Mode = "idle" | "recording";
 type Listener = (mode: Mode) => void;
 type ActionListener = (entry: RecordedAction) => void;
 
 const STUDIO_VERSION = "0.2.2";
-
-function nowMs(): number {
-  return typeof performance !== "undefined" && performance.now
-    ? performance.now()
-    : Date.now();
-}
 
 /**
  * In-memory buffer of recorded Actions plus subscription hooks. The studio

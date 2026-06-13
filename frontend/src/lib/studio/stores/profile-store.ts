@@ -51,18 +51,11 @@ import {
 } from "../oauth";
 import { useWidgetStore } from "./widget-store";
 import type { AuthMethod, OAuthState } from "./types";
+import { generateRandomString } from "@/lib/utils";
 
 export type { AuthMethod, OAuthState };
 
 const PROFILE_AUTH_MIGRATION_FLAG = "studio:profile_auth_migrated_v1";
-
-function generateRandomString(length: number): string {
-  const array = new Uint8Array(length);
-  crypto.getRandomValues(array);
-  return Array.from(array, (b) => b.toString(36).padStart(2, "0"))
-    .join("")
-    .slice(0, length);
-}
 
 function applyProfileAuthToLocalStorage(auth: ProfileAuth | undefined): void {
   if (!auth) return;
