@@ -10,6 +10,7 @@ import {
   type WidgetSnapshot,
 } from "../../components/studio/preview/snapshot/snapshot-utils";
 import { waitUntil } from "@/lib/utils";
+import { CONFIG } from "@/lib/config";
 
 /**
  * Outcome data on `action.result.data`.
@@ -229,7 +230,7 @@ export class WidgetCanvasClickAction extends Action<{
   async recordFromUserClick(doc: Document): Promise<void> {
     setTimeout(() => {
       this._snapshot = captureWidgetSnapshot(this.data.widgetId);
-    }, 500);
+    }, CONFIG.TIMEOUT_WIDGET_SNAPSHOT);
     useWidgetStore.setState({ openClick: this });
     await new Promise<void>((resolve) => {
       if (this._closeCalled) {
@@ -237,7 +238,7 @@ export class WidgetCanvasClickAction extends Action<{
         return;
       }
       this._closeResolve = resolve;
-      setTimeout(resolve, 5_000);
+      setTimeout(resolve, CONFIG.TIMEOUT_WIDGET_SETTLE_WINDOW);
     });
     if (useWidgetStore.getState().openClick === this) {
       useWidgetStore.setState({ openClick: null });
@@ -265,7 +266,10 @@ export class WidgetCanvasClickAction extends Action<{
 
     // Canvas may not be in the DOM yet if the widget is still rendering —
     // poll for up to 3s before giving up (matches step-by-step human delay).
-    await waitUntil(() => resolveCanvas(doc, this.data.canvas) !== null, 3000);
+    await waitUntil(
+      () => resolveCanvas(doc, this.data.canvas) !== null,
+      CONFIG.TIMEOUT_CANVAS_POLL,
+    );
     const resolved = resolveCanvas(doc, this.data.canvas);
     if (!resolved) {
       useWidgetStore.setState({ openClick: null });
@@ -289,12 +293,17 @@ export class WidgetCanvasClickAction extends Action<{
         return;
       }
       this._closeResolve = resolve;
-      setTimeout(resolve, 5_000);
+      setTimeout(resolve, CONFIG.TIMEOUT_WIDGET_SETTLE_WINDOW);
     });
 
     if (this.expectedEvents !== undefined) {
-      await waitUntil(() => this.events.length >= this.expectedEvents!, 5000);
-      await new Promise((r) => setTimeout(r, 150));
+      await waitUntil(
+        () => this.events.length >= this.expectedEvents!,
+        CONFIG.TIMEOUT_WIDGET_SETTLE_WINDOW,
+      );
+      await new Promise((r) =>
+        setTimeout(r, CONFIG.TIMEOUT_WIDGET_EVENT_SETTLE),
+      );
       this.close();
     }
 

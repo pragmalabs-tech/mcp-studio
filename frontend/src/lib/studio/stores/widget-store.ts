@@ -37,6 +37,7 @@ import type {
 } from "./types";
 import type { WidgetSnapshot } from "@/components/studio/preview/snapshot/snapshot";
 import { captureWidgetSnapshot } from "@/components/studio/preview/snapshot/snapshot-utils";
+import { CONFIG } from "@/lib/config";
 
 export { VIEWPORT_PRESETS } from "./types";
 export type {
@@ -454,7 +455,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
       resolveWidgetUriHelper(meta, toolName, get().resources) &&
       useTestStore.getState().studioMode !== "test"
     ) {
-      setTimeout(() => get().loadWidget(), 50);
+      setTimeout(() => get().loadWidget(), CONFIG.TIMEOUT_DEFERRED_APPLY);
     }
   },
 
@@ -475,21 +476,21 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
   setTheme: (t) => {
     set({ theme: t });
     if (useTestStore.getState().studioMode !== "test") {
-      setTimeout(() => get().applyMock(), 50);
+      setTimeout(() => get().applyMock(), CONFIG.TIMEOUT_DEFERRED_APPLY);
     }
   },
 
   setLocale: (l) => {
     set({ locale: l });
     if (useTestStore.getState().studioMode !== "test") {
-      setTimeout(() => get().applyMock(), 50);
+      setTimeout(() => get().applyMock(), CONFIG.TIMEOUT_DEFERRED_APPLY);
     }
   },
 
   setDisplayMode: (d) => {
     set({ displayMode: d });
     if (useTestStore.getState().studioMode !== "test") {
-      setTimeout(() => get().applyMock(), 50);
+      setTimeout(() => get().applyMock(), CONFIG.TIMEOUT_DEFERRED_APPLY);
     }
   },
 
@@ -632,8 +633,7 @@ export const useWidgetStore = create<WidgetState>((set, get) => ({
       autoHeight: null,
     }));
 
-    // wait 0.3s to allow widget can render
-    await new Promise((res) => setTimeout(res, 300));
+    await new Promise((res) => setTimeout(res, CONFIG.TIMEOUT_WIDGET_RENDER));
     return captureWidgetSnapshot(id);
   },
 

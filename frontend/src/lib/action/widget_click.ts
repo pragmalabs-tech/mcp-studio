@@ -9,6 +9,7 @@ import {
   captureWidgetSnapshot,
   type WidgetSnapshot,
 } from "../../components/studio/preview/snapshot/snapshot-utils";
+import { CONFIG } from "@/lib/config";
 
 /**
  * Outcome data carried on `action.result.data`.
@@ -156,15 +157,14 @@ export class WidgetClickAction extends Action<{
     doc: Document,
     opts: { matchedSelector: string; matchedIndex: number },
   ): Promise<void> {
-    // Let snapsnot after 0.5s click
     setTimeout(() => {
       this._snapshot = captureWidgetSnapshot(this.data.widgetId);
-    }, 500);
+    }, CONFIG.TIMEOUT_WIDGET_SNAPSHOT);
 
     useWidgetStore.setState({ openClick: this });
     await new Promise<void>((resolve) => {
       this._closeResolve = resolve;
-      setTimeout(resolve, 5_000);
+      setTimeout(resolve, CONFIG.TIMEOUT_WIDGET_SETTLE_WINDOW);
     });
     if (useWidgetStore.getState().openClick === this) {
       useWidgetStore.setState({ openClick: null });
@@ -208,12 +208,17 @@ export class WidgetClickAction extends Action<{
 
     const settled = new Promise<void>((resolve) => {
       this._closeResolve = resolve;
-      setTimeout(resolve, 5_000);
+      setTimeout(resolve, CONFIG.TIMEOUT_WIDGET_SETTLE_WINDOW);
     });
 
     if (this.expectedEvents !== undefined) {
-      await waitUntil(() => this.events.length >= this.expectedEvents!, 5000);
-      await new Promise((r) => setTimeout(r, 150));
+      await waitUntil(
+        () => this.events.length >= this.expectedEvents!,
+        CONFIG.TIMEOUT_WIDGET_SETTLE_WINDOW,
+      );
+      await new Promise((r) =>
+        setTimeout(r, CONFIG.TIMEOUT_WIDGET_EVENT_SETTLE),
+      );
       this.close();
     }
 

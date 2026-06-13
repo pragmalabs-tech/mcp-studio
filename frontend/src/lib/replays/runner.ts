@@ -16,6 +16,7 @@ import {
   captureWidgetSnapshot,
   type WidgetSnapshot,
 } from "@/components/studio/preview/snapshot/snapshot-utils";
+import { CONFIG } from "@/lib/config";
 
 function nowMs(): number {
   return typeof performance !== "undefined" && performance.now
@@ -103,7 +104,7 @@ export async function runReplay(
     await waitUntil(() => {
       const w = useWidgetStore.getState()._iframeRef?.contentWindow?.innerWidth;
       return typeof w === "number" && Math.abs(w - vw!) <= 2;
-    }, 1000);
+    }, CONFIG.TIMEOUT_REPLAY_SIZE_LOCK);
   }
 
   const runStart = nowMs();
@@ -181,7 +182,9 @@ export async function runReplay(
       }
 
       if (shouldTakeSnapshotAfterTimeout) {
-        await new Promise<void>((r) => setTimeout(r, 300));
+        await new Promise<void>((r) =>
+          setTimeout(r, CONFIG.TIMEOUT_WIDGET_RENDER),
+        );
         snapshots[i] = captureWidgetSnapshot(widgetId);
         console.log(
           `[runner step ${i}] last step — snapshots[${i}] captured after 300ms: ${snapshots[i] ? `html.length=${snapshots[i]!.html.length}` : "null"}`,
@@ -200,8 +203,8 @@ export async function runReplay(
       const report: AssertReport = {
         action: action.verifyResult(source.action.result, modes),
         state: await action.verifyStateChange(source.stateChange, {
-          attempts: 3,
-          delayMs: 50,
+          attempts: CONFIG.ASSERTION_RETRY_ATTEMPTS,
+          delayMs: CONFIG.ASSERTION_RETRY_DELAY_MS,
           mode: stateMode,
         }),
       };
@@ -222,8 +225,7 @@ export async function runReplay(
       onProgress?.({ step: i, total, action, phase: "after" });
       previous = action;
 
-      // This will let the widget has enough time to render.
-      await new Promise((r) => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, CONFIG.TIMEOUT_RUNNER_STEP));
     }
   } finally {
     recorder.resume();

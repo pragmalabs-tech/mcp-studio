@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { CONFIG } from "@/lib/config";
 
 function formatTimeRemaining(expiresAt: number | null): string {
   if (!expiresAt) return "";
@@ -64,7 +65,7 @@ export function AuthPanel() {
     if (oauth.status !== "connected" || !oauth.expiresAt) return;
     const update = () => setTimeRemaining(formatTimeRemaining(oauth.expiresAt));
     update();
-    const interval = setInterval(update, 1000);
+    const interval = setInterval(update, CONFIG.TIMEOUT_OAUTH_EXPIRY_INTERVAL);
     return () => clearInterval(interval);
   }, [oauth.status, oauth.expiresAt]);
 
@@ -87,7 +88,7 @@ export function AuthPanel() {
   const copyRedirectUri = () => {
     navigator.clipboard.writeText(redirectUri);
     setCopiedUri(true);
-    setTimeout(() => setCopiedUri(false), 1500);
+    setTimeout(() => setCopiedUri(false), CONFIG.TIMEOUT_COPY_FEEDBACK);
   };
 
   // Validate custom headers JSON

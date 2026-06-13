@@ -9,8 +9,7 @@ import {
   buildMockFromResponse,
   resolveWidgetUri,
 } from "./utils/widget-helpers";
-
-const DEFAULT_WAIT_MS = 150;
+import { CONFIG } from "@/lib/config";
 
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -181,7 +180,7 @@ export class ToolCallAction extends Action<{
             locale: liveStore.locale,
             displayMode: liveStore.displayMode,
           });
-          const waitMs = this.data.waitMs ?? DEFAULT_WAIT_MS;
+          const waitMs = this.data.waitMs ?? CONFIG.TIMEOUT_WIDGET_TOOL_CALL;
           snapshot = await useWidgetStore.getState().insertWidget(widgetUri, {
             originalHtml: html,
             mock,

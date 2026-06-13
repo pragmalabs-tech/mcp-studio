@@ -1,4 +1,5 @@
 import type { MockData } from "./mock-openai";
+import { CONFIG } from "@/lib/config";
 
 export interface ExtAppsMockOptions {
   iframe: HTMLIFrameElement;
@@ -115,7 +116,7 @@ export function createExtAppsMock(opts: ExtAppsMockOptions) {
             },
           });
           onAction("ext-apps:init", "Handshake complete");
-          setTimeout(() => sendToolData(), 50);
+          setTimeout(() => sendToolData(), CONFIG.TIMEOUT_DEFERRED_APPLY);
           break;
         }
 

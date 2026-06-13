@@ -10,6 +10,7 @@ import {
   captureWidgetSnapshot,
   type WidgetSnapshot,
 } from "../../components/studio/preview/snapshot/snapshot-utils";
+import { CONFIG } from "@/lib/config";
 
 export interface WidgetTextInputResult {
   matchedSelector: string | null;
@@ -189,17 +190,16 @@ export class WidgetTextInputAction extends Action<{
       initialValue: string;
     },
   ): Promise<void> {
-    // Let snapsnot after 0.5s click
     setTimeout(() => {
       this._snapshot = captureWidgetSnapshot(this.data.widgetId);
-    }, 500);
+    }, CONFIG.TIMEOUT_WIDGET_SNAPSHOT);
 
     this.data.value = opts.initialValue;
     useWidgetStore.setState({ openTextInput: this });
 
     await new Promise<void>((resolve) => {
       this._closeResolve = resolve;
-      setTimeout(() => this.close(), 5_000); // absolute safety cap
+      setTimeout(() => this.close(), CONFIG.TIMEOUT_WIDGET_SETTLE_WINDOW);
       this._resetDebounce();
     });
 
@@ -400,12 +400,17 @@ export class WidgetTextInputAction extends Action<{
 
     const settled = new Promise<void>((resolve) => {
       this._closeResolve = resolve;
-      setTimeout(resolve, 5_000);
+      setTimeout(resolve, CONFIG.TIMEOUT_WIDGET_SETTLE_WINDOW);
     });
 
     if (this.expectedEvents !== undefined) {
-      await waitUntil(() => this.events.length >= this.expectedEvents!, 5000);
-      await new Promise((r) => setTimeout(r, 150));
+      await waitUntil(
+        () => this.events.length >= this.expectedEvents!,
+        CONFIG.TIMEOUT_WIDGET_SETTLE_WINDOW,
+      );
+      await new Promise((r) =>
+        setTimeout(r, CONFIG.TIMEOUT_WIDGET_EVENT_SETTLE),
+      );
       this.close();
     }
 

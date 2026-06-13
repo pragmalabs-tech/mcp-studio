@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useProfileStore } from "@/lib/studio/stores/profile-store";
 import { useMcpHealth } from "@/lib/studio/health";
+import { CONFIG } from "@/lib/config";
 
 /**
  * Sidebar panel for cloud-account state: signed-in identity + Publish /
@@ -39,7 +40,7 @@ export function CloudPanel() {
     if (!tunnel.url) return;
     await navigator.clipboard.writeText(tunnel.url);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    setTimeout(() => setCopied(false), CONFIG.TIMEOUT_COPY_FEEDBACK);
   }
 
   function handlePublishClick() {

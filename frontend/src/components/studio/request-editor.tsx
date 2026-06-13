@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useWidgetStore } from "@/lib/studio/stores/widget-store";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
+import { CONFIG } from "@/lib/config";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { json } from "@codemirror/lang-json";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -340,7 +341,7 @@ const TONE_CLASS: Record<HintBadge["tone"], string> = {
 
 function BadgeRow({ label, badges }: { label: string; badges: HintBadge[] }) {
   return (
-    <TooltipProvider delay={150}>
+    <TooltipProvider delay={CONFIG.TIMEOUT_TOOLTIP}>
       <div>
         <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
           {label}

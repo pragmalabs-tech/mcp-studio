@@ -1,6 +1,7 @@
 import type { StateChange } from "@/lib/state/types";
 import type { AssertResult, Mode } from "./types";
 import { compareByMode } from "./dispatch";
+import { CONFIG } from "@/lib/config";
 
 export interface VerifyStateOptions {
   /** Total attempts including the first try. Default 3. */
@@ -28,8 +29,14 @@ export async function verifyState(
       data: { reason: "no recorded state change" },
     };
   }
-  const attempts = Math.max(1, options.attempts ?? 3);
-  const delayMs = Math.max(0, options.delayMs ?? 50);
+  const attempts = Math.max(
+    1,
+    options.attempts ?? CONFIG.ASSERTION_RETRY_ATTEMPTS,
+  );
+  const delayMs = Math.max(
+    0,
+    options.delayMs ?? CONFIG.ASSERTION_RETRY_DELAY_MS,
+  );
   const mode = options.mode ?? "exact";
 
   let actual: StateChange = {};

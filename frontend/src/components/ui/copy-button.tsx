@@ -8,6 +8,7 @@
  */
 
 import { useState } from "react";
+import { CONFIG } from "@/lib/config";
 
 interface Props {
   /** String to copy, or a function returning the string at click time. */
@@ -28,7 +29,7 @@ export function CopyButton({ value, label = "Copy", title, className }: Props) {
     navigator.clipboard.writeText(text).then(
       () => {
         setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+        setTimeout(() => setCopied(false), CONFIG.TIMEOUT_COPY_FEEDBACK);
       },
       () => {
         /* clipboard permissions may be denied in some sandboxes - silent */

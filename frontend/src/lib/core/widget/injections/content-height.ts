@@ -1,4 +1,5 @@
 import type { Injection } from "./types";
+import { CONFIG } from "@/lib/config";
 
 export const contentHeightInjection: Injection = {
   id: "content-height",
@@ -14,7 +15,7 @@ export const contentHeightInjection: Injection = {
       var b = children[i].getBoundingClientRect();
       if (b.bottom > max) max = b.bottom;
     }
-    if (max > 10) {
+    if (max > ${CONFIG.CONTENT_HEIGHT_MIN_PX}) {
       window.parent.postMessage({ type: 'studio_content_height', height: Math.ceil(max) }, '*');
     }
   }
@@ -45,9 +46,9 @@ export const contentHeightInjection: Injection = {
   }
 
   if (document.readyState === 'complete') {
-    setTimeout(init, 50);
+    setTimeout(init, ${CONFIG.TIMEOUT_CONTENT_HEIGHT_INIT});
   } else {
-    window.addEventListener('load', function () { setTimeout(init, 50); });
+    window.addEventListener('load', function () { setTimeout(init, ${CONFIG.TIMEOUT_CONTENT_HEIGHT_INIT}); });
   }
 })();
 </script>`,

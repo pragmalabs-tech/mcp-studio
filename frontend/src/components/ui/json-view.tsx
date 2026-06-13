@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CONFIG } from "@/lib/config";
 
 interface JsonViewProps {
   /** Value to render as a collapsible tree. Strings are shown verbatim. */
@@ -391,7 +392,7 @@ function CopyIconButton({
     navigator.clipboard.writeText(value).then(
       () => {
         setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+        setTimeout(() => setCopied(false), CONFIG.TIMEOUT_COPY_FEEDBACK);
       },
       () => {
         /* clipboard denied — silent */

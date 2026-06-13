@@ -8,6 +8,7 @@ import {
   type DecodedToken,
 } from "@/lib/studio/oauth-debug";
 import { oauthStorageKey } from "@/lib/studio/oauth";
+import { CONFIG } from "@/lib/config";
 
 // ── Sub-tab types ──
 
@@ -33,7 +34,7 @@ function TimelineEntry({ event }: { event: OAuthDebugEvent }) {
   const copy = (text: string, setter: (v: boolean) => void) => {
     navigator.clipboard.writeText(text);
     setter(true);
-    setTimeout(() => setter(false), 1500);
+    setTimeout(() => setter(false), CONFIG.TIMEOUT_COPY_FEEDBACK);
   };
 
   return (

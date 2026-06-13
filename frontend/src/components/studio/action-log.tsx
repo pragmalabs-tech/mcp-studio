@@ -4,6 +4,7 @@ import {
   type ActionEntry,
 } from "@/lib/studio/stores/widget-store";
 import { Button } from "@/components/ui/button";
+import { CONFIG } from "@/lib/config";
 
 function LogEntry({ entry, index }: { entry: ActionEntry; index: number }) {
   const [expanded, setExpanded] = useState(false);
@@ -16,7 +17,7 @@ function LogEntry({ entry, index }: { entry: ActionEntry; index: number }) {
       `${entry.time} ${entry.method} ${entry.args}`,
     );
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    setTimeout(() => setCopied(false), CONFIG.TIMEOUT_COPY_FEEDBACK);
   };
 
   return (

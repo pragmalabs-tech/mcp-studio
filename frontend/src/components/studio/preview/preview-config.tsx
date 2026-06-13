@@ -6,6 +6,7 @@ import {
 } from "@/lib/studio/stores/widget-store";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { CONFIG } from "@/lib/config";
 import {
   Select,
   SelectContent,
@@ -138,14 +139,17 @@ export function WidgetConfig() {
             <>
               <Input
                 type="number"
-                min={100}
-                max={2560}
+                min={CONFIG.VIEWPORT_MIN_SIZE_PX}
+                max={CONFIG.VIEWPORT_MAX_SIZE_PX}
                 value={viewportCustom.width}
                 onChange={(e) =>
                   setViewportCustom({
                     width: Math.min(
-                      2560,
-                      Math.max(100, Number(e.target.value) || 100),
+                      CONFIG.VIEWPORT_MAX_SIZE_PX,
+                      Math.max(
+                        CONFIG.VIEWPORT_MIN_SIZE_PX,
+                        Number(e.target.value) || CONFIG.VIEWPORT_MIN_SIZE_PX,
+                      ),
                     ),
                   })
                 }
@@ -155,14 +159,17 @@ export function WidgetConfig() {
               <span className="text-muted-foreground">×</span>
               <Input
                 type="number"
-                min={100}
-                max={2560}
+                min={CONFIG.VIEWPORT_MIN_SIZE_PX}
+                max={CONFIG.VIEWPORT_MAX_SIZE_PX}
                 value={viewportCustom.height}
                 onChange={(e) =>
                   setViewportCustom({
                     height: Math.min(
-                      2560,
-                      Math.max(100, Number(e.target.value) || 100),
+                      CONFIG.VIEWPORT_MAX_SIZE_PX,
+                      Math.max(
+                        CONFIG.VIEWPORT_MIN_SIZE_PX,
+                        Number(e.target.value) || CONFIG.VIEWPORT_MIN_SIZE_PX,
+                      ),
                     ),
                   })
                 }

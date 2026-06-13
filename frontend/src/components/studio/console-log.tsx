@@ -13,6 +13,7 @@ import {
   type ConsoleLevel,
 } from "@/lib/studio/stores/widget-store";
 import { Button } from "@/components/ui/button";
+import { CONFIG } from "@/lib/config";
 
 const LEVEL_CLASS: Record<ConsoleLevel, string> = {
   log: "text-foreground",
@@ -38,7 +39,7 @@ function ConsoleRow({ entry, index }: { entry: ConsoleEntry; index: number }) {
     e.stopPropagation();
     navigator.clipboard.writeText(`${entry.time} [${entry.level}] ${text}`);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    setTimeout(() => setCopied(false), CONFIG.TIMEOUT_COPY_FEEDBACK);
   };
 
   return (
