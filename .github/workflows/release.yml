@@ -185,7 +185,7 @@ jobs:
             DIR="npm/${PKG}"
 
             # Set version
-            (cd "$DIR" && npm version "$VERSION" --no-git-tag-version)
+            (cd "$DIR" && npm version "$VERSION" --no-git-tag-version --allow-same-version)
 
             # Download and extract binary
             mkdir -p "${DIR}/bin"
@@ -198,7 +198,7 @@ jobs:
 
           # Publish main package
           (cd npm/mcp-studio && \
-            npm version "$VERSION" --no-git-tag-version && \
+            npm version "$VERSION" --no-git-tag-version --allow-same-version && \
             node -e "
               const fs = require('fs');
               const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));

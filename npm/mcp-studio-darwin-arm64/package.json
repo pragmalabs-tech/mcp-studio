@@ -1,6 +1,6 @@
 {
   "name": "@pragmalabs/mcp-studio-darwin-arm64",
-  "version": "0.3.40",
+  "version": "0.3.41",
   "description": "macOS arm64 binary for mcp-studio",
   "license": "Unlicense",
   "repository": {
