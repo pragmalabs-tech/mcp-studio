@@ -152,3 +152,62 @@ jobs:
           git add Formula/mcp-studio.rb
           git commit -m "release: v${VERSION}"
           git push
+
+  publish-npm:
+    name: Publish to npm
+    needs: [publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Download binaries and publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          BASE: https://dl.pragmalabs.tech/mcp-studio
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          declare -A TARGETS=(
+            ["mcp-studio-darwin-arm64"]="aarch64-apple-darwin"
+            ["mcp-studio-darwin-x64"]="x86_64-apple-darwin"
+            ["mcp-studio-linux-x64"]="x86_64-unknown-linux-gnu"
+            ["mcp-studio-linux-arm64"]="aarch64-unknown-linux-gnu"
+          )
+
+          # Update versions and publish platform packages
+          for PKG in "${!TARGETS[@]}"; do
+            TARGET="${TARGETS[$PKG]}"
+            DIR="npm/${PKG}"
+
+            # Set version
+            cd "$DIR"
+            npm version "$VERSION" --no-git-tag-version
+            cd -
+
+            # Download and extract binary
+            mkdir -p "${DIR}/bin"
+            curl -fsSL "$BASE/v${VERSION}/mcp-studio-${TARGET}.tar.gz" \
+              | tar -xz -C "${DIR}/bin" mcp-studio
+            chmod +x "${DIR}/bin/mcp-studio"
+
+            npm publish "${DIR}" --access public
+          done
+
+          # Publish main package
+          cd npm/mcp-studio
+          npm version "$VERSION" --no-git-tag-version
+          # Update optionalDependencies versions
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            for (const k of Object.keys(pkg.optionalDependencies)) {
+              pkg.optionalDependencies[k] = process.env.VERSION;
+            }
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          npm publish --access public

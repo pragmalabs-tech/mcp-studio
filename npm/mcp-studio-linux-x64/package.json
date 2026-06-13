@@ -1,0 +1,12 @@
+{
+  "name": "mcp-studio-linux-x64",
+  "version": "0.3.38",
+  "description": "Linux x64 binary for mcp-studio",
+  "license": "Unlicense",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pragmalabs-tech/mcp-studio.git"
+  },
+  "os": ["linux"],
+  "cpu": ["x64"]
+}

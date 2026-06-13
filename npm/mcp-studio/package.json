@@ -1,0 +1,22 @@
+{
+  "name": "mcp-studio",
+  "version": "0.3.38",
+  "description": "A local studio to debug MCP Servers and MCP Applications",
+  "license": "Unlicense",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pragmalabs-tech/mcp-studio.git"
+  },
+  "bin": {
+    "mcp-studio": "bin/mcp-studio.js"
+  },
+  "optionalDependencies": {
+    "mcp-studio-darwin-arm64": "0.3.38",
+    "mcp-studio-darwin-x64": "0.3.38",
+    "mcp-studio-linux-x64": "0.3.38",
+    "mcp-studio-linux-arm64": "0.3.38"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
