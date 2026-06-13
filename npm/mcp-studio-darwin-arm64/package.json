@@ -1,12 +1,16 @@
 {
   "name": "@pragmalabs/mcp-studio-darwin-arm64",
-  "version": "0.3.38",
+  "version": "0.3.40",
   "description": "macOS arm64 binary for mcp-studio",
   "license": "Unlicense",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pragmalabs-tech/mcp-studio.git"
   },
-  "os": ["darwin"],
-  "cpu": ["arm64"]
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ]
 }
