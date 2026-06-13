@@ -115,3 +115,40 @@ jobs:
             --content-type "text/plain"
 
           echo "Released v$VERSION"
+
+  update-homebrew:
+    name: Update Homebrew formula
+    needs: [publish]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch SHA256s and update formula
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          BASE: https://dl.pragmalabs.tech/mcp-studio
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          SHA_ARM_MAC=$(curl -fsSL "$BASE/v${VERSION}/mcp-studio-aarch64-apple-darwin.tar.gz.sha256" | awk '{print $1}')
+          SHA_X64_MAC=$(curl -fsSL "$BASE/v${VERSION}/mcp-studio-x86_64-apple-darwin.tar.gz.sha256" | awk '{print $1}')
+          SHA_ARM_LIN=$(curl -fsSL "$BASE/v${VERSION}/mcp-studio-aarch64-unknown-linux-gnu.tar.gz.sha256" | awk '{print $1}')
+          SHA_X64_LIN=$(curl -fsSL "$BASE/v${VERSION}/mcp-studio-x86_64-unknown-linux-gnu.tar.gz.sha256" | awk '{print $1}')
+
+          git clone https://x-access-token:${GH_TOKEN}@github.com/pragmalabs-tech/homebrew-mcp-studio.git tap
+          cd tap
+
+          awk -v v="$VERSION" -v s0="$SHA_ARM_MAC" -v s1="$SHA_X64_MAC" -v s2="$SHA_ARM_LIN" -v s3="$SHA_X64_LIN" '
+            /version "[^"]*"/ { sub(/"[^"]*"/, "\"" v "\"") }
+            /sha256/ {
+              sub(/"[^"]*"/, "\"" shas[i] "\"")
+              shas[0]=s0; shas[1]=s1; shas[2]=s2; shas[3]=s3
+              sub(/"[^"]*"/, "\"" shas[i] "\""); i++
+            }
+            { print }
+          ' Formula/mcp-studio.rb > Formula/mcp-studio.rb.tmp
+          mv Formula/mcp-studio.rb.tmp Formula/mcp-studio.rb
+
+          git config user.email "bot@pragmalabs.tech"
+          git config user.name "release-bot"
+          git add Formula/mcp-studio.rb
+          git commit -m "release: v${VERSION}"
+          git push
