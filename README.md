@@ -2,24 +2,17 @@
 
 A local studio to debug MCP servers and MCP applications.
 
+## Demo
+
+[![MCP Studio demo](https://img.youtube.com/vi/vCbNQKFpN78/maxresdefault.jpg)](https://www.youtube.com/watch?v=vCbNQKFpN78)
+
 ## Install
 
 ```sh
-# npm
-npx @pragmalabs/mcp-studio
-
-# curl
-curl -fsSL https://dl.pragmalabs.tech/mcp-studio/install.sh | sh
-
-# Homebrew
-brew install pragmalabs/tap/mcp-studio
+npx @pragmalabs/mcp-studio open http://localhost:3000
 ```
 
-```sh
-mcp-studio open http://localhost:3000
-```
-
-Starts the local server and opens your browser at `localhost:7777`.
+Other install options (curl, Homebrew, build from source): [studio.pragmalabs.tech/docs](https://studio.pragmalabs.tech/docs)
 
 ---
 
@@ -64,14 +57,6 @@ MCP Studio runs the full OAuth 2.1 + PKCE flow automatically and shows a live lo
 ![OAuth debug](https://raw.githubusercontent.com/pragmalabs-tech/mcp-studio/main/website/public/screenshots/mcp-studio-auth.gif)
 
 ---
-
-## Build from source
-
-```sh
-cd frontend && pnpm install && pnpm build
-cd .. && cargo build --release
-./target/release/mcp-studio open
-```
 
 ## License
 
