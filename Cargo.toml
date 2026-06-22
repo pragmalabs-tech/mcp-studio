@@ -2,7 +2,7 @@
 name = "mcp-studio"
 version = "0.3.41"
 edition = "2024"
-license = "Unlicense"
+license = "MIT"
 repository = "https://github.com/pragmalabs-tech/mcp-studio"
 description = "A local studio to debug MCP Servers and MCP Applications"
 
