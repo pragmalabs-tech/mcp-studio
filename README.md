@@ -1,50 +1,78 @@
 # mcp-studio
 
-A local studio to debug MCP Servers and MCP Applications.
-
-A single binary that serves a browser UI on `localhost:7777`, proxies MCP
-JSON-RPC server-side (so cross-origin servers work without CORS gymnastics),
-and runs on your machine (so localhost MCP servers work).
+A local studio to debug MCP servers and MCP applications.
 
 ## Install
 
-```
+```sh
+# npm
+npx @pragmalabs/mcp-studio
+
+# curl
 curl -fsSL https://dl.pragmalabs.tech/mcp-studio/install.sh | sh
+
+# Homebrew
+brew install pragmalabs/tap/mcp-studio
 ```
 
-Installs `mcp-studio` to `~/.local/bin`. Override with `MCP_STUDIO_INSTALL_DIR=/usr/local/bin`. Pin a version with `MCP_STUDIO_VERSION=0.1.3`.
-
-Supported platforms: macOS (Apple Silicon, Intel), Linux (x86_64, aarch64).
-
-## Quickstart
-
-```
+```sh
 mcp-studio open http://localhost:3000
 ```
 
-Starts the local server, opens your browser, and preselects the given MCP URL.
+Starts the local server and opens your browser at `localhost:7777`.
 
-```
-mcp-studio open                                # no URL: paste one in the UI
-mcp-studio open https://example.tunnel.mcpr.app
-```
+---
+
+## Use cases
+
+### Call MCP tools
+
+Connect to any MCP server and call its tools with custom arguments. Responses appear instantly in the log.
+
+![Call MCP tools](https://raw.githubusercontent.com/pragmalabs-tech/mcp-studio/main/website/public/screenshots/mcp-studio-execute-tool.gif)
+
+---
+
+### Read MCP resources
+
+Browse and read resources from your MCP server. Inject test data to preview how widgets respond.
+
+![Read MCP resources](https://raw.githubusercontent.com/pragmalabs-tech/mcp-studio/main/website/public/screenshots/mcp-studio-resource-ui-read.gif)
+
+---
+
+### Preview and interact with widgets
+
+See your MCP app widget render live in the browser. Switch between ChatGPT, Claude, desktop, and mobile viewports.
+
+![Widget preview](https://raw.githubusercontent.com/pragmalabs-tech/mcp-studio/main/website/public/screenshots/mcp-studio-interactive-with-widget.gif)
+
+---
+
+### Record and replay E2E tests
+
+Hit Record, use your app normally, then stop. The session becomes a named, reproducible test. Run it after every change.
+
+![Replay test](https://raw.githubusercontent.com/pragmalabs-tech/mcp-studio/main/website/public/screenshots/mcp-studio-replay-test.gif)
+
+---
+
+### Debug OAuth 2.1
+
+MCP Studio runs the full OAuth 2.1 + PKCE flow automatically and shows a live log of every step: discovery, registration, authorization, and token exchange.
+
+![OAuth debug](https://raw.githubusercontent.com/pragmalabs-tech/mcp-studio/main/website/public/screenshots/mcp-studio-auth.gif)
+
+---
 
 ## Build from source
 
-```
+```sh
 cd frontend && pnpm install && pnpm build
 cd .. && cargo build --release
 ./target/release/mcp-studio open
 ```
 
-## Features
-
-- Tools and resources explorer
-- Apps SDK widget preview with CSP sandbox enforcement
-- OAuth 2.1 + PKCE debugger
-- Action log capturing every MCP call and widget event
-- Mock data editor for widget development
-
 ## License
 
-Released into the public domain via the [Unlicense](./UNLICENSE).
+[MIT](./LICENSE)
