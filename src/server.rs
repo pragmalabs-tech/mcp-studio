@@ -30,11 +30,6 @@ pub struct AppState {
     pub action_log: action_log::Sender,
     /// When set, test CRUD ops read from this path instead of ~/.mcp-studio/tests/.
     pub tests_dir: Option<PathBuf>,
-    /// Latest active frontend WebSocket connection.
-    pub ws_sender: control::WsSender,
-    pub ws_conn_counter: control::WsConnCounter,
-    /// In-memory job status store for async test runs.
-    pub job_store: control::JobStore,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -83,8 +78,8 @@ pub fn router(state: AppState) -> Router {
             post(profiles::activate_profile),
         )
         .route("/api/ws", get(control::ws_handler))
-        .route("/api/studio/control/run-test", post(control::trigger_test))
-        .route("/api/studio/control/jobs/{job_id}", get(control::get_job))
+        .route("/api/studio/control/run-test", post(crate::jobs::trigger_test_by_api))
+        .route("/api/studio/control/jobs/{job_id}", get(crate::jobs::get_job))
         .with_state(state)
         .fallback(crate::assets::handler)
         // Local-only tool: raise axum's 2 MiB default so saved test fixtures
