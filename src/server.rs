@@ -16,6 +16,7 @@ use tracing::Span;
 use crate::action_log;
 use crate::cloud::{self, CloudClient};
 use crate::config::{self, AuthConfig, Config, TunnelConfig};
+use crate::control;
 use crate::profiles;
 use crate::reports_api;
 use crate::run_results_api;
@@ -29,6 +30,9 @@ pub struct AppState {
     pub action_log: action_log::Sender,
     /// When set, test CRUD ops read from this path instead of ~/.mcp-studio/tests/.
     pub tests_dir: Option<PathBuf>,
+    /// Latest active frontend WebSocket connection.
+    pub ws_sender: control::WsSender,
+    pub ws_conn_counter: control::WsConnCounter,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -76,6 +80,8 @@ pub fn router(state: AppState) -> Router {
             "/api/studio/profiles/{id}/activate",
             post(profiles::activate_profile),
         )
+        .route("/api/ws", get(control::ws_handler))
+        .route("/api/studio/control/run-test", post(control::trigger_test))
         .with_state(state)
         .fallback(crate::assets::handler)
         // Local-only tool: raise axum's 2 MiB default so saved test fixtures

@@ -2,6 +2,7 @@ mod action_log;
 mod assets;
 mod cloud;
 mod config;
+mod control;
 mod forwarding;
 mod profiles;
 mod proxy;
@@ -46,11 +47,14 @@ async fn run() {
         }
     };
 
+    let (ws_sender, ws_conn_counter) = control::new_ws_state();
     let state = server::AppState {
         config: Arc::new(RwLock::new(config::load())),
         tunnel: Arc::new(tunnel::TunnelState::new()),
         action_log: action_log::channel(),
         tests_dir: parse_tests_dir(),
+        ws_sender,
+        ws_conn_counter,
     };
 
     println!("Studio listening on {PUBLIC_URL}");

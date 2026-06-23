@@ -21,6 +21,7 @@ import { SignInDialog } from "@/components/studio/sign-in-dialog";
 import { PublishDialog } from "@/components/studio/publish-dialog";
 import { ConfirmDialogRoot } from "@/components/ui/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Realtime } from "@/components/studio/realtime";
 
 type BottomTab = "logs" | "console" | "csp" | "oauth";
 
@@ -62,6 +63,7 @@ export function StudioLayout() {
 
   return (
     <div className="h-screen flex flex-col">
+      <Realtime />
       <TopHeader />
       <SignInDialog />
       <PublishDialog />

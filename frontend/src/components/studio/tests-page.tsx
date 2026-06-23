@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   FlaskConical,
   Play,
@@ -48,6 +48,7 @@ import { confirm } from "@/components/ui/confirm-dialog";
 import { useTestStore } from "@/lib/studio/stores/test-store";
 import { useProfileStore } from "@/lib/studio/stores";
 import { actionLabel } from "@/lib/core/action-format";
+import { getTest } from "@/lib/tests/storage";
 
 interface TestsPageProps {
   open: boolean;
@@ -66,6 +67,8 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
   const setRunState = useTestStore((s) => s.setRunState);
   const patchRunState = useTestStore((s) => s.patchRunState);
   const setStudioMode = useTestStore((s) => s.setStudioMode);
+  const pendingTestId = useTestStore((s) => s.pendingTestId);
+  const clearPendingTest = useTestStore((s) => s.clearPendingTest);
   const profiles = useProfileStore((s) => s.profiles);
   const activeProfileId = useProfileStore((s) => s.activeProfileId);
   const activeProfileName = profiles.find(
@@ -110,6 +113,69 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
       cancelled = true;
     };
   }, [open]);
+
+  // Run a test by ID without a confirmation dialog (used for remote triggers).
+  const runTestById = useCallback(
+    async (testId: string) => {
+      const test = await getTest(testId);
+      if (!test) {
+        console.warn(`[control] run_test: test "${testId}" not found`);
+        return;
+      }
+      if (useTestStore.getState().runState) return;
+
+      const totalSteps = countReplayableActions(test);
+      const ctrl = new AbortController();
+
+      onOpenChange(false);
+      setReplayDialogOpen(false);
+      setRunAllDialogOpen(false);
+      setStudioMode("test");
+      setRunState({
+        testName: test.name,
+        mode: "auto",
+        currentStep: -1,
+        totalSteps,
+        currentAction: null,
+        ctrl,
+        nextResolver: null,
+      });
+
+      try {
+        const result = await runReplay(test, {
+          signal: ctrl.signal,
+          onProgress: ({ step, action, phase }) => {
+            if (phase === "before") {
+              patchRunState({ currentStep: step, currentAction: action });
+            }
+          },
+          runGroupId: crypto.randomUUID(),
+          profileName: activeProfileName,
+        });
+        setReplayResult(result);
+        setReplayDialogOpen(true);
+      } catch (err) {
+        console.error("Remote-triggered replay failed:", err);
+      } finally {
+        setRunState(null);
+        setStudioMode("normal");
+      }
+    },
+    [
+      activeProfileName,
+      onOpenChange,
+      patchRunState,
+      setRunState,
+      setStudioMode,
+    ],
+  );
+
+  // React to remote test triggers set via the store.
+  useEffect(() => {
+    if (!pendingTestId) return;
+    clearPendingTest();
+    void runTestById(pendingTestId);
+  }, [pendingTestId, clearPendingTest, runTestById]);
 
   const handleReplay = async (
     test: SavedTest,
