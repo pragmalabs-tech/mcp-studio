@@ -17,11 +17,31 @@ mod tunnel;
 
 use std::sync::Arc;
 
+use clap::Parser;
 use tokio::sync::RwLock;
 use tracing_subscriber::EnvFilter;
 
 const BIND_ADDR: &str = "127.0.0.1:7777";
 pub const PUBLIC_URL: &str = "http://localhost:7777";
+
+#[derive(Parser)]
+#[command(
+    version,
+    about = "A local studio to debug MCP servers and applications"
+)]
+struct Args {
+    /// Directory containing test definitions
+    #[arg(long)]
+    tests_dir: Option<std::path::PathBuf>,
+
+    /// Run tests headlessly and exit
+    #[arg(long)]
+    headless: bool,
+
+    /// Test IDs to run in headless mode (repeatable)
+    #[arg(long = "test-id")]
+    test_ids: Vec<String>,
+}
 
 #[tokio::main]
 async fn main() {
@@ -31,38 +51,11 @@ async fn main() {
         )
         .init();
 
-    run().await;
+    let args = Args::parse();
+    run(args).await;
 }
 
-fn parse_tests_dir() -> Option<std::path::PathBuf> {
-    let args: Vec<String> = std::env::args().collect();
-    let pos = args.iter().position(|a| a == "--tests-dir")?;
-    args.get(pos + 1).map(std::path::PathBuf::from)
-}
-
-fn parse_headless() -> bool {
-    std::env::args().any(|a| a == "--headless")
-}
-
-fn parse_test_ids() -> Vec<String> {
-    let args: Vec<String> = std::env::args().collect();
-    let mut ids = Vec::new();
-    let mut i = 0;
-    while i < args.len() {
-        if let Some(val) = args[i].strip_prefix("--test-id=") {
-            ids.push(val.to_string());
-        } else if args[i] == "--test-id"
-            && let Some(val) = args.get(i + 1)
-        {
-            ids.push(val.clone());
-            i += 1;
-        }
-        i += 1;
-    }
-    ids
-}
-
-async fn run() {
+async fn run(args: Args) {
     let listener = match tokio::net::TcpListener::bind(BIND_ADDR).await {
         Ok(l) => l,
         Err(e) => {
@@ -75,22 +68,21 @@ async fn run() {
         config: Arc::new(RwLock::new(config::load())),
         tunnel: Arc::new(tunnel::TunnelState::new()),
         action_log: action_log::channel(),
-        tests_dir: parse_tests_dir(),
+        tests_dir: args.tests_dir,
     };
 
     println!("Studio listening on {PUBLIC_URL}");
 
-    if parse_headless() {
+    if args.headless {
         tokio::task::spawn(async move {
             if let Err(e) = axum::serve(listener, server::router(state)).await {
                 eprintln!("server error: {e}");
             }
         });
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let test_ids = parse_test_ids();
         let rt = tokio::runtime::Handle::current();
         let handle =
-            std::thread::spawn(move || rt.block_on(headless::run_headless_tests(test_ids)));
+            std::thread::spawn(move || rt.block_on(headless::run_headless_tests(args.test_ids)));
         match handle.join() {
             Ok(Ok(())) => {}
             Ok(Err(e)) => {
