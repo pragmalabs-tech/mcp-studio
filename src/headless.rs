@@ -20,6 +20,13 @@ pub fn open_headless_tab() -> Result<(Browser, Arc<Tab>), Error> {
     let browser = Browser::new(LaunchOptions {
         window_size: Some((BROWSER_WIDTH, BROWSER_HEIGHT)),
         ..Default::default()
+    })
+    .map_err(|e| {
+        anyhow::anyhow!(
+            "failed to launch Chrome: {e}\n\
+            Headless mode requires Chrome or Chromium to be installed.\n\
+            On CI, add a setup step: https://github.com/browser-actions/setup-chrome"
+        )
     })?;
     let tab = browser.new_tab()?;
 

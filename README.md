@@ -50,6 +50,24 @@ Hit Record, use your app normally, then stop. The session becomes a named, repro
 
 ---
 
+### Run tests in CI/CD (headless mode)
+
+Pass `--headless` with one or more `--test-id` flags to run tests without a browser window and exit with a non-zero code on failure:
+
+```sh
+mcp-studio --tests-dir ./tests --headless --test-id my-test --test-id another-test
+```
+
+Plug it into any CI pipeline:
+
+```yaml
+# GitHub Actions example
+- name: Run MCP Studio tests
+  run: npx @pragmalabs/mcp-studio --tests-dir ./tests --headless --test-id smoke-test
+```
+
+---
+
 ### Debug OAuth 2.1
 
 MCP Studio runs the full OAuth 2.1 + PKCE flow automatically and shows a live log of every step: discovery, registration, authorization, and token exchange.
