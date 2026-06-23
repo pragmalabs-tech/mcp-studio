@@ -22,7 +22,7 @@ Other install options (curl, Homebrew, build from source): [studio.pragmalabs.te
 
 Connect to any MCP server and call its tools with custom arguments. Responses appear instantly in the log.
 
-![Call MCP tools](https://raw.githubusercontent.com/pragmalabs-tech/mcp-studio/main/website/public/screenshots/mcp-studio-execute-tool.gif)
+![Call MCP tools](docs/assets/mcp-studio-execute-tool.gif)
 
 ---
 
@@ -30,7 +30,7 @@ Connect to any MCP server and call its tools with custom arguments. Responses ap
 
 Browse and read resources from your MCP server. Inject test data to preview how widgets respond.
 
-![Read MCP resources](https://raw.githubusercontent.com/pragmalabs-tech/mcp-studio/main/website/public/screenshots/mcp-studio-resource-ui-read.gif)
+![Read MCP resources](docs/assets/mcp-studio-resource-ui-read.gif)
 
 ---
 
@@ -38,7 +38,7 @@ Browse and read resources from your MCP server. Inject test data to preview how 
 
 See your MCP app widget render live in the browser. Switch between ChatGPT, Claude, desktop, and mobile viewports.
 
-![Widget preview](https://raw.githubusercontent.com/pragmalabs-tech/mcp-studio/main/website/public/screenshots/mcp-studio-interactive-with-widget.gif)
+![Widget preview](docs/assets/mcp-studio-interactive-with-widget.gif)
 
 ---
 
@@ -46,7 +46,7 @@ See your MCP app widget render live in the browser. Switch between ChatGPT, Clau
 
 Hit Record, use your app normally, then stop. The session becomes a named, reproducible test. Run it after every change.
 
-![Replay test](https://raw.githubusercontent.com/pragmalabs-tech/mcp-studio/main/website/public/screenshots/mcp-studio-replay-test.gif)
+![Replay test](docs/assets/mcp-studio-replay-test.gif)
 
 ---
 
@@ -54,7 +54,7 @@ Hit Record, use your app normally, then stop. The session becomes a named, repro
 
 MCP Studio runs the full OAuth 2.1 + PKCE flow automatically and shows a live log of every step: discovery, registration, authorization, and token exchange.
 
-![OAuth debug](https://raw.githubusercontent.com/pragmalabs-tech/mcp-studio/main/website/public/screenshots/mcp-studio-auth.gif)
+![OAuth debug](docs/assets/mcp-studio-auth.gif)
 
 ---
 
