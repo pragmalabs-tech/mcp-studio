@@ -26,6 +26,10 @@ pub fn run_results_dir() -> Option<PathBuf> {
     config::config_dir().map(|d| d.join("run-results"))
 }
 
+pub fn job_results_path() -> Option<PathBuf> {
+    config::config_dir().map(|d| d.join("job_results.json"))
+}
+
 /// Sanitize a user-supplied name into a safe `[a-z0-9_-]+` filename slug.
 ///
 /// Rejects path traversal and absolute paths. Empty / all-stripped input

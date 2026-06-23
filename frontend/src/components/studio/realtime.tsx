@@ -14,7 +14,7 @@ export function Realtime() {
   useEffect(() => {
     return connectControlSocket((action) => {
       if (action.type === "run_test") {
-        triggerTest(action.data.test_id);
+        triggerTest(action.data.test_id, action.data.job_id);
       }
     });
   }, [triggerTest]);

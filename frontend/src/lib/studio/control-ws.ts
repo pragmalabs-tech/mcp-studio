@@ -5,7 +5,10 @@
  * client to target after the user refreshes or the server restarts.
  */
 
-export type FrontendAction = { type: "run_test"; data: { test_id: string } };
+export type FrontendAction = {
+  type: "run_test";
+  data: { test_id: string; job_id: string };
+};
 
 const RECONNECT_DELAY_MS = 2000;
 

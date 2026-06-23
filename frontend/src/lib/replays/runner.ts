@@ -40,6 +40,7 @@ export interface ReplayOptions {
    * resolves it (the runner re-checks `signal.aborted` right after).
    */
   gate?: (step: number) => void | Promise<void>;
+  jobId?: string;
 }
 
 /**
@@ -68,7 +69,7 @@ export async function runReplay(
   test: SavedTest,
   options: ReplayOptions = {},
 ): Promise<SavedReplay> {
-  const { signal, onProgress, runGroupId, profileName, gate } = options;
+  const { signal, onProgress, runGroupId, profileName, gate, jobId } = options;
 
   const steps = test.session.actions
     .map((source) => ({ source, action: reconstructAction(source.action) }))
@@ -247,6 +248,7 @@ export async function runReplay(
     actions: out,
     runGroupId,
     profileName,
+    jobId,
   };
   await saveReplay(replay);
   return replay;

@@ -67,7 +67,7 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
   const setRunState = useTestStore((s) => s.setRunState);
   const patchRunState = useTestStore((s) => s.patchRunState);
   const setStudioMode = useTestStore((s) => s.setStudioMode);
-  const pendingTestId = useTestStore((s) => s.pendingTestId);
+  const pendingTest = useTestStore((s) => s.pendingTest);
   const clearPendingTest = useTestStore((s) => s.clearPendingTest);
   const profiles = useProfileStore((s) => s.profiles);
   const activeProfileId = useProfileStore((s) => s.activeProfileId);
@@ -116,7 +116,7 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
 
   // Run a test by ID without a confirmation dialog (used for remote triggers).
   const runTestById = useCallback(
-    async (testId: string) => {
+    async (testId: string, jobId?: string) => {
       const test = await getTest(testId);
       if (!test) {
         console.warn(`[control] run_test: test "${testId}" not found`);
@@ -151,6 +151,7 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
           },
           runGroupId: crypto.randomUUID(),
           profileName: activeProfileName,
+          jobId,
         });
         setReplayResult(result);
         setReplayDialogOpen(true);
@@ -172,10 +173,10 @@ export function TestsPage({ open, onOpenChange }: TestsPageProps) {
 
   // React to remote test triggers set via the store.
   useEffect(() => {
-    if (!pendingTestId) return;
+    if (!pendingTest) return;
     clearPendingTest();
-    void runTestById(pendingTestId);
-  }, [pendingTestId, clearPendingTest, runTestById]);
+    void runTestById(pendingTest.testId, pendingTest.jobId);
+  }, [pendingTest, clearPendingTest, runTestById]);
 
   const handleReplay = async (
     test: SavedTest,

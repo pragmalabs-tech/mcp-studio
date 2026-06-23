@@ -55,6 +55,7 @@ async fn run() {
         tests_dir: parse_tests_dir(),
         ws_sender,
         ws_conn_counter,
+        job_store: control::new_job_store(),
     };
 
     println!("Studio listening on {PUBLIC_URL}");

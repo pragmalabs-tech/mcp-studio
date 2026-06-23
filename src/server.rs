@@ -33,6 +33,8 @@ pub struct AppState {
     /// Latest active frontend WebSocket connection.
     pub ws_sender: control::WsSender,
     pub ws_conn_counter: control::WsConnCounter,
+    /// In-memory job status store for async test runs.
+    pub job_store: control::JobStore,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -82,6 +84,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/ws", get(control::ws_handler))
         .route("/api/studio/control/run-test", post(control::trigger_test))
+        .route("/api/studio/control/jobs/{job_id}", get(control::get_job))
         .with_state(state)
         .fallback(crate::assets::handler)
         // Local-only tool: raise axum's 2 MiB default so saved test fixtures

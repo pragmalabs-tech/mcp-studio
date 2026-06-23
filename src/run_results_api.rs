@@ -148,6 +148,25 @@ pub async fn put_run_result(
 ) -> Result<Json<RunResultSummary>, AppError> {
     let path = resolve_path(&id)?;
     storage::write_json(&path, &body).map_err(|e| AppError::Internal(e.to_string()))?;
+
+    // If the replay carries a jobId, record job_id → replay_id in job_results.json
+    // so GET /api/studio/control/jobs/:job_id can resolve it without a /complete call.
+    if let Some(job_id) = body.get("jobId").and_then(|v| v.as_str())
+        && let Some(index_path) = storage::job_results_path()
+    {
+        let mut map = storage::read_json(&index_path)
+            .ok()
+            .and_then(|v| {
+                if let Value::Object(m) = v {
+                    Some(m)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default();
+        map.insert(job_id.to_string(), Value::String(id.clone()));
+        let _ = storage::write_json(&index_path, &Value::Object(map));
+    }
     let metadata = std::fs::metadata(&path).map_err(|e| AppError::Internal(e.to_string()))?;
     let modified_ms = metadata
         .modified()

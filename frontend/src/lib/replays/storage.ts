@@ -32,6 +32,7 @@ export interface SavedReplay {
   actions: ReplayedAction[];
   runGroupId?: string;
   profileName?: string;
+  jobId?: string;
 }
 
 export async function saveReplay(replay: SavedReplay): Promise<void> {
